@@ -258,6 +258,15 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 /* ESSAY */
 .essay-prompt{font-size:15px;font-weight:600;line-height:1.75;margin-bottom:10px;color:var(--white);}
 .essay-ctx{background:rgba(0,56,168,.07);border:1px solid rgba(0,56,168,.2);border-radius:11px;padding:13px 15px;margin-bottom:13px;font-size:13px;line-height:1.75;color:rgba(248,246,241,.78);font-style:italic;}
+.facts-label{font-size:10px;font-weight:700;color:#6b9fff;text-transform:uppercase;letter-spacing:.09em;margin-bottom:6px;display:block;}
+.q-label{font-size:10px;font-weight:700;color:var(--gold);text-transform:uppercase;letter-spacing:.09em;margin-bottom:5px;display:block;}
+.alac-table{width:100%;border-collapse:collapse;font-size:13px;margin:10px 0;}
+.alac-table th{text-align:left;padding:6px 10px;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--bdr2);}
+.alac-table td{padding:7px 10px;vertical-align:top;border-bottom:1px solid rgba(255,255,255,.04);}
+.alac-score{font-family:var(--fm);font-weight:700;font-size:13px;white-space:nowrap;}
+.alac-score.hi{color:#14b4a0;}.alac-score.mid{color:var(--gold);}.alac-score.lo{color:#e07080;}
+.alac-total-row td{border-top:1px solid var(--bdr2);font-weight:700;padding:8px 10px;}
+.alac-model{white-space:pre-line;font-size:13px;line-height:1.8;}
 .essay-box{width:100%;min-height:190px;background:rgba(255,255,255,.04);border:1px solid var(--bdr2);border-radius:11px;padding:13px 15px;color:var(--white);font-family:var(--fb);font-size:14px;line-height:1.75;outline:none;resize:vertical;transition:border-color .2s;}
 .essay-box:focus{border-color:rgba(201,168,76,.4);}
 .ai-fb{background:rgba(201,168,76,.06);border:1px solid rgba(201,168,76,.2);border-radius:13px;padding:16px;margin-top:14px;display:none;}
@@ -1132,8 +1141,8 @@ function renderQuizQ(){
     body.innerHTML=`<div style="display:flex;gap:7px;margin-bottom:14px;flex-wrap:wrap;"><span class="sbg ${sub.cls}">${sub.name}</span><span class="tag tg-e">Essay</span></div>
       <div class="q-prog-track"><div class="q-prog-fill" style="width:${(qIdx/qs.length)*100}%"></div></div>
       <div class="q-prog-meta"><span>Q${qIdx+1} of ${qs.length}</span><span>Write answer → AI feedback</span></div>
-      ${cur.context?`<div class="essay-ctx">${h(cur.context)}</div>`:''}
-      <div class="essay-prompt">${h(cur.prompt)}</div>
+      ${(cur.type==='situational'&&cur.context)?`<div class="essay-ctx"><span class="facts-label">Facts</span>${h(cur.context)}</div><span class="q-label">Question</span>`:cur.context?`<div class="essay-ctx">${h(cur.context)}</div>`:''}
+      <div class="essay-prompt">${h(cur.prompt||cur.q||'')}</div>
       <textarea class="essay-box" id="essayBox" placeholder="Write your answer…"></textarea>
       <div style="display:flex;gap:8px;margin-top:10px;">
         <button class="btn-gold" id="essFB" onclick="submitEssay()">🤖 Get AI Feedback</button>
@@ -1151,6 +1160,35 @@ function pickMCQ(i){
   fb.innerHTML=(ok?'✅ <strong>Correct!</strong> ':'❌ <strong>Incorrect.</strong> ')+h(cur.explanation);
   document.getElementById('qnxt').style.display='block';updateDash();
 }
+function alacScoreCls(s){return s>=2?'hi':s>=1?'mid':'lo';}
+function renderAlacCard(ev){
+  const gc=ev.grade==='Excellent'?'#14b4a0':ev.grade==='Good'?'#50d090':ev.grade==='Satisfactory'?'var(--gold)':ev.grade==='Needs Improvement'?'#e09050':'#e07080';
+  const al=ev.alac||{};
+  const rows=[
+    ['A — Answer',   al.answer],
+    ['L — Legal Basis', al.legalBasis],
+    ['A — Application', al.application],
+    ['C — Conclusion',  al.conclusion],
+  ];
+  const tableRows=rows.map(([label,c])=>c?`<tr>
+    <td style="color:var(--white);font-weight:600;">${label}</td>
+    <td><span class="alac-score ${alacScoreCls(c.score||0)}">${c.score!=null?c.score+'/2.5':'—'}</span></td>
+    <td style="color:rgba(248,246,241,.8);">${h(c.feedback||'')}</td>
+  </tr>`:''
+  ).join('');
+  return `<div class="ai-fb-head">⚖️ <span class="ai-fb-score">${h(ev.score||'?/10')}</span><span style="background:rgba(255,255,255,.08);border-radius:5px;padding:2px 7px;font-family:var(--fm);color:${gc};">${h(ev.grade||'')}</span></div>
+  <div class="ai-fb-content">
+    <table class="alac-table">
+      <thead><tr><th>ALAC</th><th>Score</th><th>Feedback</th></tr></thead>
+      <tbody>${tableRows}<tr class="alac-total-row"><td colspan="2" style="color:var(--gold);">Total: ${h(ev.score||'?/10')} — ${h(ev.grade||'')}</td><td style="color:rgba(248,246,241,.6);font-size:12px;">${h(ev.overallFeedback||'')}</td></tr></tbody>
+    </table>
+    ${ev.strengths?.length?`<p style="margin-top:10px;"><strong>✅ Strengths:</strong></p><ul>${ev.strengths.map(s=>`<li>${h(s)}</li>`).join('')}</ul>`:''}
+    ${ev.improvements?.length?`<p><strong>⚠️ Improve:</strong></p><ul>${ev.improvements.map(s=>`<li>${h(s)}</li>`).join('')}</ul>`:''}
+    ${ev.keyMissed?.length?`<p><strong>📚 Missed:</strong></p><ul>${ev.keyMissed.map(s=>`<li>${h(s)}</li>`).join('')}</ul>`:''}
+    <details style="margin-top:12px;"><summary style="cursor:pointer;color:var(--gold);font-weight:600;font-size:13px;">📖 Model Answer (ALAC Format)</summary>
+    <div style="margin-top:8px;padding:12px;background:rgba(255,255,255,.03);border-radius:9px;font-size:13px;line-height:1.9;"><span class="alac-model">${h(ev.modelAnswer||'')}</span></div></details>
+  </div>`;
+}
 async function submitEssay(){
   const ans=document.getElementById('essayBox')?.value.trim();if(!ans){document.getElementById('essayBox')?.focus();return;}
   const btn=document.getElementById('essFB');btn.disabled=true;btn.textContent='⏳ Evaluating…';
@@ -1158,17 +1196,9 @@ async function submitEssay(){
   const fb=document.getElementById('aiFB');fb.className='ai-fb show';
   fb.innerHTML=`<div class="ai-fb-head"><div class="spin" style="width:16px;height:16px;border-width:2px;"></div> Evaluating…</div>`;
   try{
-    const r=await fetch('/api/evaluate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:cur.prompt,answer:ans,modelAnswer:cur.modelAnswer,keyPoints:cur.keyPoints,subject:pool.subject})});
+    const r=await fetch('/api/evaluate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:cur.prompt||cur.q,answer:ans,modelAnswer:cur.modelAnswer,keyPoints:cur.keyPoints,subject:pool.subject})});
     const ev=await r.json();if(ev.error)throw new Error(ev.error);
-    const gc=ev.grade==='Excellent'?'#14b4a0':ev.grade==='Good'?'#50d090':ev.grade==='Satisfactory'?'var(--gold)':ev.grade==='Needs Improvement'?'#e09050':'#e07080';
-    fb.innerHTML=`<div class="ai-fb-head">⚖️ <span class="ai-fb-score">${h(ev.score)}</span><span style="background:rgba(255,255,255,.08);border-radius:5px;padding:2px 7px;font-family:var(--fm);color:${gc};">${h(ev.grade)}</span></div>
-    <div class="ai-fb-content"><p>${h(ev.overallFeedback)}</p>
-      ${ev.strengths?.length?`<p><strong>✅ Strengths:</strong></p><ul>${ev.strengths.map(s=>`<li>${h(s)}</li>`).join('')}</ul>`:''}
-      ${ev.improvements?.length?`<p><strong>⚠️ Improve:</strong></p><ul>${ev.improvements.map(s=>`<li>${h(s)}</li>`).join('')}</ul>`:''}
-      ${ev.keyMissed?.length?`<p><strong>📚 Missed:</strong></p><ul>${ev.keyMissed.map(s=>`<li>${h(s)}</li>`).join('')}</ul>`:''}
-      <details style="margin-top:12px;"><summary style="cursor:pointer;color:var(--gold);font-weight:600;font-size:13px;">📖 Model Answer</summary>
-      <div style="margin-top:8px;padding:12px;background:rgba(255,255,255,.03);border-radius:9px;font-size:13px;line-height:1.75;">${h(ev.modelAnswer||'')}</div></details>
-    </div>`;
+    fb.innerHTML=renderAlacCard(ev);
     document.getElementById('essNext').style.display='block';totalQDone++;updateDash();
   }catch(err){fb.innerHTML=`<div class="ai-fb-head" style="color:#e07080;">⚠️ ${h(err.message)}</div>`;}
   btn.disabled=false;btn.textContent='🤖 Get AI Feedback';
@@ -1289,10 +1319,13 @@ function renderMockQ(){
   document.querySelectorAll('.q-marker').forEach((m,i)=>{
     m.className='q-marker'+(mockAnswers[i]?.trim()?' done':'')+(i===mockIdx?' current':'');
   });
+  const qText = q.prompt || q.q || '';
+  const isSituational = (q.type === 'situational') && q.context;
   document.getElementById('mockQArea').innerHTML=`
     <div style="display:flex;gap:7px;margin-bottom:14px;flex-wrap:wrap;"><span class="sbg ${sub.cls}">${h(sub.name)}</span><span class="tag tg-e">Bar Essay</span></div>
-    ${q.context?`<div class="essay-ctx">${h(q.context)}</div>`:''}
-    <div class="essay-prompt">${h(q.q)}</div>
+    ${isSituational?`<div class="essay-ctx"><span class="facts-label">Facts</span>${h(q.context)}</div><span class="q-label">Question</span>`:''}
+    ${!isSituational&&q.context?`<div class="essay-ctx">${h(q.context)}</div>`:''}
+    <div class="essay-prompt">${h(qText)}</div>
     <div style="font-size:11px;color:var(--muted);margin:8px 0 10px;">Write a complete bar exam answer. Navigate freely between questions before submitting.</div>
     <textarea class="essay-box" id="mockBox" style="min-height:220px;" placeholder="Write your answer…" oninput="saveMock()">${h(mockAnswers[mockIdx]||'')}</textarea>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;">
@@ -1318,7 +1351,7 @@ async function endMockSession(){
     const q=mockQs[i],ans=mockAnswers[i]||'';
     if(!ans.trim()){scores.push({score:'0/10',numericScore:0,grade:'Not Answered',overallFeedback:'No answer provided.',keyMissed:[]});continue;}
     try{
-      const r=await fetch('/api/evaluate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q.q,answer:ans,modelAnswer:q.modelAnswer,keyPoints:q.keyPoints,subject:q.subject})});
+      const r=await fetch('/api/evaluate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q.prompt||q.q,answer:ans,modelAnswer:q.modelAnswer,keyPoints:q.keyPoints,subject:q.subject})});
       scores.push(await r.json());
     }catch(e){scores.push({score:'?/10',numericScore:0,grade:'Error',overallFeedback:e.message,keyMissed:[]});}
   }
@@ -1346,20 +1379,19 @@ async function endMockSession(){
     <h3 style="font-family:var(--fd);font-size:20px;font-weight:700;color:var(--gold-l);margin-bottom:14px;text-align:left;">📋 Question Review</h3>
     ${mockQs.map((q,i)=>{
       const s=scores[i],sub=SUBJS.find(x=>x.key===q.subject)||{name:q.subject,cls:'sg-gen'},ns=s.numericScore||0;
+      const qText=q.prompt||q.q||'';
+      const isSit=(q.type==='situational')&&q.context;
       return `<div class="q-review-item">
         <div style="font-size:11px;color:#a08060;margin-bottom:5px;display:flex;align-items:center;gap:8px;">
           Q${i+1} · <span class="sbg ${sub.cls}">${sub.name}</span>
           ${q.isReal?'<span style="font-size:9px;">📜 Past Bar</span>':q.source==='Pre-generated'?'<span style="font-size:9px;color:var(--teal);">📚 Pre-gen</span>':'<span style="font-size:9px;">🤖 AI</span>'}
         </div>
-        <div style="font-size:13px;color:rgba(248,246,241,.85);margin-bottom:8px;line-height:1.6;">${h(q.q.slice(0,160))}${q.q.length>160?'…':''}</div>
-        <span class="q-score-badge ${ns>=7?'qsb-high':ns>=5?'qsb-mid':'qsb-low'}">${h(s.score)} — ${h(s.grade)}</span>
-        <div style="font-size:12px;color:var(--muted);margin-top:6px;">${h(s.overallFeedback||'')}</div>
-        ${s.keyMissed?.length?`<div style="font-size:11px;color:#e09050;margin-top:4px;">⚠️ Missed: ${s.keyMissed.slice(0,2).map(k=>h(k)).join(' · ')}</div>`:''}
-        <details style="margin-top:8px;"><summary style="cursor:pointer;color:var(--gold);font-size:12px;font-weight:600;">View answers</summary>
-          <div style="margin-top:8px;padding:10px;background:rgba(255,255,255,.03);border-radius:8px;font-size:12px;line-height:1.7;color:rgba(248,246,241,.8);">
-            <strong style="color:var(--gold-l);">Your answer:</strong><br>${h(mockAnswers[i]||'(no answer)')}
-            <br><br><strong style="color:var(--teal);">Model answer:</strong><br>${h(q.modelAnswer||'—')}
-          </div>
+        ${isSit?`<div class="essay-ctx" style="margin-bottom:8px;"><span class="facts-label">Facts</span>${h(q.context)}</div><span class="q-label">Question</span>`:''}
+        <div style="font-size:13px;color:rgba(248,246,241,.85);margin-bottom:8px;line-height:1.6;">${h(qText)}</div>
+        ${s.grade==='Not Answered'?`<span class="q-score-badge qsb-low">Not Answered</span>`:`
+        <div class="ai-fb show" style="margin-top:8px;">${renderAlacCard(s)}</div>`}
+        <details style="margin-top:8px;"><summary style="cursor:pointer;color:var(--muted);font-size:12px;font-weight:600;">Your answer</summary>
+          <div style="margin-top:6px;padding:10px;background:rgba(255,255,255,.03);border-radius:8px;font-size:12px;line-height:1.7;color:rgba(248,246,241,.8);">${h(mockAnswers[i]||'(no answer)')}</div>
         </details>
       </div>`;
     }).join('')}

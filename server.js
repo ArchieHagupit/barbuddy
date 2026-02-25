@@ -318,12 +318,16 @@ Respond ONLY with valid JSON (no markdown):
   },
   "essay": {
     "questions": [
-      { "prompt": "Essay question based on a situation described in the source material", "context": "Additional facts from source (or empty string)", "modelAnswer": "Answer using ONLY information from source materials", "keyPoints": ["Point from source","Point from source"], "source": "Based on: [reference name], [relevant passage]" },
-      { "prompt": "...", "context": "", "modelAnswer": "...", "keyPoints": ["...","..."], "source": "..." },
-      { "prompt": "...", "context": "", "modelAnswer": "...", "keyPoints": ["...","..."], "source": "..." }
+      { "type": "situational", "prompt": "The actual question (e.g. 'What are the rights of A? Is B liable? Decide with reasons.')", "context": "COMPLETE fact pattern from source — all parties, events, and circumstances. Nothing omitted.", "q": "Same as prompt", "modelAnswer": "Answer using ONLY information from source materials", "keyPoints": ["Point from source","Point from source"], "source": "Based on: [reference name], [relevant passage]" },
+      { "type": "conceptual", "prompt": "Define or distinguish or enumerate (no fact pattern needed)", "context": "", "q": "Same as prompt", "modelAnswer": "...", "keyPoints": ["...","..."], "source": "..." },
+      { "type": "situational", "prompt": "...", "context": "...", "q": "...", "modelAnswer": "...", "keyPoints": ["...","..."], "source": "..." }
     ]
   }
-}`;
+}
+
+IMPORTANT for essay classification:
+- SITUATIONAL: question involves specific named parties (Mr. A, ABC Corp), a sequence of events, a legal dispute or transaction. Put the COMPLETE fact pattern in "context" — nothing summarized or omitted. Put the actual question in "prompt" AND "q".
+- CONCEPTUAL: question asks to define, distinguish, enumerate, or explain a doctrine — no specific parties or events. Leave "context" empty. Put the full question in "prompt" AND "q".`;
 
   const raw    = await callClaude([{ role:'user', content:prompt }], 4096);
   const parsed = JSON.parse(raw.replace(/^```json\s*/i,'').replace(/```$/,'').trim());
@@ -375,28 +379,31 @@ app.post('/api/mockbar/generate', async (req, res) => {
   if (!API_KEY) return res.status(500).json({ error:'API key not set' });
   const { subjects, count=20 } = req.body;
   try {
-    // 1) Real past bar questions
-    let real = [];
+    // 1) Gather all available real past bar questions — fill up to 40%
+    let realPool = [];
     KB.pastBar.forEach(pb => {
       if (!subjects||subjects.includes('all')||subjects.includes(pb.subject))
-        (pb.questions||[]).forEach(q => real.push({ ...q, source:pb.name, year:pb.year, subject:pb.subject, isReal:true }));
+        (pb.questions||[]).forEach(q => realPool.push({ ...q, source:pb.name, year:pb.year, subject:pb.subject, isReal:true }));
     });
-    real = shuffle(real).slice(0, Math.floor(count/2));
+    const realMax = Math.floor(count * 0.4);
+    let real = shuffle(realPool).slice(0, Math.min(realMax, realPool.length));
 
-    // 2) Pre-generated essay questions
-    let preGen = [];
+    // 2) Gather all pre-generated essay questions — fill up to 40%
+    let preGenPool = [];
     const targetSubjs = subjects?.includes('all') ? Object.keys(CONTENT) : (subjects||Object.keys(CONTENT));
     targetSubjs.forEach(subj =>
       Object.entries(CONTENT[subj]||{}).forEach(([topic, data]) =>
-        (data.essay?.questions||[]).forEach(q => preGen.push({ ...q, subject:subj, topics:[topic], isReal:false, source:'Pre-generated' }))
+        (data.essay?.questions||[]).forEach(q => preGenPool.push({ ...q, subject:subj, topics:[topic], isReal:false, source:'Pre-generated' }))
       )
     );
-    preGen = shuffle(preGen).slice(0, Math.ceil((count-real.length)/2));
+    const preGenMax = Math.floor(count * 0.4);
+    let preGen = shuffle(preGenPool).slice(0, Math.min(preGenMax, preGenPool.length));
 
-    // 3) AI-generated from uploaded references only — skip if no references available
-    const needed = count - real.length - preGen.length;
+    // 3) AI-generated from uploaded references to fill remaining slots
     let aiQs = [];
-    if (needed > 0) {
+    const combined = real.length + preGen.length;
+    if (combined < count) {
+      const needed = count - combined;
       const targetSubjList = (!subjects || subjects.includes('all')) ? null : subjects;
       const refMaterials = KB.references
         .filter(r => !targetSubjList || targetSubjList.includes(r.subject) || r.subject==='general')
@@ -404,22 +411,29 @@ app.post('/api/mockbar/generate', async (req, res) => {
         .map(r => `[${r.name}]\n${(r.text||'').slice(0,2000)}`)
         .join('\n\n');
       if (refMaterials) {
-        const raw = await callClaude([{ role:'user', content:`Below are the ONLY source materials you may use. From these materials only, extract or construct ${needed} bar exam situational questions. Do not use any information not found in the source materials below.
+        const raw = await callClaude([{ role:'user', content:`Below are the ONLY source materials you may use. From these materials only, extract or construct exactly ${needed} bar exam essay questions. Do not use any information not found in the source materials below.
 
 SOURCE MATERIALS:
 ${refMaterials}
 
+For each question, classify it as one of two types:
+- SITUATIONAL: involves specific parties, a sequence of events, a legal dispute or transaction, or a fact pattern. Put the COMPLETE fact pattern in "context" and the actual question (What are the rights of X? Is Y liable? Decide with reasons.) in "prompt".
+- CONCEPTUAL: asks to define a term, distinguish between concepts, enumerate requirements, or explain a doctrine with no specific fact pattern. Leave "context" empty and put the full question in "prompt".
+
 Respond ONLY with valid JSON:
-{ "questions": [{ "subject":"civil|criminal|political|labor|commercial|taxation|remedial|ethics", "q":"Situational question based on source material", "modelAnswer":"Answer using only information from source", "keyPoints":["Point from source"], "isReal":false, "source":"[reference name], [passage]" }] }` }], 4000);
+{ "questions": [{ "type":"situational|conceptual", "subject":"civil|criminal|political|labor|commercial|taxation|remedial|ethics", "prompt":"The actual question", "context":"Full fact pattern (empty string if conceptual)", "q":"Same as prompt (for compatibility)", "modelAnswer":"Answer using only information from source", "keyPoints":["Point from source"], "isReal":false, "source":"[reference name], [passage]" }] }` }], 4000);
         try { aiQs = JSON.parse(raw.replace(/^```json\s*/i,'').replace(/```$/,'').trim()).questions || []; }
         catch(e) { aiQs = []; }
       }
     }
 
-    const usedAI = aiQs.length > 0;
     const all = shuffle([...real, ...preGen, ...aiQs]).slice(0, count);
     all.forEach((q,i) => q.number = i+1);
-    res.json({ questions:all, total:all.length, fromPastBar:real.length, fromPreGen:preGen.length, aiGenerated:aiQs.length, usedAI });
+
+    console.log(`[mockbar] requested=${count}, fromPastBar=${real.length}, fromPreGen=${preGen.length}, fromAI=${aiQs.length}, final=${all.length}`);
+    if (all.length !== count) console.warn(`[mockbar] WARNING: requested ${count} but final total is ${all.length} (not enough source material)`);
+
+    res.json({ questions:all, total:all.length, requested:count, fromPastBar:real.length, fromPreGen:preGen.length, aiGenerated:aiQs.length, usedAI:aiQs.length>0 });
   } catch(err) { res.status(500).json({ error:err.message }); }
 });
 
@@ -429,17 +443,38 @@ app.post('/api/evaluate', async (req, res) => {
   const { question, answer, modelAnswer, keyPoints, subject } = req.body;
   const refCtx = KB.references.filter(r=>r.subject===subject||r.subject==='general').slice(0,1).map(r=>r.summary||'').join('');
   try {
-    const raw = await callClaude([{ role:'user', content:`You are a Philippine Bar Exam evaluator.
+    const raw = await callClaude([{ role:'user', content:`You are a Philippine Bar Exam examiner. Evaluate this student answer using the ALAC method (Answer, Legal Basis, Application, Conclusion) which is the standard format required in the Philippine Bar Exam.
 
 Question: ${question}
-${modelAnswer?`Model Answer: ${modelAnswer}`:''}
-${(keyPoints||[]).length?`Key Points: ${keyPoints.join(', ')}`:''}
+${modelAnswer?`Reference Answer: ${modelAnswer}`:''}
+${(keyPoints||[]).length?`Key Points to Check: ${keyPoints.join(', ')}`:''}
 ${refCtx?`\nLegal Reference Context:\n${refCtx}`:''}
 
 Student Answer: ${answer}
 
-Score strictly as a Bar examiner. Respond ONLY with valid JSON:
-{ "score":"X/10", "numericScore":7, "grade":"Excellent|Good|Satisfactory|Needs Improvement|Poor", "overallFeedback":"2-3 sentence assessment", "strengths":["..."], "improvements":["missing legal argument with citation"], "keyMissed":["Point with Art./G.R. citation"], "modelAnswer":"Full answer with citations" }` }], 1500);
+Score each ALAC component separately out of 2.5 points (total 10 points):
+A — Answer (2.5 pts): Did the student give a direct, clear answer upfront? No beating around the bush?
+L — Legal Basis (2.5 pts): Did the student cite the correct law, article number, codal provision, or case (G.R. number)?
+A — Application (2.5 pts): Did the student correctly apply the law to the specific facts? Did they connect the legal rule to the parties and events?
+C — Conclusion (2.5 pts): Did the student end with a clear, definitive conclusion restating the answer?
+
+Respond ONLY with valid JSON (no markdown):
+{
+  "score": "X/10",
+  "numericScore": 7,
+  "grade": "Excellent|Good|Satisfactory|Needs Improvement|Poor",
+  "alac": {
+    "answer": { "score": 2.5, "feedback": "What the student did well or missed for this component", "studentDid": "Quote or describe what the student wrote for the direct answer" },
+    "legalBasis": { "score": 2.0, "feedback": "...", "studentDid": "..." },
+    "application": { "score": 1.5, "feedback": "...", "studentDid": "..." },
+    "conclusion": { "score": 1.0, "feedback": "...", "studentDid": "..." }
+  },
+  "overallFeedback": "2-3 sentence overall assessment",
+  "strengths": ["..."],
+  "improvements": ["..."],
+  "keyMissed": ["specific law or case they should have cited"],
+  "modelAnswer": "ANSWER: [direct answer]\nLEGAL BASIS: [specific article/case]\nAPPLICATION: [how law applies to these facts]\nCONCLUSION: [restatement of answer]"
+}` }], 2000);
     res.json(JSON.parse(raw.replace(/^```json\s*/i,'').replace(/```$/,'').trim()));
   } catch(err) { res.status(500).json({ error:err.message }); }
 });
