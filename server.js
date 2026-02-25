@@ -374,21 +374,56 @@ app.post('/api/chat', async (req, res) => {
   } catch(err) { res.status(500).json({ error:{ message:'Proxy: '+err.message } }); }
 });
 
+// ── AI QUESTION GENERATION (helper for mock bar) ────────────
+async function generateAIQuestions(needed, subjects) {
+  const targetSubjList = (!subjects || subjects.includes('all')) ? null : subjects;
+  const refMaterials = KB.references
+    .filter(r => !targetSubjList || targetSubjList.includes(r.subject) || r.subject==='general')
+    .slice(0, 3)
+    .map(r => `[${r.name}]\n${(r.text||'').slice(0,2000)}`)
+    .join('\n\n');
+  if (!refMaterials) return [];
+
+  const callGenerate = async (n) => {
+    const raw = await callClaude([{ role:'user', content:`Below are the ONLY source materials you may use. From these materials only, extract or construct exactly ${n} bar exam essay questions. Do not use any information not found in the source materials below.
+
+SOURCE MATERIALS:
+${refMaterials}
+
+For each question, classify it as one of two types:
+- SITUATIONAL: involves specific parties, a sequence of events, a legal dispute or transaction. Put the COMPLETE fact pattern in "context" and the actual question in "prompt".
+- CONCEPTUAL: asks to define, distinguish, enumerate, or explain a doctrine with no fact pattern. Leave "context" empty and put the full question in "prompt".
+
+You MUST return exactly ${n} questions. Respond ONLY with valid JSON:
+{ "questions": [{ "type":"situational|conceptual", "subject":"civil|criminal|political|labor|commercial|taxation|remedial|ethics", "prompt":"The actual question", "context":"Full fact pattern or empty string", "q":"Same as prompt", "modelAnswer":"Answer using only information from source", "keyPoints":["Point from source"], "isReal":false, "source":"[reference name], [passage]" }] }` }], 4000);
+    try { return JSON.parse(raw.replace(/^```json\s*/i,'').replace(/```$/,'').trim()).questions || []; }
+    catch(e) { return []; }
+  };
+
+  let aiQs = await callGenerate(needed);
+  // Pad if Claude returned fewer than needed
+  const gap = needed - aiQs.length;
+  if (gap > 0 && aiQs.length > 0) {
+    console.log(`[mockbar/ai] first pass got ${aiQs.length}/${needed} — generating ${gap} more`);
+    const more = await callGenerate(gap);
+    aiQs.push(...more);
+  }
+  return aiQs.slice(0, needed);
+}
+
 // ── MOCK BAR GENERATOR ──────────────────────────────────────
 app.post('/api/mockbar/generate', async (req, res) => {
   if (!API_KEY) return res.status(500).json({ error:'API key not set' });
   const { subjects, count=20 } = req.body;
   try {
-    // 1) Gather all available real past bar questions — fill up to 40%
+    // Step 1 — Collect ALL real past bar questions (no slicing yet)
     let realPool = [];
     KB.pastBar.forEach(pb => {
       if (!subjects||subjects.includes('all')||subjects.includes(pb.subject))
         (pb.questions||[]).forEach(q => realPool.push({ ...q, source:pb.name, year:pb.year, subject:pb.subject, isReal:true }));
     });
-    const realMax = Math.floor(count * 0.4);
-    let real = shuffle(realPool).slice(0, Math.min(realMax, realPool.length));
 
-    // 2) Gather all pre-generated essay questions — fill up to 40%
+    // Step 2 — Collect ALL pre-generated essay questions (no slicing yet)
     let preGenPool = [];
     const targetSubjs = subjects?.includes('all') ? Object.keys(CONTENT) : (subjects||Object.keys(CONTENT));
     targetSubjs.forEach(subj =>
@@ -396,44 +431,41 @@ app.post('/api/mockbar/generate', async (req, res) => {
         (data.essay?.questions||[]).forEach(q => preGenPool.push({ ...q, subject:subj, topics:[topic], isReal:false, source:'Pre-generated' }))
       )
     );
-    const preGenMax = Math.floor(count * 0.4);
-    let preGen = shuffle(preGenPool).slice(0, Math.min(preGenMax, preGenPool.length));
 
-    // 3) AI-generated from uploaded references to fill remaining slots
-    let aiQs = [];
-    const combined = real.length + preGen.length;
-    if (combined < count) {
-      const needed = count - combined;
-      const targetSubjList = (!subjects || subjects.includes('all')) ? null : subjects;
-      const refMaterials = KB.references
-        .filter(r => !targetSubjList || targetSubjList.includes(r.subject) || r.subject==='general')
-        .slice(0, 3)
-        .map(r => `[${r.name}]\n${(r.text||'').slice(0,2000)}`)
-        .join('\n\n');
-      if (refMaterials) {
-        const raw = await callClaude([{ role:'user', content:`Below are the ONLY source materials you may use. From these materials only, extract or construct exactly ${needed} bar exam essay questions. Do not use any information not found in the source materials below.
+    // Step 3 — Shuffle both pools independently
+    shuffle(realPool);
+    shuffle(preGenPool);
 
-SOURCE MATERIALS:
-${refMaterials}
+    // Step 4 — Fill to exactly count using priority order
+    const questions = [];
 
-For each question, classify it as one of two types:
-- SITUATIONAL: involves specific parties, a sequence of events, a legal dispute or transaction, or a fact pattern. Put the COMPLETE fact pattern in "context" and the actual question (What are the rights of X? Is Y liable? Decide with reasons.) in "prompt".
-- CONCEPTUAL: asks to define a term, distinguish between concepts, enumerate requirements, or explain a doctrine with no specific fact pattern. Leave "context" empty and put the full question in "prompt".
+    // Take up to 50% from real past bar
+    const realSlice = realPool.slice(0, Math.ceil(count * 0.5));
+    questions.push(...realSlice);
 
-Respond ONLY with valid JSON:
-{ "questions": [{ "type":"situational|conceptual", "subject":"civil|criminal|political|labor|commercial|taxation|remedial|ethics", "prompt":"The actual question", "context":"Full fact pattern (empty string if conceptual)", "q":"Same as prompt (for compatibility)", "modelAnswer":"Answer using only information from source", "keyPoints":["Point from source"], "isReal":false, "source":"[reference name], [passage]" }] }` }], 4000);
-        try { aiQs = JSON.parse(raw.replace(/^```json\s*/i,'').replace(/```$/,'').trim()).questions || []; }
-        catch(e) { aiQs = []; }
-      }
+    // Fill remaining slots from pre-gen
+    const remaining1 = count - questions.length;
+    const preGenSlice = preGenPool.slice(0, remaining1);
+    questions.push(...preGenSlice);
+
+    // If still not enough, generate AI questions for exactly the remaining gap
+    const remaining2 = count - questions.length;
+    let aiGenerated = 0;
+    if (remaining2 > 0) {
+      const aiQs = await generateAIQuestions(remaining2, subjects);
+      questions.push(...aiQs);
+      aiGenerated = aiQs.length;
     }
 
-    const all = shuffle([...real, ...preGen, ...aiQs]).slice(0, count);
-    all.forEach((q,i) => q.number = i+1);
+    // Step 5 — Final safety slice to exactly count
+    const final = questions.slice(0, count);
+    final.forEach((q,i) => q.number = i+1);
 
-    console.log(`[mockbar] requested=${count}, fromPastBar=${real.length}, fromPreGen=${preGen.length}, fromAI=${aiQs.length}, final=${all.length}`);
-    if (all.length !== count) console.warn(`[mockbar] WARNING: requested ${count} but final total is ${all.length} (not enough source material)`);
+    console.log(`[mockbar] requested=${count}, fromPastBar=${realSlice.length}, fromPreGen=${preGenSlice.length}, fromAI=${aiGenerated}, final=${final.length}`);
+    if (final.length !== count) console.warn(`[mockbar] WARNING: requested ${count} but got ${final.length} — not enough source material in KB`);
 
-    res.json({ questions:all, total:all.length, requested:count, fromPastBar:real.length, fromPreGen:preGen.length, aiGenerated:aiQs.length, usedAI:aiQs.length>0 });
+    // Step 6 — Return
+    res.json({ questions:final, total:final.length, requested:count, fromPastBar:realSlice.length, fromPreGen:preGenSlice.length, aiGenerated, usedAI:aiGenerated>0 });
   } catch(err) { res.status(500).json({ error:err.message }); }
 });
 
@@ -452,11 +484,15 @@ ${refCtx?`\nLegal Reference Context:\n${refCtx}`:''}
 
 Student Answer: ${answer}
 
-Score each ALAC component separately out of 2.5 points (total 10 points):
-A — Answer (2.5 pts): Did the student give a direct, clear answer upfront? No beating around the bush?
-L — Legal Basis (2.5 pts): Did the student cite the correct law, article number, codal provision, or case (G.R. number)?
-A — Application (2.5 pts): Did the student correctly apply the law to the specific facts? Did they connect the legal rule to the parties and events?
-C — Conclusion (2.5 pts): Did the student end with a clear, definitive conclusion restating the answer?
+Score each ALAC component using these weights which reflect actual Philippine Bar Exam priorities (total = 10 points):
+
+A — Answer (1.5 pts): Direct answer to the question upfront. Worth less because a correct answer without legal basis is incomplete.
+
+L — Legal Basis (3.0 pts): Specific law, article number, codal provision, or G.R. number cited correctly. Heavily weighted because citing exact legal authority is a core bar exam skill. Be strict: only award full points if a specific article number, G.R. number, or statute name is correctly cited. Partial credit for naming the correct law without specific provision. Zero for no citation.
+
+A — Application (4.0 pts): HIGHEST WEIGHT. How well the student applies the law to the specific facts. Only award full points if the student explicitly connects the legal rule to the specific parties and facts in the question. Partial credit for general application. Zero for restating the law without applying it to the facts. This demonstrates actual legal reasoning ability which is the primary skill tested in the bar exam.
+
+C — Conclusion (1.5 pts): Clear restatement of the answer. Shows the student can synthesize their analysis.
 
 Respond ONLY with valid JSON (no markdown):
 {
@@ -464,10 +500,10 @@ Respond ONLY with valid JSON (no markdown):
   "numericScore": 7,
   "grade": "Excellent|Good|Satisfactory|Needs Improvement|Poor",
   "alac": {
-    "answer": { "score": 2.5, "feedback": "What the student did well or missed for this component", "studentDid": "Quote or describe what the student wrote for the direct answer" },
-    "legalBasis": { "score": 2.0, "feedback": "...", "studentDid": "..." },
-    "application": { "score": 1.5, "feedback": "...", "studentDid": "..." },
-    "conclusion": { "score": 1.0, "feedback": "...", "studentDid": "..." }
+    "answer": { "score": 1.2, "max": 1.5, "feedback": "What the student did well or missed for this component", "studentDid": "Quote or describe what the student wrote for the direct answer" },
+    "legalBasis": { "score": 2.4, "max": 3.0, "feedback": "...", "studentDid": "..." },
+    "application": { "score": 3.2, "max": 4.0, "feedback": "...", "studentDid": "..." },
+    "conclusion": { "score": 1.0, "max": 1.5, "feedback": "...", "studentDid": "..." }
   },
   "overallFeedback": "2-3 sentence overall assessment",
   "strengths": ["..."],

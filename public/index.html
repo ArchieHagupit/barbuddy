@@ -553,7 +553,7 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
     <div class="mock-hero fade">
       <div style="font-size:36px;margin-bottom:10px;">⏱🏛</div>
       <h2>Mock <em>Bar Examination</em></h2>
-      <p>Simulate the actual Philippine Bar Exam. Questions are drawn from uploaded <strong>past bar exam materials</strong>, your <strong>pre-generated question bank</strong>, and <strong>AI-generated questions</strong> from the syllabus — mixed for authentic bar experience.</p>
+      <p>Simulate the actual Philippine Bar Exam. Questions are drawn from your uploaded <strong>past bar exam materials</strong> and your <strong>pre-generated question bank</strong> built from uploaded reference materials — for an authentic bar exam experience grounded in your study materials.</p>
       <div class="mock-config-grid">
         <div class="mc-card"><div class="mc-label">Questions</div>
           <select class="mc-select" id="mc-qcount">
@@ -886,8 +886,7 @@ function updateKBIndicator() {
   const pgTotal = Object.values(CACHE).reduce((a,s)=>a+Object.keys(s).length,0);
   document.getElementById('mockSourceStats').innerHTML = `
     <span class="src-badge sb-real">📜 ${pbTotal} Past Bar Qs</span>
-    <span class="src-badge sb-pregen">📚 ${pgTotal} Pre-gen Topics</span>
-    <span class="src-badge sb-ai">🤖 AI Fill</span>`;
+    <span class="src-badge sb-pregen">📚 ${pgTotal} Pre-gen Topics</span>`;
 }
 
 // ══════════════════════════════════
@@ -1160,19 +1159,26 @@ function pickMCQ(i){
   fb.innerHTML=(ok?'✅ <strong>Correct!</strong> ':'❌ <strong>Incorrect.</strong> ')+h(cur.explanation);
   document.getElementById('qnxt').style.display='block';updateDash();
 }
-function alacScoreCls(s){return s>=2?'hi':s>=1?'mid':'lo';}
+// ALAC color thresholds per component
+function alacScoreCls(score, key){
+  if(key==='answer')      return score>=1.2?'hi':score>=0.7?'mid':'lo';
+  if(key==='legalBasis')  return score>=2.4?'hi':score>=1.5?'mid':'lo';
+  if(key==='application') return score>=2.8?'hi':score>=1.75?'mid':'lo';
+  if(key==='conclusion')  return score>=1.6?'hi':score>=1.0?'mid':'lo';
+  return score>=2?'hi':score>=1?'mid':'lo';
+}
 function renderAlacCard(ev){
   const gc=ev.grade==='Excellent'?'#14b4a0':ev.grade==='Good'?'#50d090':ev.grade==='Satisfactory'?'var(--gold)':ev.grade==='Needs Improvement'?'#e09050':'#e07080';
   const al=ev.alac||{};
   const rows=[
-    ['A — Answer',   al.answer],
-    ['L — Legal Basis', al.legalBasis],
-    ['A — Application', al.application],
-    ['C — Conclusion',  al.conclusion],
+    ['A — Answer',      'answer',      al.answer,      1.5],
+    ['L — Legal Basis', 'legalBasis',  al.legalBasis,  3.0],
+    ['A — Application', 'application', al.application, 4.0],
+    ['C — Conclusion',  'conclusion',  al.conclusion,  1.5],
   ];
-  const tableRows=rows.map(([label,c])=>c?`<tr>
+  const tableRows=rows.map(([label,key,c,maxPts])=>c?`<tr>
     <td style="color:var(--white);font-weight:600;">${label}</td>
-    <td><span class="alac-score ${alacScoreCls(c.score||0)}">${c.score!=null?c.score+'/2.5':'—'}</span></td>
+    <td><span class="alac-score ${alacScoreCls(c.score??0,key)}">${c.score!=null?c.score+'/'+maxPts:'—'}</span></td>
     <td style="color:rgba(248,246,241,.8);">${h(c.feedback||'')}</td>
   </tr>`:''
   ).join('');
