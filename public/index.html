@@ -575,6 +575,7 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
         <button class="btn-mock" onclick="startMockBar()" id="startMockBtn">⏱ Begin Mock Bar</button>
         <div id="mockSourceStats" class="source-stats"></div>
       </div>
+      <div id="mockStartError" style="display:none;margin-top:10px;padding:10px 14px;background:rgba(224,112,128,.12);border:1px solid rgba(224,112,128,.35);border-radius:10px;color:#e07080;font-size:13px;"></div>
     </div>
     <!-- Past bar status -->
     <div class="card fade" style="margin-top:14px;">
@@ -1230,6 +1231,7 @@ async function startMockBar(){
   const subjects=allOn?['all']:Array.from(document.querySelectorAll('.mc-subj-tag.on')).map(t=>t.dataset.key);
   const btn=document.getElementById('startMockBtn');
   btn.disabled=true;btn.textContent='⏳ Building question set…';
+  document.getElementById('mockStartError').style.display='none';
   try{
     const r=await fetch('/api/mockbar/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({subjects,count})});
     const data=await r.json();if(data.error)throw new Error(data.error);
@@ -1243,7 +1245,10 @@ async function startMockBar(){
     else document.getElementById('ms-timer').style.display='none';
     renderMockQ();
     mockSessions++;updateDash();
-  }catch(err){alert('Error: '+err.message);}
+  }catch(err){
+    const errEl=document.getElementById('mockStartError');
+    errEl.textContent='⚠️ '+err.message;errEl.style.display='block';
+  }
   btn.disabled=false;btn.textContent='⏱ Begin Mock Bar';
 }
 
@@ -1443,7 +1448,9 @@ async function uploadPastBar(){
   try{
     const r=await adminPost('/api/admin/pastbar',{name,subject,year,content},'pb-status');
     if(r.error)throw new Error(r.error);
-    document.getElementById('pb-status').innerHTML=`<div style="color:var(--teal);font-size:13px;padding:8px;">✅ Saved "${h(r.name)}" — ${r.questionsExtracted} questions extracted.</div>`;
+    document.getElementById('pb-status').innerHTML = r.questionsExtracted === 0
+      ? `<div style="color:#ff8c42;font-size:13px;padding:8px;">⚠️ Saved "${h(r.name)}" but 0 questions were extracted. Make sure the file contains bar exam questions in any readable format (numbered list, Q&amp;A pairs, paragraph text, or essay-style). Try re-uploading or pasting the content as plain text.</div>`
+      : `<div style="color:var(--teal);font-size:13px;padding:8px;">✅ Saved "${h(r.name)}" — ${r.questionsExtracted} questions extracted.</div>`;
     document.getElementById('pb-name').value='';document.getElementById('pb-content').value='';
     await loadKB();refreshAdminKB();renderPastBarList();
   }catch(e){document.getElementById('pb-status').innerHTML=`<div style="color:#e07080;font-size:13px;padding:8px;">⚠️ ${h(e.message)}</div>`;}

@@ -409,11 +409,40 @@ async function extractQuestionsLarge(content, name, year, subject) {
 
   const allQ = [];
   for (let i = 0; i < chunks.length; i++) {
-    const raw = await callClaude([{ role:'user', content:`Extract all bar exam questions from this section of Philippine Bar Exam material.\n\nMaterial: ${name} (${year||'?'}) | Subject: ${subject} | Part ${i+1} of ${chunks.length}\nContent:\n${chunks[i]}\n\nRespond ONLY with valid JSON:\n{ "questions": [{ "q":"Full question text", "modelAnswer":"Comprehensive answer", "keyPoints":["Point 1","Point 2"], "topics":["Topic"] }] }` }], 4000)
-      .catch(() => '{"questions":[]}');
-    try { allQ.push(...(JSON.parse(raw.replace(/^```json\s*/i,'').replace(/```$/,'').trim()).questions || [])); } catch(e) {}
+    const partLabel = chunks.length > 1 ? ` | Part ${i+1} of ${chunks.length}` : '';
+    const primaryPrompt = `Extract bar exam questions from this Philippine Bar Exam material.
+
+Material: ${name} (${year||'?'}) | Subject: ${subject}${partLabel}
+Content:
+${chunks[i]}
+
+INSTRUCTIONS — be maximally flexible with format:
+- Numbered lists (1. 2. 3. or I. II. III. or A. B. C.), Q&A blocks, paragraph text, exam booklets — all accepted
+- Found questions WITH answers: use them as provided
+- Found questions WITHOUT answers: generate comprehensive model answers from your Philippine law knowledge
+- No clear Q&A structure at all: treat each meaningful paragraph or numbered item as a question and write a model answer
+- NEVER return an empty questions array — always extract or synthesise at least one item
+- Skip blank lines, headers, and page numbers only
+
+Respond ONLY with valid JSON (no markdown fence):
+{ "questions": [{ "q": "Full question text", "modelAnswer": "Comprehensive answer with legal citations", "keyPoints": ["Key point 1", "Key point 2"], "topics": ["Topic"] }] }`;
+
+    let parsed = null;
+    try {
+      const raw = await callClaude([{ role:'user', content: primaryPrompt }], 4000);
+      parsed = JSON.parse(raw.replace(/^```json\s*/i,'').replace(/```$/,'').trim());
+    } catch(e) {
+      console.warn(`extractQuestionsLarge chunk ${i+1}: primary parse failed (${e.message}) — trying fallback`);
+      try {
+        const fb = await callClaude([{ role:'user', content:`Return ONLY valid JSON — no markdown, no explanation.\n{ "questions": [{ "q": "question text", "modelAnswer": "answer", "keyPoints": [], "topics": ["${subject}"] }] }\n\nExtract all questions from this text:\n${chunks[i].slice(0, 6000)}` }], 2000).catch(() => '');
+        parsed = JSON.parse(fb.replace(/^```json\s*/i,'').replace(/```$/,'').trim());
+      } catch(e2) { console.warn(`extractQuestionsLarge chunk ${i+1}: fallback also failed`); }
+    }
+    if (parsed?.questions?.length) allQ.push(...parsed.questions);
     if (i < chunks.length - 1) await sleep(400);
   }
+
+  console.log(`extractQuestionsLarge [${name}]: ${allQ.length} question(s) from ${chunks.length} chunk(s)`);
   return allQ;
 }
 
@@ -443,28 +472,30 @@ async function parseSyllabusLarge(content) {
   return Object.values(subjectMap);
 }
 
-async function callClaude(messages, max_tokens=2000, retries=4) {
-  const RETRY_STATUSES = new Set([429, 529]);
-  let delay = 2000;
-  for (let attempt = 0; attempt <= retries; attempt++) {
+async function callClaude(messages, max_tokens=2000) {
+  const RETRY_WAITS   = [15000, 30000, 45000]; // wait after attempt 0, 1, 2
+  const isOverloaded  = (status, body) =>
+    status === 529 || status === 429 || body?.error?.type === 'overloaded_error';
+
+  for (let attempt = 0; attempt < 4; attempt++) {
     const r = await fetch('https://api.anthropic.com/v1/messages', {
       method:'POST',
       headers:{ 'Content-Type':'application/json', 'x-api-key':API_KEY, 'anthropic-version':'2023-06-01' },
       body:JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens, messages }),
     });
     const d = await r.json();
-    if (RETRY_STATUSES.has(r.status) && attempt < retries) {
-      const retryAfter = parseInt(r.headers.get('retry-after') || '0', 10) * 1000;
-      const wait = retryAfter > 0 ? retryAfter : delay;
-      console.warn(`Claude API ${r.status} — retrying in ${wait}ms (attempt ${attempt+1}/${retries})`);
-      await sleep(wait);
-      delay = Math.min(delay * 2, 30000); // exponential backoff, cap 30s
-      continue;
+    if (isOverloaded(r.status, d)) {
+      if (attempt < 3) {
+        const wait = RETRY_WAITS[attempt];
+        console.warn(`Claude overloaded (attempt ${attempt+1}/4) — retrying in ${wait/1000}s`);
+        await sleep(wait);
+        continue;
+      }
+      throw new Error('Claude API overloaded — failed after 4 attempts');
     }
     if (d.error) throw new Error(d.error.message);
     return d.content.map(c=>c.text||'').join('');
   }
-  throw new Error('Claude API overloaded — all retries exhausted');
 }
 const shuffle = arr => { const a=[...arr]; for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];} return a; };
 const sleep   = ms  => new Promise(r => setTimeout(r, ms));
