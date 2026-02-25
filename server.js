@@ -406,15 +406,28 @@ Score strictly as a Bar examiner. Respond ONLY with valid JSON:
 });
 
 // ── HELPERS ─────────────────────────────────────────────────
-async function callClaude(messages, max_tokens=2000) {
-  const r = await fetch('https://api.anthropic.com/v1/messages', {
-    method:'POST',
-    headers:{ 'Content-Type':'application/json', 'x-api-key':API_KEY, 'anthropic-version':'2023-06-01' },
-    body:JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens, messages }),
-  });
-  const d = await r.json();
-  if (d.error) throw new Error(d.error.message);
-  return d.content.map(c=>c.text||'').join('');
+async function callClaude(messages, max_tokens=2000, retries=4) {
+  const RETRY_STATUSES = new Set([429, 529]);
+  let delay = 2000;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', 'x-api-key':API_KEY, 'anthropic-version':'2023-06-01' },
+      body:JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens, messages }),
+    });
+    const d = await r.json();
+    if (RETRY_STATUSES.has(r.status) && attempt < retries) {
+      const retryAfter = parseInt(r.headers.get('retry-after') || '0', 10) * 1000;
+      const wait = retryAfter > 0 ? retryAfter : delay;
+      console.warn(`Claude API ${r.status} — retrying in ${wait}ms (attempt ${attempt+1}/${retries})`);
+      await sleep(wait);
+      delay = Math.min(delay * 2, 30000); // exponential backoff, cap 30s
+      continue;
+    }
+    if (d.error) throw new Error(d.error.message);
+    return d.content.map(c=>c.text||'').join('');
+  }
+  throw new Error('Claude API overloaded — all retries exhausted');
 }
 const shuffle = arr => { const a=[...arr]; for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];} return a; };
 const sleep   = ms  => new Promise(r => setTimeout(r, ms));
