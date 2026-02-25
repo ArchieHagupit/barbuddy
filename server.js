@@ -155,16 +155,84 @@ app.post('/api/admin/reference', adminOnly, async (req, res) => {
   } catch(err) { res.status(500).json({ error:err.message }); }
 });
 
-// ── ADMIN: Upload Past Bar Questions ───────────────────────
+// ── ADMIN: Past Bar — Pass 1: Analyze document structure ────
+app.post('/api/admin/pastbar/analyze', adminOnly, async (req, res) => {
+  const { content, name, subject, year } = req.body;
+  if (!content) return res.status(400).json({ error: 'content required' });
+  const Q_CHUNK = 12000;
+  const chunks = [];
+  for (let i = 0; i < content.length && chunks.length < MAX_CHUNKS; i += Q_CHUNK)
+    chunks.push(content.slice(i, i + Q_CHUNK));
+  console.log(`pastbar/analyze [${name}]: ${content.length} chars, ${chunks.length} chunk(s)`);
+  try {
+    const analyses = [];
+    for (let i = 0; i < chunks.length; i++) {
+      const partLabel = chunks.length > 1 ? ` | Part ${i+1} of ${chunks.length}` : '';
+      const analysis = await callClaude([{ role:'user', content:
+        `Read this document carefully. It contains Philippine Bar Exam content.\nFirst, describe what format the questions are in (numbered, roman numerals, Q&A pairs, essay style, etc). Then identify and list ALL questions you can find — a question is any sentence or paragraph that asks something, poses a legal problem, or presents a situation requiring legal analysis. Also identify any suggested answers or model answers paired with them.\n\nMaterial: ${name||'Unknown'} (${year||'?'}) | Subject: ${subject||'general'}${partLabel}\nContent:\n${chunks[i]}`
+      }], 2000);
+      analyses.push({ chunk: i, analysis });
+      if (i < chunks.length - 1) await sleep(400);
+    }
+    res.json({ analyses, chunksTotal: chunks.length, totalChars: content.length });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── ADMIN: Past Bar — Pass 2: Extract + save ────────────────
 app.post('/api/admin/pastbar', adminOnly, async (req, res) => {
-  const { name, subject, year, content } = req.body;
+  const { name, subject, year, content, analyses } = req.body;
   if (!content) return res.status(400).json({ error: 'content required' });
   const id = `pb_${Date.now()}_${Math.random().toString(36).slice(2,7)}`;
+  const Q_CHUNK = 12000;
+  const chunks = [];
+  for (let i = 0; i < content.length && chunks.length < MAX_CHUNKS; i += Q_CHUNK)
+    chunks.push(content.slice(i, i + Q_CHUNK));
+  console.log(`pastbar/extract [${name}]: ${content.length} chars, ${chunks.length} chunk(s)`);
   try {
-    const questions = await extractQuestionsLarge(content, name, year, subject||'general');
-    KB.pastBar.push({ id, name, subject:subject||'general', year:year||'Unknown', questions, rawText:content.slice(0,30000), uploadedAt:new Date().toISOString() });
+    const allQ = [];
+    for (let i = 0; i < chunks.length; i++) {
+      const chunkAnalysis = analyses?.[i]?.analysis || '';
+      const partLabel = chunks.length > 1 ? ` | Part ${i+1} of ${chunks.length}` : '';
+      const extractPrompt = chunkAnalysis
+        ? `Based on your analysis:\n${chunkAnalysis}\n\nNow extract ALL questions and their answers into this exact JSON format. For questions with no answer in the document, write a comprehensive model answer yourself using your knowledge of Philippine law. NEVER return an empty questions array — if you found even one legal question or scenario, extract it.\n\nMaterial: ${name||'Unknown'} (${year||'?'}) | Subject: ${subject||'general'}${partLabel}\nContent:\n${chunks[i]}\n\nRespond ONLY with valid JSON (no markdown fence):\n{ "questions": [{ "q": "Full question text", "modelAnswer": "Comprehensive model answer with legal citations", "keyPoints": ["Point 1", "Point 2"], "topics": ["Topic"] }] }`
+        : `Read this Philippine Bar Exam material. Extract ALL questions into JSON. Accept any format (numbered, essay, Q&A, paragraph). For questions without answers write comprehensive model answers using Philippine law knowledge. NEVER return an empty questions array.\n\nMaterial: ${name||'Unknown'} (${year||'?'}) | Subject: ${subject||'general'}${partLabel}\nContent:\n${chunks[i]}\n\nRespond ONLY with valid JSON (no markdown fence):\n{ "questions": [{ "q": "Full question text", "modelAnswer": "Comprehensive model answer with legal citations", "keyPoints": ["Point 1", "Point 2"], "topics": ["Topic"] }] }`;
+      let chunkQ = [];
+      try {
+        const raw = await callClaude([{ role:'user', content: extractPrompt }], 4000);
+        chunkQ = JSON.parse(raw.replace(/^```json\s*/i,'').replace(/```$/,'').trim()).questions || [];
+      } catch(e) {
+        console.warn(`pastbar extract chunk ${i+1}: JSON parse failed (${e.message}) — trying text-only retry`);
+        try {
+          const textRaw = await callClaude([{ role:'user', content:`List exam questions from this text as JSON. Return ONLY:\n{ "questions": [{ "q": "question text", "modelAnswer": "", "keyPoints": [], "topics": ["${subject||'general'}"] }] }\n\nText:\n${chunks[i].slice(0,6000)}` }], 1500);
+          const textParsed = JSON.parse(textRaw.replace(/^```json\s*/i,'').replace(/```$/,'').trim());
+          for (const q of (textParsed.questions || [])) {
+            if (!q.modelAnswer) {
+              q.modelAnswer = await callClaude([{ role:'user', content:`Write a comprehensive Philippine Bar Exam model answer for this question:\n\n${q.q}\n\nSubject: ${subject||'general'}\n\nAnswer with relevant articles, G.R. case numbers, and legal doctrines:` }], 600).catch(() => '');
+              await sleep(200);
+            }
+          }
+          chunkQ = textParsed.questions || [];
+        } catch(e2) { console.warn(`pastbar extract chunk ${i+1}: all retries failed`); }
+      }
+      console.log(`pastbar extract chunk ${i+1}/${chunks.length}: found ${chunkQ.length} question(s)`);
+      allQ.push(...chunkQ);
+      if (i < chunks.length - 1) await sleep(400);
+    }
+    // Deduplicate by first 100 chars of normalised question text
+    const seen = new Set();
+    const dedupedQ = allQ.filter(q => {
+      const key = (q.q||'').trim().toLowerCase().slice(0,100);
+      if (seen.has(key)) return false;
+      seen.add(key); return true;
+    });
+    console.log(`pastbar [${name}]: totalChars=${content.length}, chunks=${chunks.length}, raw=${allQ.length}, deduped=${dedupedQ.length}`);
+    if (dedupedQ.length === 0) {
+      const desc = analyses?.[0]?.analysis || 'The content did not appear to contain recognizable bar exam questions or legal scenarios.';
+      return res.json({ success:false, questionsExtracted:0, description:desc });
+    }
+    KB.pastBar.push({ id, name, subject:subject||'general', year:year||'Unknown', questions:dedupedQ, rawText:content.slice(0,30000), uploadedAt:new Date().toISOString() });
     saveKB();
-    res.json({ success:true, id, name, questionsExtracted:questions.length });
+    res.json({ success:true, id, name, questionsExtracted:dedupedQ.length, firstQuestion:dedupedQ[0] });
   } catch(err) { res.status(500).json({ error:err.message }); }
 });
 
@@ -398,52 +466,6 @@ async function summarizeLargeDoc(content, docName, subject) {
   if (parts.length <= 2) return parts.join('\n\n');
 
   return callClaude([{ role:'user', content:`Combine these partial summaries of a Philippine law reference into one comprehensive master summary.\n\nMaterial: ${docName} (${subject})\n\n${parts.map((s,i)=>`[Part ${i+1}]\n${s}`).join('\n\n')}\n\nMaster summary (max 1000 words, dense, structured):` }], 1500);
-}
-
-// Extract bar questions from a document of any size
-async function extractQuestionsLarge(content, name, year, subject) {
-  const Q_CHUNK = 12000;
-  const chunks = [];
-  for (let i = 0; i < content.length && chunks.length < MAX_CHUNKS; i += Q_CHUNK)
-    chunks.push(content.slice(i, i + Q_CHUNK));
-
-  const allQ = [];
-  for (let i = 0; i < chunks.length; i++) {
-    const partLabel = chunks.length > 1 ? ` | Part ${i+1} of ${chunks.length}` : '';
-    const primaryPrompt = `Extract bar exam questions from this Philippine Bar Exam material.
-
-Material: ${name} (${year||'?'}) | Subject: ${subject}${partLabel}
-Content:
-${chunks[i]}
-
-INSTRUCTIONS — be maximally flexible with format:
-- Numbered lists (1. 2. 3. or I. II. III. or A. B. C.), Q&A blocks, paragraph text, exam booklets — all accepted
-- Found questions WITH answers: use them as provided
-- Found questions WITHOUT answers: generate comprehensive model answers from your Philippine law knowledge
-- No clear Q&A structure at all: treat each meaningful paragraph or numbered item as a question and write a model answer
-- NEVER return an empty questions array — always extract or synthesise at least one item
-- Skip blank lines, headers, and page numbers only
-
-Respond ONLY with valid JSON (no markdown fence):
-{ "questions": [{ "q": "Full question text", "modelAnswer": "Comprehensive answer with legal citations", "keyPoints": ["Key point 1", "Key point 2"], "topics": ["Topic"] }] }`;
-
-    let parsed = null;
-    try {
-      const raw = await callClaude([{ role:'user', content: primaryPrompt }], 4000);
-      parsed = JSON.parse(raw.replace(/^```json\s*/i,'').replace(/```$/,'').trim());
-    } catch(e) {
-      console.warn(`extractQuestionsLarge chunk ${i+1}: primary parse failed (${e.message}) — trying fallback`);
-      try {
-        const fb = await callClaude([{ role:'user', content:`Return ONLY valid JSON — no markdown, no explanation.\n{ "questions": [{ "q": "question text", "modelAnswer": "answer", "keyPoints": [], "topics": ["${subject}"] }] }\n\nExtract all questions from this text:\n${chunks[i].slice(0, 6000)}` }], 2000).catch(() => '');
-        parsed = JSON.parse(fb.replace(/^```json\s*/i,'').replace(/```$/,'').trim());
-      } catch(e2) { console.warn(`extractQuestionsLarge chunk ${i+1}: fallback also failed`); }
-    }
-    if (parsed?.questions?.length) allQ.push(...parsed.questions);
-    if (i < chunks.length - 1) await sleep(400);
-  }
-
-  console.log(`extractQuestionsLarge [${name}]: ${allQ.length} question(s) from ${chunks.length} chunk(s)`);
-  return allQ;
 }
 
 // Parse a syllabus of any size, merging topics by subject key

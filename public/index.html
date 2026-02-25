@@ -1442,18 +1442,47 @@ async function uploadReference(){
   }catch(e){document.getElementById('ref-status').innerHTML=`<div style="color:#e07080;font-size:13px;padding:8px;">⚠️ ${h(e.message)}</div>`;}
 }
 async function uploadPastBar(){
-  const name=document.getElementById('pb-name').value.trim(),content=document.getElementById('pb-content').value.trim();
-  const subject=document.getElementById('pb-subject').value,year=document.getElementById('pb-year').value.trim();
-  if(!name||!content){alert('Enter name and content.');return;}
+  const name=document.getElementById('pb-name').value.trim();
+  const content=document.getElementById('pb-content').value.trim();
+  const subject=document.getElementById('pb-subject').value;
+  const year=document.getElementById('pb-year').value.trim();
+  const sta=document.getElementById('pb-status');
+  if(!name||!content){
+    sta.innerHTML=`<div style="color:#e07080;font-size:13px;padding:8px;">⚠️ Enter a name and paste or upload content first.</div>`;
+    return;
+  }
+  const spin=`<div class="spin" style="width:14px;height:14px;border-width:2px;flex-shrink:0;"></div>`;
   try{
-    const r=await adminPost('/api/admin/pastbar',{name,subject,year,content},'pb-status');
-    if(r.error)throw new Error(r.error);
-    document.getElementById('pb-status').innerHTML = r.questionsExtracted === 0
-      ? `<div style="color:#ff8c42;font-size:13px;padding:8px;">⚠️ Saved "${h(r.name)}" but 0 questions were extracted. Make sure the file contains bar exam questions in any readable format (numbered list, Q&amp;A pairs, paragraph text, or essay-style). Try re-uploading or pasting the content as plain text.</div>`
-      : `<div style="color:var(--teal);font-size:13px;padding:8px;">✅ Saved "${h(r.name)}" — ${r.questionsExtracted} questions extracted.</div>`;
-    document.getElementById('pb-name').value='';document.getElementById('pb-content').value='';
+    // ── Pass 1: Analyze ───────────────────────────────────────
+    sta.innerHTML=`<div style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--gold-l);padding:10px;">${spin}Pass 1: Analyzing document structure…</div>`;
+    const r1=await fetch('/api/admin/pastbar/analyze',{method:'POST',headers:{'Content-Type':'application/json','x-admin-key':adminKey},body:JSON.stringify({name,content,subject,year})});
+    const d1=await r1.json();
+    if(d1.error)throw new Error(d1.error);
+
+    // ── Pass 2: Extract ───────────────────────────────────────
+    sta.innerHTML=`<div style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--gold-l);padding:10px;">${spin}Pass 2: Extracting questions from ${d1.chunksTotal} section(s)…</div>`;
+    const r2=await fetch('/api/admin/pastbar',{method:'POST',headers:{'Content-Type':'application/json','x-admin-key':adminKey},body:JSON.stringify({name,content,subject,year,analyses:d1.analyses})});
+    const d2=await r2.json();
+
+    if(!d2.success||d2.questionsExtracted===0){
+      const desc=h((d2.description||'The content format was not recognized as bar exam questions.').slice(0,500));
+      sta.innerHTML=`<div style="color:#ff8c42;font-size:13px;padding:10px;background:rgba(255,140,66,.06);border:1px solid rgba(255,140,66,.2);border-radius:10px;">
+        <strong>⚠️ 0 questions extracted</strong><br><br>
+        <span style="color:var(--muted);font-size:12px;">What the AI found in your document:</span><br>
+        <em style="font-size:12px;line-height:1.5;">${desc}</em>
+        <br><br><span style="font-size:11px;color:var(--muted);">Try uploading as plain text, or ensure the file contains legal questions or scenarios.</span>
+      </div>`;
+      return;
+    }
+
+    const preview=d2.firstQuestion
+      ?`<div style="margin-top:8px;padding:8px 10px;background:rgba(255,255,255,.04);border:1px solid var(--bdr2);border-radius:8px;font-size:11px;color:var(--muted);">First question: <em>"${h((d2.firstQuestion.q||'').slice(0,130))}${(d2.firstQuestion.q||'').length>130?'…':''}"</em></div>`
+      :'';
+    sta.innerHTML=`<div style="color:var(--teal);font-size:13px;padding:8px;">✅ Saved "${h(d2.name)}" — ${d2.questionsExtracted} questions extracted.${preview}</div>`;
+    document.getElementById('pb-name').value='';
+    document.getElementById('pb-content').value='';
     await loadKB();refreshAdminKB();renderPastBarList();
-  }catch(e){document.getElementById('pb-status').innerHTML=`<div style="color:#e07080;font-size:13px;padding:8px;">⚠️ ${h(e.message)}</div>`;}
+  }catch(e){sta.innerHTML=`<div style="color:#e07080;font-size:13px;padding:8px;">⚠️ ${h(e.message)}</div>`;}
 }
 async function refreshAdminKB(){
   const el=document.getElementById('adminKbList');if(!el)return;
