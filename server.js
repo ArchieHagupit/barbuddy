@@ -375,98 +375,158 @@ app.post('/api/chat', async (req, res) => {
 });
 
 // ── AI QUESTION GENERATION (helper for mock bar) ────────────
-async function generateAIQuestions(needed, subjects) {
-  const targetSubjList = (!subjects || subjects.includes('all')) ? null : subjects;
-  const refMaterials = KB.references
-    .filter(r => !targetSubjList || targetSubjList.includes(r.subject) || r.subject==='general')
+async function generateAIQuestions(needed, subjects, syllabus, references) {
+  const subjectList = (!subjects || subjects.includes('all')) ? null : subjects;
+  const refCtx = (references || [])
+    .filter(r => !subjectList || subjectList.includes(r.subject) || r.subject === 'general')
     .slice(0, 3)
-    .map(r => `[${r.name}]\n${(r.text||'').slice(0,2000)}`)
+    .map(r => `[${r.name}]\n${r.summary || (r.text||'').slice(0, 800)}`)
     .join('\n\n');
-  if (!refMaterials) return [];
 
-  const callGenerate = async (n) => {
-    const raw = await callClaude([{ role:'user', content:`Below are the ONLY source materials you may use. From these materials only, extract or construct exactly ${n} bar exam essay questions. Do not use any information not found in the source materials below.
+  const syllCtx = syllabus
+    ? syllabus.topics.map(s => `${s.name}: ${s.topics?.map(t=>t.name).join(', ')}`).join('\n')
+    : '';
 
-SOURCE MATERIALS:
-${refMaterials}
+  const prompt = `Generate exactly ${needed} Philippine Bar Exam essay questions. You must return exactly ${needed} questions, no more, no less.
 
-For each question, classify it as one of two types:
-- SITUATIONAL: involves specific parties, a sequence of events, a legal dispute or transaction. Put the COMPLETE fact pattern in "context" and the actual question in "prompt".
-- CONCEPTUAL: asks to define, distinguish, enumerate, or explain a doctrine with no fact pattern. Leave "context" empty and put the full question in "prompt".
+${refCtx ? `Base questions on these uploaded materials:\n${refCtx}` : ''}
+${syllCtx ? `Syllabus coverage:\n${syllCtx}` : ''}
 
-You MUST return exactly ${n} questions. Respond ONLY with valid JSON:
-{ "questions": [{ "type":"situational|conceptual", "subject":"civil|criminal|political|labor|commercial|taxation|remedial|ethics", "prompt":"The actual question", "context":"Full fact pattern or empty string", "q":"Same as prompt", "modelAnswer":"Answer using only information from source", "keyPoints":["Point from source"], "isReal":false, "source":"[reference name], [passage]" }] }` }], 4000);
-    try { return JSON.parse(raw.replace(/^```json\s*/i,'').replace(/```$/,'').trim()).questions || []; }
-    catch(e) { return []; }
-  };
+Each question must be a complete bar exam question with full fact pattern if situational.
 
-  let aiQs = await callGenerate(needed);
-  // Pad if Claude returned fewer than needed
-  const gap = needed - aiQs.length;
-  if (gap > 0 && aiQs.length > 0) {
-    console.log(`[mockbar/ai] first pass got ${aiQs.length}/${needed} — generating ${gap} more`);
-    const more = await callGenerate(gap);
-    aiQs.push(...more);
+Respond ONLY with valid JSON — an array of exactly ${needed} objects:
+[
+  {
+    "subject": "civil|criminal|political|labor|commercial|taxation|remedial|ethics",
+    "q": "Complete question text",
+    "context": "Full fact pattern if situational, empty string if conceptual",
+    "modelAnswer": "Complete ALAC format answer",
+    "keyPoints": ["key point 1", "key point 2"],
+    "type": "situational|conceptual",
+    "isReal": false,
+    "source": "AI Generated"
   }
-  return aiQs.slice(0, needed);
+]`;
+
+  const raw = await callClaude([{ role:'user', content:prompt }], 4000);
+  const cleaned = raw.replace(/^```json\s*/i,'').replace(/```$/,'').trim();
+  const parsed = JSON.parse(cleaned);
+
+  if (!Array.isArray(parsed)) return [];
+  if (parsed.length < needed) {
+    console.warn(`[mockbar/ai] AI returned ${parsed.length} but needed ${needed}`);
+  }
+  return parsed.slice(0, needed);
+}
+
+// ── MOCK BAR CORE LOGIC ──────────────────────────────────────
+async function generateMockBar(subjects, count) {
+  // STEP 1: Build real past bar pool
+  let realPool = [];
+  KB.pastBar.forEach(pb => {
+    const match = !subjects || subjects.includes('all') || subjects.includes(pb.subject);
+    if (match) {
+      (pb.questions || []).forEach(q => {
+        realPool.push({
+          q: q.q,
+          context: q.context || '',
+          modelAnswer: q.modelAnswer || '',
+          keyPoints: q.keyPoints || [],
+          subject: pb.subject,
+          source: pb.name,
+          year: pb.year,
+          isReal: true,
+          type: q.type || 'situational',
+        });
+      });
+    }
+  });
+  realPool = shuffle(realPool);
+  console.log(`[mockbar] realPool size: ${realPool.length}`);
+
+  // STEP 2: Build pre-gen pool
+  let preGenPool = [];
+  const targetSubjs = (!subjects || subjects.includes('all')) ? Object.keys(CONTENT) : subjects;
+  targetSubjs.forEach(subj => {
+    Object.entries(CONTENT[subj] || {}).forEach(([, data]) => {
+      (data.essay?.questions || []).forEach(q => {
+        preGenPool.push({
+          q: q.prompt || q.q,
+          context: q.context || '',
+          modelAnswer: q.modelAnswer || '',
+          keyPoints: q.keyPoints || [],
+          subject: subj,
+          source: 'Pre-generated',
+          isReal: false,
+          type: q.type || 'situational',
+        });
+      });
+    });
+  });
+  preGenPool = shuffle(preGenPool);
+  console.log(`[mockbar] preGenPool size: ${preGenPool.length}`);
+
+  // STEP 3: Fill chosen — real first, then pre-gen
+  const chosen = [];
+
+  for (const q of realPool) {
+    if (chosen.length >= count) break;
+    chosen.push(q);
+  }
+  console.log(`[mockbar] after real: ${chosen.length}`);
+
+  for (const q of preGenPool) {
+    if (chosen.length >= count) break;
+    chosen.push(q);
+  }
+  console.log(`[mockbar] after pregen: ${chosen.length}`);
+
+  // STEP 4: Fill remaining gap with AI
+  const gap = count - chosen.length;
+  console.log(`[mockbar] gap to fill with AI: ${gap}`);
+
+  if (gap > 0) {
+    try {
+      const aiQuestions = await generateAIQuestions(gap, subjects, KB.syllabus, KB.references);
+      console.log(`[mockbar] AI generated: ${aiQuestions.length}`);
+      chosen.push(...aiQuestions);
+    } catch(e) {
+      console.error('[mockbar] AI generation failed:', e.message);
+    }
+  }
+
+  // STEP 5: Hard slice to exactly count
+  const final = chosen.slice(0, count);
+  console.log(`[mockbar] FINAL COUNT: ${final.length} / requested: ${count}`);
+
+  if (final.length !== count) {
+    console.warn(`[mockbar] WARNING: Could not reach requested count. Had ${realPool.length} real + ${preGenPool.length} pregen, needed ${count}`);
+  }
+
+  final.forEach((q, i) => q.number = i + 1);
+
+  return {
+    questions: final,
+    total: final.length,
+    requested: count,
+    fromPastBar: final.filter(q => q.isReal).length,
+    fromPreGen: final.filter(q => !q.isReal && q.source === 'Pre-generated').length,
+    aiGenerated: final.filter(q => !q.isReal && q.source !== 'Pre-generated').length,
+  };
 }
 
 // ── MOCK BAR GENERATOR ──────────────────────────────────────
 app.post('/api/mockbar/generate', async (req, res) => {
   if (!API_KEY) return res.status(500).json({ error:'API key not set' });
   const { subjects, count=20 } = req.body;
+  console.log(`[mockbar] requested: ${count} questions, subjects: ${JSON.stringify(subjects)}`);
   try {
-    // Step 1 — Collect ALL real past bar questions (no slicing yet)
-    let realPool = [];
-    KB.pastBar.forEach(pb => {
-      if (!subjects||subjects.includes('all')||subjects.includes(pb.subject))
-        (pb.questions||[]).forEach(q => realPool.push({ ...q, source:pb.name, year:pb.year, subject:pb.subject, isReal:true }));
-    });
-
-    // Step 2 — Collect ALL pre-generated essay questions (no slicing yet)
-    let preGenPool = [];
-    const targetSubjs = subjects?.includes('all') ? Object.keys(CONTENT) : (subjects||Object.keys(CONTENT));
-    targetSubjs.forEach(subj =>
-      Object.entries(CONTENT[subj]||{}).forEach(([topic, data]) =>
-        (data.essay?.questions||[]).forEach(q => preGenPool.push({ ...q, subject:subj, topics:[topic], isReal:false, source:'Pre-generated' }))
-      )
-    );
-
-    // Step 3 — Shuffle both pools independently
-    shuffle(realPool);
-    shuffle(preGenPool);
-
-    // Step 4 — Fill to exactly count using priority order
-    const questions = [];
-
-    // Take up to 50% from real past bar
-    const realSlice = realPool.slice(0, Math.ceil(count * 0.5));
-    questions.push(...realSlice);
-
-    // Fill remaining slots from pre-gen
-    const remaining1 = count - questions.length;
-    const preGenSlice = preGenPool.slice(0, remaining1);
-    questions.push(...preGenSlice);
-
-    // If still not enough, generate AI questions for exactly the remaining gap
-    const remaining2 = count - questions.length;
-    let aiGenerated = 0;
-    if (remaining2 > 0) {
-      const aiQs = await generateAIQuestions(remaining2, subjects);
-      questions.push(...aiQs);
-      aiGenerated = aiQs.length;
-    }
-
-    // Step 5 — Final safety slice to exactly count
-    const final = questions.slice(0, count);
-    final.forEach((q,i) => q.number = i+1);
-
-    console.log(`[mockbar] requested=${count}, fromPastBar=${realSlice.length}, fromPreGen=${preGenSlice.length}, fromAI=${aiGenerated}, final=${final.length}`);
-    if (final.length !== count) console.warn(`[mockbar] WARNING: requested ${count} but got ${final.length} — not enough source material in KB`);
-
-    // Step 6 — Return
-    res.json({ questions:final, total:final.length, requested:count, fromPastBar:realSlice.length, fromPreGen:preGenSlice.length, aiGenerated, usedAI:aiGenerated>0 });
-  } catch(err) { res.status(500).json({ error:err.message }); }
+    const result = await generateMockBar(subjects, count);
+    res.json(result);
+  } catch(err) {
+    console.error('[mockbar] error:', err.message);
+    res.status(500).json({ error:err.message });
+  }
 });
 
 // ── ESSAY EVALUATION ────────────────────────────────────────

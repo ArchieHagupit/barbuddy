@@ -1274,16 +1274,18 @@ function toggleMockSubj(el){
 }
 
 async function startMockBar(){
-  const count=parseInt(document.getElementById('mc-qcount').value);
-  const timeMin=parseInt(document.getElementById('mc-time').value);
+  const count=parseInt(document.getElementById('mc-qcount').value,10);
+  const timeMin=parseInt(document.getElementById('mc-time').value,10);
   const allOn=document.querySelector('.mc-subj-tag[data-key="all"]').classList.contains('on');
   const subjects=allOn?['all']:Array.from(document.querySelectorAll('.mc-subj-tag.on')).map(t=>t.dataset.key);
+  console.log('Starting mock bar with count:',count,'subjects:',subjects);
   const btn=document.getElementById('startMockBtn');
   btn.disabled=true;btn.textContent='⏳ Building question set…';
   document.getElementById('mockStartError').style.display='none';
   try{
     const r=await fetch('/api/mockbar/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({subjects,count})});
     const data=await r.json();if(data.error)throw new Error(data.error);
+    console.log('Questions received:',data.questions?.length,'requested:',count);
     mockQs=data.questions;mockIdx=0;mockAnswers=Array(mockQs.length).fill('');
     document.getElementById('mockConfig').style.display='none';
     document.getElementById('mockResults').style.display='none';
