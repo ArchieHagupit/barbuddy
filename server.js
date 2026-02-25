@@ -6,7 +6,7 @@ const multer   = require('multer');
 const pdfParse = require('pdf-parse');
 const mammoth  = require('mammoth');
 
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
 const app       = express();
 const PORT      = process.env.PORT || 3000;
@@ -132,27 +132,11 @@ app.post('/api/admin/syllabus', adminOnly, async (req, res) => {
   const { name, content } = req.body;
   if (!content) return res.status(400).json({ error: 'content required' });
   try {
-    const raw = await callClaude([{ role:'user', content:`Parse this Philippine Bar Exam Syllabus into structured JSON.
-
-Content:
-${content.slice(0,14000)}
-
-Respond ONLY with valid JSON (no markdown):
-{
-  "subjects": [
-    {
-      "key": "civil|criminal|political|labor|commercial|taxation|remedial|ethics",
-      "name": "Full subject name",
-      "topics": [{ "name": "Topic name", "subtopics": ["Sub 1","Sub 2"] }]
-    }
-  ]
-}` }], 4000);
-
-    const parsed = JSON.parse(raw.replace(/^```json\s*/i,'').replace(/```$/,'').trim());
-    KB.syllabus = { name:name||'Bar Exam Syllabus', rawText:content.slice(0,20000), topics:parsed.subjects||[], uploadedAt:new Date().toISOString() };
+    const subjects = await parseSyllabusLarge(content);
+    KB.syllabus = { name:name||'Bar Exam Syllabus', rawText:content.slice(0,60000), topics:subjects, uploadedAt:new Date().toISOString() };
     saveKB();
-    const totalTopics = parsed.subjects?.reduce((a,s) => a+(s.topics?.length||0), 0) || 0;
-    res.json({ success:true, subjects:parsed.subjects?.length, totalTopics });
+    const totalTopics = subjects.reduce((a,s) => a+(s.topics?.length||0), 0);
+    res.json({ success:true, subjects:subjects.length, totalTopics });
     triggerPreGeneration();   // fire-and-forget
   } catch(err) { res.status(500).json({ error:err.message }); }
 });
@@ -163,15 +147,8 @@ app.post('/api/admin/reference', adminOnly, async (req, res) => {
   if (!content) return res.status(400).json({ error: 'content required' });
   const id = `ref_${Date.now()}_${Math.random().toString(36).slice(2,7)}`;
   try {
-    const summary = await callClaude([{ role:'user', content:`Summarize the key legal concepts, doctrines, article numbers, G.R. case numbers, and topics in this Philippine law reference. This summary is used as AI context for bar exam content generation.
-
-Material: ${name} (${subject})
-Content:
-${content.slice(0,10000)}
-
-Dense structured summary (max 600 words).` }], 900);
-
-    KB.references.push({ id, name, subject:subject||'general', type:type||'other', text:content.slice(0,15000), summary, size:content.length, uploadedAt:new Date().toISOString() });
+    const summary = await summarizeLargeDoc(content, name, subject||'general');
+    KB.references.push({ id, name, subject:subject||'general', type:type||'other', text:content.slice(0,30000), summary, size:content.length, uploadedAt:new Date().toISOString() });
     saveKB();
     res.json({ success:true, id, name });
     if (KB.syllabus) triggerPreGenerationForSubject(subject);
@@ -184,19 +161,10 @@ app.post('/api/admin/pastbar', adminOnly, async (req, res) => {
   if (!content) return res.status(400).json({ error: 'content required' });
   const id = `pb_${Date.now()}_${Math.random().toString(36).slice(2,7)}`;
   try {
-    const raw = await callClaude([{ role:'user', content:`Extract all bar exam questions from this Philippine Bar Exam material.
-
-Material: ${name} (${year||'?'}) | Subject: ${subject}
-Content:
-${content.slice(0,14000)}
-
-Respond ONLY with valid JSON:
-{ "questions": [{ "q":"Full question text", "modelAnswer":"Comprehensive answer", "keyPoints":["Point 1","Point 2"], "topics":["Topic"] }] }` }], 4000);
-
-    const data = JSON.parse(raw.replace(/^```json\s*/i,'').replace(/```$/,'').trim());
-    KB.pastBar.push({ id, name, subject:subject||'general', year:year||'Unknown', questions:data.questions||[], rawText:content.slice(0,15000), uploadedAt:new Date().toISOString() });
+    const questions = await extractQuestionsLarge(content, name, year, subject||'general');
+    KB.pastBar.push({ id, name, subject:subject||'general', year:year||'Unknown', questions, rawText:content.slice(0,30000), uploadedAt:new Date().toISOString() });
     saveKB();
-    res.json({ success:true, id, name, questionsExtracted:data.questions?.length||0 });
+    res.json({ success:true, id, name, questionsExtracted:questions.length });
   } catch(err) { res.status(500).json({ error:err.message }); }
 });
 
@@ -406,6 +374,75 @@ Score strictly as a Bar examiner. Respond ONLY with valid JSON:
 });
 
 // ── HELPERS ─────────────────────────────────────────────────
+const CHUNK_SIZE  = 10000;  // chars per chunk sent to Claude
+const MAX_CHUNKS  = 12;     // max chunks → up to ~120k chars processed
+
+// Summarize a document of any size via sequential chunk summarisation
+async function summarizeLargeDoc(content, docName, subject) {
+  const chunks = [];
+  for (let i = 0; i < content.length && chunks.length < MAX_CHUNKS; i += CHUNK_SIZE)
+    chunks.push(content.slice(i, i + CHUNK_SIZE));
+
+  if (chunks.length === 1) {
+    return callClaude([{ role:'user', content:`Summarize the key legal concepts, doctrines, article numbers, G.R. case numbers, and topics in this Philippine law reference. Used as AI context for bar exam content generation.\n\nMaterial: ${docName} (${subject})\nContent:\n${chunks[0]}\n\nDense structured summary (max 600 words).` }], 900);
+  }
+
+  const parts = [];
+  for (let i = 0; i < chunks.length; i++) {
+    const s = await callClaude([{ role:'user', content:`Summarize the key legal concepts, doctrines, article numbers, G.R. case numbers, and topics in this section of a Philippine law reference.\n\nMaterial: ${docName} (${subject}) — Part ${i+1} of ${chunks.length}\nContent:\n${chunks[i]}\n\nDense summary (max 250 words).` }], 400)
+      .catch(() => '');
+    if (s) parts.push(s);
+    if (i < chunks.length - 1) await sleep(400);
+  }
+
+  if (parts.length <= 2) return parts.join('\n\n');
+
+  return callClaude([{ role:'user', content:`Combine these partial summaries of a Philippine law reference into one comprehensive master summary.\n\nMaterial: ${docName} (${subject})\n\n${parts.map((s,i)=>`[Part ${i+1}]\n${s}`).join('\n\n')}\n\nMaster summary (max 1000 words, dense, structured):` }], 1500);
+}
+
+// Extract bar questions from a document of any size
+async function extractQuestionsLarge(content, name, year, subject) {
+  const Q_CHUNK = 12000;
+  const chunks = [];
+  for (let i = 0; i < content.length && chunks.length < MAX_CHUNKS; i += Q_CHUNK)
+    chunks.push(content.slice(i, i + Q_CHUNK));
+
+  const allQ = [];
+  for (let i = 0; i < chunks.length; i++) {
+    const raw = await callClaude([{ role:'user', content:`Extract all bar exam questions from this section of Philippine Bar Exam material.\n\nMaterial: ${name} (${year||'?'}) | Subject: ${subject} | Part ${i+1} of ${chunks.length}\nContent:\n${chunks[i]}\n\nRespond ONLY with valid JSON:\n{ "questions": [{ "q":"Full question text", "modelAnswer":"Comprehensive answer", "keyPoints":["Point 1","Point 2"], "topics":["Topic"] }] }` }], 4000)
+      .catch(() => '{"questions":[]}');
+    try { allQ.push(...(JSON.parse(raw.replace(/^```json\s*/i,'').replace(/```$/,'').trim()).questions || [])); } catch(e) {}
+    if (i < chunks.length - 1) await sleep(400);
+  }
+  return allQ;
+}
+
+// Parse a syllabus of any size, merging topics by subject key
+async function parseSyllabusLarge(content) {
+  const S_CHUNK = 14000;
+  const chunks = [];
+  for (let i = 0; i < content.length && chunks.length < 6; i += S_CHUNK)
+    chunks.push(content.slice(i, i + S_CHUNK));
+
+  const subjectMap = {};
+  for (let i = 0; i < chunks.length; i++) {
+    const raw = await callClaude([{ role:'user', content:`Parse this section of a Philippine Bar Exam Syllabus into structured JSON.\n\nContent (Part ${i+1} of ${chunks.length}):\n${chunks[i]}\n\nRespond ONLY with valid JSON (no markdown):\n{\n  "subjects": [\n    {\n      "key": "civil|criminal|political|labor|commercial|taxation|remedial|ethics",\n      "name": "Full subject name",\n      "topics": [{ "name": "Topic name", "subtopics": ["Sub 1","Sub 2"] }]\n    }\n  ]\n}` }], 4000)
+      .catch(() => '{"subjects":[]}');
+    try {
+      const parsed = JSON.parse(raw.replace(/^```json\s*/i,'').replace(/```$/,'').trim());
+      for (const subj of (parsed.subjects || [])) {
+        if (!subjectMap[subj.key]) { subjectMap[subj.key] = { ...subj, topics: [...(subj.topics||[])] }; }
+        else {
+          const seen = new Set(subjectMap[subj.key].topics.map(t => t.name));
+          for (const t of (subj.topics || [])) { if (!seen.has(t.name)) subjectMap[subj.key].topics.push(t); }
+        }
+      }
+    } catch(e) {}
+    if (i < chunks.length - 1) await sleep(400);
+  }
+  return Object.values(subjectMap);
+}
+
 async function callClaude(messages, max_tokens=2000, retries=4) {
   const RETRY_STATUSES = new Set([429, 529]);
   let delay = 2000;
