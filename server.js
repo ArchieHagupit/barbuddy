@@ -1,7 +1,12 @@
-const express = require('express');
-const cors    = require('cors');
-const path    = require('path');
-const fs      = require('fs');
+const express  = require('express');
+const cors     = require('cors');
+const path     = require('path');
+const fs       = require('fs');
+const multer   = require('multer');
+const pdfParse = require('pdf-parse');
+const mammoth  = require('mammoth');
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
 
 const app       = express();
 const PORT      = process.env.PORT || 3000;
@@ -54,6 +59,27 @@ function adminOnly(req, res, next) {
   if (key !== ADMIN_KEY) return res.status(401).json({ error: 'Unauthorized' });
   next();
 }
+
+// ── ADMIN: Parse uploaded file to text ─────────────────────
+app.post('/api/admin/parse-file', adminOnly, upload.single('file'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+  const ext = path.extname(req.file.originalname).toLowerCase();
+  try {
+    let text = '';
+    if (ext === '.pdf') {
+      const data = await pdfParse(req.file.buffer);
+      text = data.text;
+    } else if (ext === '.docx' || ext === '.doc') {
+      const result = await mammoth.extractRawText({ buffer: req.file.buffer });
+      text = result.value;
+    } else {
+      text = req.file.buffer.toString('utf8');
+    }
+    res.json({ text: text.trim() });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to extract text: ' + err.message });
+  }
+});
 
 // ── Health ──────────────────────────────────────────────────
 app.get('/api/health', (req, res) => {

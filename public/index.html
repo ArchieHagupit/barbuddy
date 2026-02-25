@@ -640,8 +640,8 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
         <label class="form-label">Content (paste or upload file)</label>
         <textarea class="form-input" id="syl-content" rows="5" placeholder="Paste syllabus text here…" style="resize:vertical;"></textarea>
         <div style="display:flex;gap:8px;margin-bottom:12px;">
-          <input type="file" id="syl-file" accept=".txt,.md" style="display:none;" onchange="readFile(this,'syl-content')">
-          <button class="btn-og" onclick="document.getElementById('syl-file').click()">📄 Upload .txt/.md</button>
+          <input type="file" id="syl-file" accept=".txt,.md,.pdf,.doc,.docx" style="display:none;" onchange="readFile(this,'syl-content')">
+          <button class="btn-og" onclick="document.getElementById('syl-file').click()">📄 Upload File</button>
         </div>
         <div id="syl-status"></div>
         <button class="btn-gold" onclick="uploadSyllabus()" style="width:100%;justify-content:center;">📋 Save &amp; Pre-generate</button>
@@ -668,7 +668,7 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
         <label class="form-label">Content</label>
         <textarea class="form-input" id="ref-content" rows="4" placeholder="Paste or upload…" style="resize:vertical;"></textarea>
         <div style="display:flex;gap:8px;margin-bottom:12px;">
-          <input type="file" id="ref-file" accept=".txt,.md" style="display:none;" onchange="readFile(this,'ref-content')">
+          <input type="file" id="ref-file" accept=".txt,.md,.pdf,.doc,.docx" style="display:none;" onchange="readFile(this,'ref-content')">
           <button class="btn-og" onclick="document.getElementById('ref-file').click()">📄 Upload File</button>
         </div>
         <div id="ref-status"></div>
@@ -696,7 +696,7 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
         <label class="form-label">Content</label>
         <textarea class="form-input" id="pb-content" rows="4" placeholder="Paste bar exam Q&A or upload file…" style="resize:vertical;"></textarea>
         <div style="display:flex;gap:8px;margin-bottom:12px;">
-          <input type="file" id="pb-file" accept=".txt,.md" style="display:none;" onchange="readFile(this,'pb-content')">
+          <input type="file" id="pb-file" accept=".txt,.md,.pdf,.doc,.docx" style="display:none;" onchange="readFile(this,'pb-content')">
           <button class="btn-og" onclick="document.getElementById('pb-file').click()">📄 Upload File</button>
         </div>
         <div id="pb-status"></div>
@@ -1375,9 +1375,26 @@ async function unlockAdmin(){
   }catch(e){document.getElementById('adminStatus').textContent='Error: '+e.message;}
 }
 
-function readFile(input,targetId){
+async function readFile(input,targetId){
   const f=input.files[0];if(!f)return;
-  const r=new FileReader();r.onload=e=>document.getElementById(targetId).value=e.target.result;r.readAsText(f);
+  const ext=f.name.split('.').pop().toLowerCase();
+  if(ext==='pdf'||ext==='doc'||ext==='docx'){
+    const fd=new FormData();fd.append('file',f);
+    const statusId=targetId.replace('-content','-status');
+    const sta=document.getElementById(statusId);
+    if(sta)sta.innerHTML=`<div style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--gold-l);padding:8px;"><div class="spin" style="width:14px;height:14px;border-width:2px;"></div>Extracting text from ${ext.toUpperCase()}…</div>`;
+    try{
+      const r=await fetch('/api/admin/parse-file',{method:'POST',headers:{'x-admin-key':adminKey},body:fd});
+      const d=await r.json();
+      if(d.error)throw new Error(d.error);
+      document.getElementById(targetId).value=d.text;
+      if(sta)sta.innerHTML=`<div style="color:var(--teal);font-size:12px;padding:4px 8px;">✓ Extracted ${d.text.length.toLocaleString()} characters from ${h(f.name)}</div>`;
+    }catch(e){
+      if(sta)sta.innerHTML=`<div style="color:#e07080;font-size:13px;padding:8px;">⚠️ ${h(e.message)}</div>`;
+    }
+  }else{
+    const r=new FileReader();r.onload=e=>document.getElementById(targetId).value=e.target.result;r.readAsText(f);
+  }
 }
 function updateSyllabusStatus(){
   const el=document.getElementById('syllabusStatus');if(!el)return;
