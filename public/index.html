@@ -48,6 +48,9 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .kb-ind.generating{color:#ff8c42;background:rgba(255,140,66,.08);border-color:rgba(255,140,66,.2);}
 .kb-dot{width:6px;height:6px;border-radius:50%;}
 .kb-ind.loaded .kb-dot{background:var(--teal);animation:pulse 2s infinite;}
+/* API status banner */
+#apiBanner{display:none;position:fixed;top:0;left:0;right:0;z-index:500;background:rgba(155,35,53,.92);backdrop-filter:blur(4px);color:#fff;font-size:12px;font-weight:600;text-align:center;padding:7px 16px;letter-spacing:.02em;}
+#apiBanner button{margin-left:12px;background:transparent;border:1px solid rgba(255,255,255,.45);color:#fff;border-radius:5px;padding:2px 9px;cursor:pointer;font-size:11px;}
 .kb-ind.generating .kb-dot{background:#ff8c42;animation:pulse .6s infinite;}
 .kb-ind.empty .kb-dot{background:var(--muted);}
 @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.3;}}
@@ -364,6 +367,7 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 </style>
 </head>
 <body>
+<div id="apiBanner">⚠️ Claude API is currently overloaded — some features may be slow or unavailable. <button onclick="document.getElementById('apiBanner').style.display='none'">Dismiss</button></div>
 <aside class="sidebar">
   <div class="s-logo">⚖️</div>
   <button class="s-btn on" onclick="nav('dashboard',this)">🏛<span class="s-tip">Dashboard</span></button>
@@ -770,6 +774,15 @@ async function init() {
   renderSubjectTracker();
   await loadKB();
   subscribeToProgress();
+  checkAPIStatus();
+}
+
+async function checkAPIStatus(){
+  try{
+    const r=await fetch('/api/status');
+    const d=await r.json();
+    document.getElementById('apiBanner').style.display=d.apiOk?'none':'block';
+  }catch(e){}
 }
 init();
 
@@ -1433,13 +1446,22 @@ async function uploadReference(){
   const name=document.getElementById('ref-name').value.trim(),content=document.getElementById('ref-content').value.trim();
   const subject=document.getElementById('ref-subject').value,type=document.getElementById('ref-type').value;
   if(!name||!content){alert('Enter name and content.');return;}
+  const sta=document.getElementById('ref-status');
+  const spin=`<div class="spin" style="width:14px;height:14px;border-width:2px;flex-shrink:0;"></div>`;
   try{
     const r=await adminPost('/api/admin/reference',{name,subject,type,content},'ref-status');
     if(r.error)throw new Error(r.error);
-    document.getElementById('ref-status').innerHTML=`<div style="color:var(--teal);font-size:13px;padding:8px;">✅ Saved "${h(r.name)}". Re-generating ${subject} content…</div>`;
     document.getElementById('ref-name').value='';document.getElementById('ref-content').value='';
     await loadKB();refreshAdminKB();
-  }catch(e){document.getElementById('ref-status').innerHTML=`<div style="color:#e07080;font-size:13px;padding:8px;">⚠️ ${h(e.message)}</div>`;}
+    sta.innerHTML=`<div style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--gold-l);padding:10px;">${spin}⏳ Saved "${h(r.name)}" — summarising in background…</div>`;
+    pollJob(r.jobId,sta,(err)=>{
+      if(err){
+        sta.innerHTML=`<div style="color:#ff8c42;font-size:13px;padding:8px;">⚠️ Saved "${h(r.name)}" but summarisation failed: ${h(err)}</div>`;
+      }else{
+        sta.innerHTML=`<div style="color:var(--teal);font-size:13px;padding:8px;">✅ "${h(r.name)}" saved and summarised. Re-generating ${h(subject)} content…</div>`;
+      }
+    });
+  }catch(e){sta.innerHTML=`<div style="color:#e07080;font-size:13px;padding:8px;">⚠️ ${h(e.message)}</div>`;}
 }
 async function uploadPastBar(){
   const name=document.getElementById('pb-name').value.trim();
@@ -1460,36 +1482,42 @@ async function uploadPastBar(){
     document.getElementById('pb-name').value='';
     document.getElementById('pb-content').value='';
     await loadKB();refreshAdminKB();renderPastBarList();
-    sta.innerHTML=`<div style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--gold-l);padding:10px;">${spin}⏳ Saved "${h(d.name)}" — extracting questions in background…</div>`;
-    pollPastBarStatus(d.id,d.name,sta);
+    sta.innerHTML=`<div style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--gold-l);padding:10px;">${spin}⏳ Saved "${h(d.name)}" — extracting questions…</div>`;
+    pollJob(d.jobId,sta,(err,result)=>{
+      if(err){
+        sta.innerHTML=`<div style="color:#ff8c42;font-size:13px;padding:8px;">⚠️ Saved "${h(d.name)}" but extraction failed: ${h(err)}</div>`;
+      }else if(!result?.questionsExtracted){
+        sta.innerHTML=`<div style="color:#ff8c42;font-size:13px;padding:8px;">⚠️ Saved "${h(d.name)}" but 0 questions were extracted. Try pasting as plain text.</div>`;
+      }else{
+        sta.innerHTML=`<div style="color:var(--teal);font-size:13px;padding:8px;">✅ "${h(d.name)}" — ${result.questionsExtracted} questions extracted.</div>`;
+      }
+      loadKB();refreshAdminKB();renderPastBarList();
+    });
   }catch(e){sta.innerHTML=`<div style="color:#e07080;font-size:13px;padding:8px;">⚠️ ${h(e.message)}</div>`;}
 }
-function pollPastBarStatus(id,name,sta){
+// Generic job poller — polls /api/job/:jobId every 8s
+// onDone(errorMsg|null, result|null)
+function pollJob(jobId,sta,onDone){
   const spin=`<div class="spin" style="width:14px;height:14px;border-width:2px;flex-shrink:0;"></div>`;
   let attempts=0;
   const iv=setInterval(async()=>{
     attempts++;
     try{
-      const r=await fetch(`/api/admin/pastbar/${id}/status`,{headers:{'x-admin-key':adminKey}});
+      const r=await fetch(`/api/job/${jobId}`,{headers:{'x-admin-key':adminKey}});
       const d=await r.json();
-      if(!d.extracting){
+      if(d.status==='done'){
+        clearInterval(iv);onDone(null,d.result);
+      }else if(d.status==='failed'){
+        clearInterval(iv);onDone(d.error,null);
+      }else if(attempts>=38){ // ~5 min max
         clearInterval(iv);
-        await loadKB();refreshAdminKB();renderPastBarList();
-        if(d.extractError){
-          sta.innerHTML=`<div style="color:#ff8c42;font-size:13px;padding:8px;">⚠️ Saved "${h(name)}" but extraction failed: ${h(d.extractError)}</div>`;
-        }else if(d.questionsExtracted===0){
-          sta.innerHTML=`<div style="color:#ff8c42;font-size:13px;padding:8px;">⚠️ Saved "${h(name)}" but 0 questions were extracted. Try pasting as plain text.</div>`;
-        }else{
-          sta.innerHTML=`<div style="color:var(--teal);font-size:13px;padding:8px;">✅ "${h(name)}" — ${d.questionsExtracted} questions extracted successfully.</div>`;
-        }
-      }else if(attempts>=30){
-        clearInterval(iv);
-        sta.innerHTML=`<div style="color:var(--muted);font-size:13px;padding:8px;">⏳ Extraction for "${h(name)}" is still running on the server.</div>`;
+        sta.innerHTML=`<div style="color:var(--muted);font-size:13px;padding:8px;">⏳ Still processing on server. Check back later.</div>`;
       }else{
-        sta.innerHTML=`<div style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--gold-l);padding:10px;">${spin}⏳ Extracting questions for "${h(name)}"… (${attempts*10}s elapsed)</div>`;
+        const elapsed=attempts*8;
+        sta.innerHTML=`<div style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--gold-l);padding:10px;">${spin}Processing… (${elapsed<60?elapsed+'s':Math.floor(elapsed/60)+'m '+elapsed%60+'s'} elapsed)</div>`;
       }
-    }catch(e){if(attempts>=30)clearInterval(iv);}
-  },10000);
+    }catch(e){if(attempts>=38)clearInterval(iv);}
+  },8000);
 }
 async function refreshAdminKB(){
   const el=document.getElementById('adminKbList');if(!el)return;
@@ -1536,19 +1564,30 @@ async function clearContent(){
 // ══════════════════════════════════
 // CHAT
 // ══════════════════════════════════
-async function sendChat(){
-  const input=document.getElementById('chatInput'),msg=input.value.trim();if(!msg)return;
+async function sendChat(retryMsg){
+  const input=document.getElementById('chatInput');
+  const msg=retryMsg||input.value.trim();if(!msg)return;
   const box=document.getElementById('chatBox'),btn=document.getElementById('chatBtn');
-  box.innerHTML+=`<div class="msg-user">${h(msg)}</div>`;
-  input.value='';btn.disabled=true;chatHistory.push({role:'user',content:msg});
-  box.scrollTop=box.scrollHeight;
+  if(!retryMsg){
+    box.innerHTML+=`<div class="msg-user">${h(msg)}</div>`;
+    input.value='';chatHistory.push({role:'user',content:msg});
+  }
+  btn.disabled=true;box.scrollTop=box.scrollHeight;
   const ai=document.createElement('div');ai.className='msg-ai';ai.textContent='⚖️ …';
   box.appendChild(ai);box.scrollTop=box.scrollHeight;
   try{
     const sys='You are BarBuddy, an expert Philippine Bar Exam reviewer. Cover all 8 Bar subjects. Always cite G.R. numbers, articles, rule provisions. Be concise and exam-focused. 250 words max unless more is needed.';
     const raw=await callAPI({messages:chatHistory,max_tokens:700,system:sys,mode:'chat'});
     ai.innerHTML='⚖️ '+raw.replace(/\n/g,'<br>');chatHistory.push({role:'assistant',content:raw});
-  }catch(err){ai.innerHTML='⚠️ '+h(err.message);}
+  }catch(err){
+    if(err.overloaded){
+      const safeMsg=JSON.stringify(msg);
+      ai.innerHTML=`⚠️ API busy — Claude is overloaded. <button onclick="this.closest('.msg-ai').remove();sendChat(${safeMsg})" style="margin-left:8px;background:rgba(201,168,76,.15);border:1px solid var(--gold);color:var(--gold-l);border-radius:6px;padding:3px 10px;cursor:pointer;font-size:11px;">↺ Retry</button>`;
+      if(!retryMsg)chatHistory.pop(); // remove the unanswered user msg from history
+    }else{
+      ai.innerHTML='⚠️ '+h(err.message);
+    }
+  }
   btn.disabled=false;box.scrollTop=box.scrollHeight;
 }
 
@@ -1558,6 +1597,7 @@ async function sendChat(){
 async function callAPI(payload){
   const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
   const d=await r.json();
+  if(d.overloaded){const e=new Error('API busy — Claude is overloaded. Please try again in a moment.');e.overloaded=true;throw e;}
   if(d.error)throw new Error(d.error.message||JSON.stringify(d.error));
   return d.content.map(c=>c.text||'').join('');
 }
