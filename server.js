@@ -1,0 +1,397 @@
+const express = require('express');
+const cors    = require('cors');
+const path    = require('path');
+const fs      = require('fs');
+
+const app       = express();
+const PORT      = process.env.PORT || 3000;
+const API_KEY   = process.env.ANTHROPIC_API_KEY;
+const ADMIN_KEY = process.env.ADMIN_KEY || 'barbuddy-admin-2025';
+
+// ── Persistence ─────────────────────────────────────────────
+const UPLOADS_DIR  = path.join(__dirname, 'uploads');
+const KB_PATH      = path.join(UPLOADS_DIR, 'kb.json');
+const CONTENT_PATH = path.join(UPLOADS_DIR, 'content.json');
+if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+
+// Knowledge Base — syllabus + references + past bar
+const KB = {
+  syllabus:   null,   // { name, rawText, topics:[{key,name,topics:[{name,subtopics:[]}]}], uploadedAt }
+  references: [],     // [{ id, name, subject, type, text, summary, size, uploadedAt }]
+  pastBar:    [],     // [{ id, name, subject, year, questions:[{q,modelAnswer,keyPoints}], uploadedAt }]
+};
+
+// Pre-generated content per topic
+// { [subject_key]: { [topic_name]: { lesson, mcq, essay, generatedAt } } }
+let CONTENT = {};
+
+// Generation queue state
+const GEN = {
+  running: false, total: 0, done: 0, current: '', errors: [],
+  startedAt: null, finishedAt: null,
+  clients: new Set(),
+};
+
+function loadData() {
+  try {
+    if (fs.existsSync(KB_PATH))      Object.assign(KB, JSON.parse(fs.readFileSync(KB_PATH, 'utf8')));
+    if (fs.existsSync(CONTENT_PATH)) CONTENT = JSON.parse(fs.readFileSync(CONTENT_PATH, 'utf8'));
+    const n = Object.values(CONTENT).reduce((a,s) => a+Object.keys(s).length, 0);
+    console.log(`KB loaded: syllabus=${!!KB.syllabus}, refs=${KB.references.length}, pastBar=${KB.pastBar.length}, content=${n} topics`);
+  } catch(e) { console.error('Load error:', e.message); }
+}
+function saveKB()      { try { fs.writeFileSync(KB_PATH, JSON.stringify(KB)); } catch(e) { console.error('KB save:', e.message); } }
+function saveContent() { try { fs.writeFileSync(CONTENT_PATH, JSON.stringify(CONTENT)); } catch(e) { console.error('Content save:', e.message); } }
+loadData();
+
+// ── Middleware ──────────────────────────────────────────────
+app.use(cors());
+app.use(express.json({ limit: '80mb' }));
+app.use(express.static(path.join(__dirname, 'public')));
+
+function adminOnly(req, res, next) {
+  const key = req.headers['x-admin-key'] || req.body?.adminKey;
+  if (key !== ADMIN_KEY) return res.status(401).json({ error: 'Unauthorized' });
+  next();
+}
+
+// ── Health ──────────────────────────────────────────────────
+app.get('/api/health', (req, res) => {
+  const n = Object.values(CONTENT).reduce((a,s) => a+Object.keys(s).length, 0);
+  res.json({ status:'ok', keySet:!!API_KEY, kb:{ hasSyllabus:!!KB.syllabus, refs:KB.references.length, pastBar:KB.pastBar.length }, content:{ topics:n }, gen:{ running:GEN.running, done:GEN.done, total:GEN.total } });
+});
+
+// ── GET KB state (public — browser caches) ─────────────────
+app.get('/api/kb', (req, res) => {
+  const n = Object.values(CONTENT).reduce((a,s) => a+Object.keys(s).length, 0);
+  res.json({
+    hasSyllabus:    !!KB.syllabus,
+    syllabusName:   KB.syllabus?.name,
+    syllabusTopics: KB.syllabus?.topics || [],
+    references:     KB.references.map(r => ({ id:r.id, name:r.name, subject:r.subject, type:r.type, size:r.size, uploadedAt:r.uploadedAt })),
+    pastBar:        KB.pastBar.map(p  => ({ id:p.id, name:p.name, subject:p.subject, year:p.year, qCount:p.questions?.length||0, uploadedAt:p.uploadedAt })),
+    contentTopics:  n,
+    genState:       { running:GEN.running, done:GEN.done, total:GEN.total, current:GEN.current, finishedAt:GEN.finishedAt },
+  });
+});
+
+// ── GET pre-generated content for one topic ─────────────────
+app.get('/api/content/:subject/:topic', (req, res) => {
+  const data = CONTENT[req.params.subject]?.[decodeURIComponent(req.params.topic)];
+  if (data) return res.json({ found:true, ...data });
+  res.json({ found:false });
+});
+
+// ── GET full content dump (browser caches on load) ──────────
+app.get('/api/content', (req, res) => res.json(CONTENT));
+
+// ── SSE: live generation progress ──────────────────────────
+app.get('/api/gen/progress', (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  GEN.clients.add(res);
+  sseSend(res, { done:GEN.done, total:GEN.total, current:GEN.current, running:GEN.running, finished:!!GEN.finishedAt&&!GEN.running });
+  req.on('close', () => GEN.clients.delete(res));
+});
+
+function sseSend(client, data) { try { client.write(`data: ${JSON.stringify(data)}\n\n`); } catch(e){} }
+function broadcast() {
+  const msg = { done:GEN.done, total:GEN.total, current:GEN.current, running:GEN.running, finished:!!GEN.finishedAt&&!GEN.running, errors:GEN.errors.length };
+  GEN.clients.forEach(c => sseSend(c, msg));
+}
+
+// ── ADMIN: Upload Syllabus + trigger pre-gen ────────────────
+app.post('/api/admin/syllabus', adminOnly, async (req, res) => {
+  const { name, content } = req.body;
+  if (!content) return res.status(400).json({ error: 'content required' });
+  try {
+    const raw = await callClaude([{ role:'user', content:`Parse this Philippine Bar Exam Syllabus into structured JSON.
+
+Content:
+${content.slice(0,14000)}
+
+Respond ONLY with valid JSON (no markdown):
+{
+  "subjects": [
+    {
+      "key": "civil|criminal|political|labor|commercial|taxation|remedial|ethics",
+      "name": "Full subject name",
+      "topics": [{ "name": "Topic name", "subtopics": ["Sub 1","Sub 2"] }]
+    }
+  ]
+}` }], 4000);
+
+    const parsed = JSON.parse(raw.replace(/^```json\s*/i,'').replace(/```$/,'').trim());
+    KB.syllabus = { name:name||'Bar Exam Syllabus', rawText:content.slice(0,20000), topics:parsed.subjects||[], uploadedAt:new Date().toISOString() };
+    saveKB();
+    const totalTopics = parsed.subjects?.reduce((a,s) => a+(s.topics?.length||0), 0) || 0;
+    res.json({ success:true, subjects:parsed.subjects?.length, totalTopics });
+    triggerPreGeneration();   // fire-and-forget
+  } catch(err) { res.status(500).json({ error:err.message }); }
+});
+
+// ── ADMIN: Upload Reference ─────────────────────────────────
+app.post('/api/admin/reference', adminOnly, async (req, res) => {
+  const { name, subject, type, content } = req.body;
+  if (!content) return res.status(400).json({ error: 'content required' });
+  const id = `ref_${Date.now()}_${Math.random().toString(36).slice(2,7)}`;
+  try {
+    const summary = await callClaude([{ role:'user', content:`Summarize the key legal concepts, doctrines, article numbers, G.R. case numbers, and topics in this Philippine law reference. This summary is used as AI context for bar exam content generation.
+
+Material: ${name} (${subject})
+Content:
+${content.slice(0,10000)}
+
+Dense structured summary (max 600 words).` }], 900);
+
+    KB.references.push({ id, name, subject:subject||'general', type:type||'other', text:content.slice(0,15000), summary, size:content.length, uploadedAt:new Date().toISOString() });
+    saveKB();
+    res.json({ success:true, id, name });
+    if (KB.syllabus) triggerPreGenerationForSubject(subject);
+  } catch(err) { res.status(500).json({ error:err.message }); }
+});
+
+// ── ADMIN: Upload Past Bar Questions ───────────────────────
+app.post('/api/admin/pastbar', adminOnly, async (req, res) => {
+  const { name, subject, year, content } = req.body;
+  if (!content) return res.status(400).json({ error: 'content required' });
+  const id = `pb_${Date.now()}_${Math.random().toString(36).slice(2,7)}`;
+  try {
+    const raw = await callClaude([{ role:'user', content:`Extract all bar exam questions from this Philippine Bar Exam material.
+
+Material: ${name} (${year||'?'}) | Subject: ${subject}
+Content:
+${content.slice(0,14000)}
+
+Respond ONLY with valid JSON:
+{ "questions": [{ "q":"Full question text", "modelAnswer":"Comprehensive answer", "keyPoints":["Point 1","Point 2"], "topics":["Topic"] }] }` }], 4000);
+
+    const data = JSON.parse(raw.replace(/^```json\s*/i,'').replace(/```$/,'').trim());
+    KB.pastBar.push({ id, name, subject:subject||'general', year:year||'Unknown', questions:data.questions||[], rawText:content.slice(0,15000), uploadedAt:new Date().toISOString() });
+    saveKB();
+    res.json({ success:true, id, name, questionsExtracted:data.questions?.length||0 });
+  } catch(err) { res.status(500).json({ error:err.message }); }
+});
+
+// ── ADMIN: Delete ───────────────────────────────────────────
+app.delete('/api/admin/reference/:id', adminOnly, (req, res) => {
+  KB.references = KB.references.filter(r => r.id !== req.params.id);
+  KB.pastBar    = KB.pastBar.filter(p => p.id !== req.params.id);
+  saveKB(); res.json({ success:true });
+});
+app.delete('/api/admin/syllabus', adminOnly, (req, res) => {
+  KB.syllabus = null; CONTENT = {}; saveKB(); saveContent(); res.json({ success:true });
+});
+app.delete('/api/admin/content', adminOnly, (req, res) => {
+  CONTENT = {}; saveContent(); res.json({ success:true });
+});
+
+// ── ADMIN: Manually trigger generation ─────────────────────
+app.post('/api/admin/generate', adminOnly, (req, res) => {
+  if (!KB.syllabus) return res.status(400).json({ error:'No syllabus' });
+  if (GEN.running) return res.json({ message:'Already running', done:GEN.done, total:GEN.total });
+  triggerPreGeneration();
+  res.json({ message:'Started', total:KB.syllabus.topics.reduce((a,s)=>a+(s.topics?.length||0),0) });
+});
+
+// ── PRE-GENERATION ENGINE ───────────────────────────────────
+async function triggerPreGeneration() {
+  if (GEN.running || !KB.syllabus) return;
+  const queue = [];
+  KB.syllabus.topics.forEach(subj =>
+    (subj.topics||[]).forEach(t => queue.push({ subjKey:subj.key, subjName:subj.name, topicName:t.name, subtopics:t.subtopics||[] }))
+  );
+  if (!queue.length) return;
+  await runGenQueue(queue);
+}
+
+async function triggerPreGenerationForSubject(subjKey) {
+  if (GEN.running || !KB.syllabus) return;
+  const subj = KB.syllabus.topics.find(s => s.key === subjKey);
+  if (!subj) return;
+  delete CONTENT[subjKey];
+  const queue = (subj.topics||[]).map(t => ({ subjKey, subjName:subj.name, topicName:t.name, subtopics:t.subtopics||[] }));
+  await runGenQueue(queue);
+}
+
+async function runGenQueue(queue) {
+  GEN.running = true; GEN.total = queue.length; GEN.done = 0;
+  GEN.errors = []; GEN.startedAt = new Date().toISOString(); GEN.finishedAt = null;
+  broadcast();
+  for (const item of queue) {
+    GEN.current = `${item.subjName} → ${item.topicName}`;
+    broadcast();
+    try { await generateTopicContent(item.subjKey, item.topicName, item.subtopics); GEN.done++; saveContent(); }
+    catch(e) { console.error(`Gen error [${item.topicName}]:`, e.message); GEN.errors.push({ topic:item.topicName, error:e.message }); GEN.done++; }
+    broadcast();
+    await sleep(600); // rate-limit buffer
+  }
+  GEN.running = false; GEN.current = ''; GEN.finishedAt = new Date().toISOString();
+  broadcast(); saveContent();
+  console.log(`Pre-gen complete: ${GEN.done}/${GEN.total} | errors: ${GEN.errors.length}`);
+}
+
+async function generateTopicContent(subjKey, topicName, subtopics) {
+  const refs   = KB.references.filter(r => r.subject===subjKey||r.subject==='general');
+  const refCtx = refs.length ? `\nReference materials (use for accuracy):\n${refs.slice(0,2).map(r=>`[${r.name}]\n${r.summary||r.text.slice(0,600)}`).join('\n\n')}` : '';
+  const pbs    = KB.pastBar.filter(p => p.subject===subjKey||p.subject==='general');
+  const pbCtx  = pbs.length ? `\nPast bar style example:\n${pbs[0]?.questions?.[0]?.q?.slice(0,200)||''}` : '';
+
+  const prompt = `You are an expert Philippine Bar Exam reviewer.
+Subject: ${subjKey} law | Topic: ${topicName}
+${subtopics.length?`Subtopics: ${subtopics.join(', ')}`:''}
+${refCtx}${pbCtx}
+
+Generate a complete study package. Respond ONLY with valid JSON (no markdown):
+{
+  "lesson": {
+    "pages": [
+      { "title": "Page 1: Overview & Key Concepts", "content": "Rich HTML with <p>,<strong>,<em>,<ul>,<li>. MUST include: <div class='definition-box'>doctrine</div> <div class='case-box'><strong>G.R. No. X — Case (Year):</strong> ruling</div> <div class='codal-box'>Art. X, NCC:</div> <div class='rule-box'>RULE:</div> <div class='tip-box'>💡 BAR TIP:</div>" },
+      { "title": "Page 2: Applications, Exceptions & Jurisprudence", "content": "More doctrines, cases, exceptions, bar tips." }
+    ]
+  },
+  "mcq": {
+    "questions": [
+      { "q": "Bar MCQ with fact pattern", "options": ["A.","B.","C.","D."], "answer": 0, "explanation": "Why correct, citing Art./G.R." },
+      { "q": "...", "options": ["A.","B.","C.","D."], "answer": 1, "explanation": "..." },
+      { "q": "...", "options": ["A.","B.","C.","D."], "answer": 2, "explanation": "..." },
+      { "q": "...", "options": ["A.","B.","C.","D."], "answer": 0, "explanation": "..." },
+      { "q": "...", "options": ["A.","B.","C.","D."], "answer": 3, "explanation": "..." }
+    ]
+  },
+  "essay": {
+    "questions": [
+      { "prompt": "Full bar essay/situational question", "context": "Additional facts (or empty string)", "modelAnswer": "Comprehensive answer with citations", "keyPoints": ["Point 1","Point 2","Point 3"] },
+      { "prompt": "...", "context": "", "modelAnswer": "...", "keyPoints": ["...","..."] },
+      { "prompt": "...", "context": "", "modelAnswer": "...", "keyPoints": ["...","..."] }
+    ]
+  }
+}`;
+
+  const raw    = await callClaude([{ role:'user', content:prompt }], 4096);
+  const parsed = JSON.parse(raw.replace(/^```json\s*/i,'').replace(/```$/,'').trim());
+  if (!CONTENT[subjKey]) CONTENT[subjKey] = {};
+  CONTENT[subjKey][topicName] = { lesson:parsed.lesson, mcq:parsed.mcq, essay:parsed.essay, generatedAt:new Date().toISOString() };
+}
+
+// ── MAIN CHAT PROXY ─────────────────────────────────────────
+app.post('/api/chat', async (req, res) => {
+  if (!API_KEY) return res.status(500).json({ error:{ message:'ANTHROPIC_API_KEY not set.' } });
+  const { messages, max_tokens=2000, system, subject, topicName, mode } = req.body;
+  if (!messages?.length) return res.status(400).json({ error:{ message:'messages required' } });
+
+  let kbCtx = '';
+  if (mode !== 'chat') {
+    if (KB.syllabus && subject) {
+      const subj = KB.syllabus.topics.find(s => s.key===subject);
+      if (subj) {
+        kbCtx += `\n\n[Syllabus] Subject: ${subj.name} | Topics: ${subj.topics?.map(t=>t.name).join(', ')}`;
+        if (topicName) { const tp=subj.topics?.find(t=>t.name===topicName); if(tp?.subtopics?.length) kbCtx+=`\nSubtopics: ${tp.subtopics.join(', ')}`; }
+      }
+    }
+    const refs = subject ? KB.references.filter(r=>r.subject===subject||r.subject==='general') : KB.references.slice(0,2);
+    if (refs.length) kbCtx += `\n\n[References]\n${refs.slice(0,2).map(r=>`--- ${r.name} ---\n${r.summary||r.text.slice(0,500)}`).join('\n\n')}`;
+    if (mode==='essay'||mode==='mockbar') {
+      const pbs = subject ? KB.pastBar.filter(p=>p.subject===subject||p.subject==='general') : KB.pastBar;
+      if (pbs.length) kbCtx += `\n\n[Past bar style]\n${pbs[0]?.questions?.[0]?.q?.slice(0,200)||''}`;
+    }
+  }
+
+  try {
+    const body = { model:'claude-sonnet-4-20250514', max_tokens, messages };
+    const finalSystem = (system||'') + kbCtx;
+    if (finalSystem) body.system = finalSystem;
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', 'x-api-key':API_KEY, 'anthropic-version':'2023-06-01' },
+      body:JSON.stringify(body),
+    });
+    const data = await r.json();
+    res.status(r.status).json(data);
+  } catch(err) { res.status(500).json({ error:{ message:'Proxy: '+err.message } }); }
+});
+
+// ── MOCK BAR GENERATOR ──────────────────────────────────────
+app.post('/api/mockbar/generate', async (req, res) => {
+  if (!API_KEY) return res.status(500).json({ error:'API key not set' });
+  const { subjects, count=20 } = req.body;
+  try {
+    // 1) Real past bar questions
+    let real = [];
+    KB.pastBar.forEach(pb => {
+      if (!subjects||subjects.includes('all')||subjects.includes(pb.subject))
+        (pb.questions||[]).forEach(q => real.push({ ...q, source:pb.name, year:pb.year, subject:pb.subject, isReal:true }));
+    });
+    real = shuffle(real).slice(0, Math.floor(count/2));
+
+    // 2) Pre-generated essay questions
+    let preGen = [];
+    const targetSubjs = subjects?.includes('all') ? Object.keys(CONTENT) : (subjects||Object.keys(CONTENT));
+    targetSubjs.forEach(subj =>
+      Object.entries(CONTENT[subj]||{}).forEach(([topic, data]) =>
+        (data.essay?.questions||[]).forEach(q => preGen.push({ ...q, subject:subj, topics:[topic], isReal:false, source:'Pre-generated' }))
+      )
+    );
+    preGen = shuffle(preGen).slice(0, Math.ceil((count-real.length)/2));
+
+    // 3) AI-generated for remainder
+    const needed = count - real.length - preGen.length;
+    let aiQs = [];
+    if (needed > 0) {
+      const syllCtx = KB.syllabus ? KB.syllabus.topics.map(s=>`${s.name}: ${s.topics?.map(t=>t.name).join(', ')}`).join('\n') : '';
+      const raw = await callClaude([{ role:'user', content:`Generate ${needed} Philippine Bar Exam essay/situational questions for a mock bar.
+
+Subjects: ${subjects?.join(', ')||'all 8 bar subjects'}
+Syllabus: ${syllCtx}
+
+Authentic bar exam style, distribute across subjects, full fact patterns.
+
+Respond ONLY with valid JSON:
+{ "questions": [{ "subject":"civil|criminal|political|labor|commercial|taxation|remedial|ethics", "q":"Full situational question", "modelAnswer":"Comprehensive answer", "keyPoints":["Point 1","Point 2"], "isReal":false }] }` }], 4000);
+      aiQs = JSON.parse(raw.replace(/^```json\s*/i,'').replace(/```$/,'').trim()).questions || [];
+    }
+
+    const all = shuffle([...real, ...preGen, ...aiQs]).slice(0, count);
+    all.forEach((q,i) => q.number = i+1);
+    res.json({ questions:all, total:all.length, fromPastBar:real.length, fromPreGen:preGen.length, aiGenerated:aiQs.length });
+  } catch(err) { res.status(500).json({ error:err.message }); }
+});
+
+// ── ESSAY EVALUATION ────────────────────────────────────────
+app.post('/api/evaluate', async (req, res) => {
+  if (!API_KEY) return res.status(500).json({ error:'API key not set' });
+  const { question, answer, modelAnswer, keyPoints, subject } = req.body;
+  const refCtx = KB.references.filter(r=>r.subject===subject||r.subject==='general').slice(0,1).map(r=>r.summary||'').join('');
+  try {
+    const raw = await callClaude([{ role:'user', content:`You are a Philippine Bar Exam evaluator.
+
+Question: ${question}
+${modelAnswer?`Model Answer: ${modelAnswer}`:''}
+${(keyPoints||[]).length?`Key Points: ${keyPoints.join(', ')}`:''}
+${refCtx?`\nLegal Reference Context:\n${refCtx}`:''}
+
+Student Answer: ${answer}
+
+Score strictly as a Bar examiner. Respond ONLY with valid JSON:
+{ "score":"X/10", "numericScore":7, "grade":"Excellent|Good|Satisfactory|Needs Improvement|Poor", "overallFeedback":"2-3 sentence assessment", "strengths":["..."], "improvements":["missing legal argument with citation"], "keyMissed":["Point with Art./G.R. citation"], "modelAnswer":"Full answer with citations" }` }], 1500);
+    res.json(JSON.parse(raw.replace(/^```json\s*/i,'').replace(/```$/,'').trim()));
+  } catch(err) { res.status(500).json({ error:err.message }); }
+});
+
+// ── HELPERS ─────────────────────────────────────────────────
+async function callClaude(messages, max_tokens=2000) {
+  const r = await fetch('https://api.anthropic.com/v1/messages', {
+    method:'POST',
+    headers:{ 'Content-Type':'application/json', 'x-api-key':API_KEY, 'anthropic-version':'2023-06-01' },
+    body:JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens, messages }),
+  });
+  const d = await r.json();
+  if (d.error) throw new Error(d.error.message);
+  return d.content.map(c=>c.text||'').join('');
+}
+const shuffle = arr => { const a=[...arr]; for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];} return a; };
+const sleep   = ms  => new Promise(r => setTimeout(r, ms));
+
+app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+app.listen(PORT, () => console.log(`BarBuddy v3 on port ${PORT}`));
