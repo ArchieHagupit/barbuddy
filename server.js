@@ -28,7 +28,11 @@ ABSOLUTE RULES — never break these:
 - You are an analyst and organizer, not a content creator`;
 
 // ── Persistence ─────────────────────────────────────────────
-const UPLOADS_DIR  = path.join(__dirname, 'uploads');
+// On Railway: set PERSISTENT_STORAGE_PATH to your Volume mount path (e.g. /data)
+// so that KB survives redeploys. Falls back to local uploads/ for dev.
+const UPLOADS_DIR  = process.env.PERSISTENT_STORAGE_PATH
+  ? path.join(process.env.PERSISTENT_STORAGE_PATH, 'uploads')
+  : path.join(__dirname, 'uploads');
 const KB_PATH      = path.join(UPLOADS_DIR, 'kb.json');
 const CONTENT_PATH = path.join(UPLOADS_DIR, 'content.json');
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
@@ -57,6 +61,8 @@ const JOB_QUEUE = [];
 let   JOB_RUNNING = false;
 
 function loadData() {
+  const persistent = !!process.env.PERSISTENT_STORAGE_PATH;
+  console.log(`Storage: ${persistent ? '✅ Persistent (Railway Volume)' : '⚠️  Ephemeral (local)'} → ${UPLOADS_DIR}`);
   try {
     if (fs.existsSync(KB_PATH))      Object.assign(KB, JSON.parse(fs.readFileSync(KB_PATH, 'utf8')));
     if (fs.existsSync(CONTENT_PATH)) CONTENT = JSON.parse(fs.readFileSync(CONTENT_PATH, 'utf8'));
@@ -206,6 +212,23 @@ app.get('/api/job/:jobId', adminOnly, (req, res) => {
   const job = JOB_MAP.get(req.params.jobId);
   if (!job) return res.status(404).json({ error: 'Job not found or expired' });
   res.json({ status: job.status, result: job.result, error: job.error });
+});
+
+// ── ADMIN: Storage info ──────────────────────────────────────
+app.get('/api/storage-info', adminOnly, (_req, res) => {
+  const persistent = !!process.env.PERSISTENT_STORAGE_PATH;
+  let kbSize = 0, contentSize = 0;
+  try { kbSize = fs.existsSync(KB_PATH) ? fs.statSync(KB_PATH).size : 0; } catch(_) {}
+  try { contentSize = fs.existsSync(CONTENT_PATH) ? fs.statSync(CONTENT_PATH).size : 0; } catch(_) {}
+  res.json({
+    persistent,
+    storageDir: UPLOADS_DIR,
+    envVar: process.env.PERSISTENT_STORAGE_PATH || null,
+    files: {
+      'kb.json':      { exists: fs.existsSync(KB_PATH),      bytes: kbSize },
+      'content.json': { exists: fs.existsSync(CONTENT_PATH), bytes: contentSize },
+    },
+  });
 });
 
 // ── ADMIN: Delete ───────────────────────────────────────────
@@ -549,11 +572,41 @@ Score each ALAC component using these weights which reflect actual Philippine Ba
 
 A — Answer (1.5 pts): Direct answer to the question upfront. Worth less because a correct answer without legal basis is incomplete.
 
-L — Legal Basis (3.0 pts): Specific law, article number, codal provision, or G.R. number cited correctly. Heavily weighted because citing exact legal authority is a core bar exam skill. Be strict: only award full points if a specific article number, G.R. number, or statute name is correctly cited. Partial credit for naming the correct law without specific provision. Zero for no citation.
+L — Legal Basis (3.0 pts): The purpose of this component is to check whether the student knows WHAT law or doctrine governs the issue — not to test their ability to memorize article numbers or G.R. citation numbers.
+
+Award points using this scale:
+
+  3.0/3.0 — FULL CREDIT. Award full 3 points if ANY of these is true:
+  • Student correctly named a recognized legal doctrine or principle that actually exists in Philippine law and is applicable to the question (e.g. 'the four-fold test', 'doctrine of strained relations', 'the economic reality test', 'principle of non-diminution of benefits', 'the totality of conduct doctrine', 'the business judgment rule', 'doctrine of piercing the corporate veil', etc.)
+  • Student correctly stated the substance of the governing rule even without naming it — meaning they described what the law says accurately and it is clearly applicable to the facts
+  • Student cited a specific article, statute, or G.R. number correctly (this is a bonus demonstration of knowledge but is NOT required for full credit)
+
+  2.0/3.0 — GOOD CREDIT. Award 2 points if:
+  • Student identified the correct general area of law and stated a rule or principle that is mostly correct but incomplete or slightly imprecise in its statement
+  • Student named the right doctrine but applied it to the wrong element or framed it slightly incorrectly
+  • Student said something like 'under the Labor Code' or 'under the Civil Code' and then stated a rule that is substantially correct even without naming the doctrine
+
+  1.0/3.0 — PARTIAL CREDIT. Award 1 point if:
+  • Student mentioned the general subject area of law (e.g. 'labor law', 'civil law') but did not state any specific rule, doctrine, or legal principle
+  • Student attempted a legal basis but the rule they stated is only tangentially related to the issue
+
+  0/3.0 — NO CREDIT. Award 0 only if:
+  • Student provided NO legal basis whatsoever
+  • Student cited a doctrine or law that is completely wrong and inapplicable to the facts
+  • Student invented a non-existent doctrine or rule
+
+CRITICAL INSTRUCTION: Do NOT deduct points for failure to cite article numbers, G.R. numbers, or specific codal provisions. A student who correctly states 'under the four-fold test, the elements are...' has demonstrated legal knowledge and deserves full Legal Basis credit. Specific citations are impressive but optional — the substance of the legal rule matters, not the memorization of numbers.
 
 A — Application (4.0 pts): HIGHEST WEIGHT. How well the student applies the law to the specific facts. Only award full points if the student explicitly connects the legal rule to the specific parties and facts in the question. Partial credit for general application. Zero for restating the law without applying it to the facts. This demonstrates actual legal reasoning ability which is the primary skill tested in the bar exam.
 
-C — Conclusion (1.5 pts): Clear restatement of the answer. Shows the student can synthesize their analysis.
+C — Conclusion (1.5 pts): Clear restatement of the answer with finality. Shows the student can synthesize their analysis.
+
+Grade thresholds for the "grade" field (based on numericScore out of 10):
+  Excellent:         numericScore >= 8.5
+  Good:              numericScore >= 7.0
+  Satisfactory:      numericScore >= 5.5
+  Needs Improvement: numericScore >= 4.0
+  Poor:              numericScore < 4.0
 
 Respond ONLY with valid JSON (no markdown):
 {
@@ -562,9 +615,9 @@ Respond ONLY with valid JSON (no markdown):
   "grade": "Excellent|Good|Satisfactory|Needs Improvement|Poor",
   "alac": {
     "answer": { "score": 1.2, "max": 1.5, "feedback": "What the student did well or missed for this component", "studentDid": "Quote or describe what the student wrote for the direct answer" },
-    "legalBasis": { "score": 2.4, "max": 3.0, "feedback": "...", "studentDid": "..." },
-    "application": { "score": 3.2, "max": 4.0, "feedback": "...", "studentDid": "..." },
-    "conclusion": { "score": 1.0, "max": 1.5, "feedback": "...", "studentDid": "..." }
+    "legalBasis": { "score": 2.5, "max": 3.0, "feedback": "...", "studentDid": "..." },
+    "application": { "score": 2.8, "max": 4.0, "feedback": "...", "studentDid": "..." },
+    "conclusion": { "score": 1.2, "max": 1.5, "feedback": "...", "studentDid": "..." }
   },
   "overallFeedback": "2-3 sentence overall assessment",
   "strengths": ["..."],

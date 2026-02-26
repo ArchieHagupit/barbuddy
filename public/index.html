@@ -263,10 +263,15 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .alac-table{width:100%;border-collapse:collapse;font-size:13px;margin:10px 0;}
 .alac-table th{text-align:left;padding:6px 10px;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--bdr2);}
 .alac-table td{padding:7px 10px;vertical-align:top;border-bottom:1px solid rgba(255,255,255,.04);}
-.alac-score{font-family:var(--fm);font-weight:700;font-size:13px;white-space:nowrap;}
-.alac-score.hi{color:#14b4a0;}.alac-score.mid{color:var(--gold);}.alac-score.lo{color:#e07080;}
+.alac-score{font-family:var(--fm);font-weight:700;font-size:13px;white-space:nowrap;padding:2px 8px;border-radius:5px;display:inline-block;}
+.alac-score.hi{color:#14b4a0;background:rgba(20,180,160,.15);}
+.alac-score.mid{color:#c9a84c;background:rgba(201,168,76,.15);}
+.alac-score.lo{color:#e07080;background:rgba(155,35,53,.15);}
 .alac-total-row td{border-top:1px solid var(--bdr2);font-weight:700;padding:8px 10px;}
 .alac-model{white-space:pre-line;font-size:13px;line-height:1.8;}
+.model-answer-section{margin-bottom:2px;}
+.ma-label{color:var(--gold);font-weight:700;text-transform:uppercase;font-size:11px;letter-spacing:.08em;margin-bottom:4px;}
+.ma-text{font-size:14px;line-height:1.75;color:rgba(248,246,241,.88);margin-bottom:14px;white-space:pre-line;}
 .essay-box{width:100%;min-height:190px;background:rgba(255,255,255,.04);border:1px solid var(--bdr2);border-radius:11px;padding:13px 15px;color:var(--white);font-family:var(--fb);font-size:14px;line-height:1.75;outline:none;resize:vertical;transition:border-color .2s;}
 .essay-box:focus{border-color:rgba(201,168,76,.4);}
 .ai-fb{background:rgba(201,168,76,.06);border:1px solid rgba(201,168,76,.2);border-radius:13px;padding:16px;margin-top:14px;display:none;}
@@ -777,6 +782,9 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
           <button class="btn-og" onclick="retriggerGen()" style="font-size:11px;">↺ Re-generate All</button>
           <button class="btn-og" onclick="clearContent()" style="font-size:11px;border-color:rgba(155,35,53,.4);color:#e07080;">🗑 Clear Content Cache</button>
         </div>
+        <div id="storageIndicator" style="margin-top:14px;padding:10px 13px;border-radius:10px;background:rgba(255,255,255,.04);border:1px solid var(--bdr2);font-size:12px;color:var(--muted);">
+          Checking storage…
+        </div>
       </div>
     </div>
   </div>
@@ -1234,13 +1242,28 @@ function pickMCQ(i){
 // ALAC color thresholds per component
 function alacScoreCls(score, key){
   if(key==='answer')      return score>=1.2?'hi':score>=0.7?'mid':'lo';
-  if(key==='legalBasis')  return score>=2.4?'hi':score>=1.5?'mid':'lo';
+  if(key==='legalBasis')  return score>=2.0?'hi':score>=1.0?'mid':'lo';
   if(key==='application') return score>=2.8?'hi':score>=1.75?'mid':'lo';
-  if(key==='conclusion')  return score>=1.6?'hi':score>=1.0?'mid':'lo';
+  if(key==='conclusion')  return score>=1.2?'hi':score>=0.7?'mid':'lo';
   return score>=2?'hi':score>=1?'mid':'lo';
 }
+// Parse "ANSWER: ... LEGAL BASIS: ... APPLICATION: ... CONCLUSION: ..." into sections
+function renderModelAnswer(text){
+  if(!text) return '';
+  const markers=['ANSWER','LEGAL BASIS','APPLICATION','CONCLUSION'];
+  const hasAny=markers.some(m=>text.includes(m+':'));
+  if(!hasAny) return `<span class="alac-model">${h(text)}</span>`;
+  const positions=[];
+  markers.forEach(m=>{const idx=text.indexOf(m+':');if(idx!==-1)positions.push({label:m,idx,end:idx+m.length+1});});
+  positions.sort((a,b)=>a.idx-b.idx);
+  const parts=positions.map((p,i)=>{
+    const nextIdx=positions[i+1]?positions[i+1].idx:text.length;
+    return {label:p.label,text:text.slice(p.end,nextIdx).trim()};
+  });
+  return parts.map(p=>`<div class="model-answer-section"><div class="ma-label">${h(p.label)}</div><div class="ma-text">${h(p.text)}</div></div>`).join('');
+}
 function renderAlacCard(ev){
-  const gc=ev.grade==='Excellent'?'#14b4a0':ev.grade==='Good'?'#50d090':ev.grade==='Satisfactory'?'var(--gold)':ev.grade==='Needs Improvement'?'#e09050':'#e07080';
+  const gc=ev.grade==='Excellent'?'#14b4a0':ev.grade==='Good'?'#50d090':ev.grade==='Satisfactory'?'#c9a84c':ev.grade==='Needs Improvement'?'#e09050':'#e07080';
   const al=ev.alac||{};
   const rows=[
     ['A — Answer',      'answer',      al.answer,      1.5],
@@ -1250,21 +1273,22 @@ function renderAlacCard(ev){
   ];
   const tableRows=rows.map(([label,key,c,maxPts])=>c?`<tr>
     <td style="color:var(--white);font-weight:600;">${label}</td>
-    <td><span class="alac-score ${alacScoreCls(c.score??0,key)}">${c.score!=null?c.score+'/'+maxPts:'—'}</span></td>
+    <td><span class="alac-score ${alacScoreCls(c.score??0,key)}">${c.score!=null?c.score:'—'}</span></td>
+    <td style="color:var(--muted);font-size:12px;white-space:nowrap;">/${maxPts}</td>
     <td style="color:rgba(248,246,241,.8);">${h(c.feedback||'')}</td>
   </tr>`:''
   ).join('');
   return `<div class="ai-fb-head">⚖️ <span class="ai-fb-score">${h(ev.score||'?/10')}</span><span style="background:rgba(255,255,255,.08);border-radius:5px;padding:2px 7px;font-family:var(--fm);color:${gc};">${h(ev.grade||'')}</span></div>
   <div class="ai-fb-content">
     <table class="alac-table">
-      <thead><tr><th>ALAC</th><th>Score</th><th>Feedback</th></tr></thead>
-      <tbody>${tableRows}<tr class="alac-total-row"><td colspan="2" style="color:var(--gold);">Total: ${h(ev.score||'?/10')} — ${h(ev.grade||'')}</td><td style="color:rgba(248,246,241,.6);font-size:12px;">${h(ev.overallFeedback||'')}</td></tr></tbody>
+      <thead><tr><th>Component</th><th>Score</th><th>Max</th><th>Feedback</th></tr></thead>
+      <tbody>${tableRows}<tr class="alac-total-row"><td style="color:${gc};">Total</td><td style="color:${gc};">${h(ev.score||'?/10')}</td><td style="color:var(--muted);font-size:12px;">/10</td><td style="color:rgba(248,246,241,.6);font-size:12px;">${h(ev.overallFeedback||'')}</td></tr></tbody>
     </table>
     ${ev.strengths?.length?`<p style="margin-top:10px;"><strong>✅ Strengths:</strong></p><ul>${ev.strengths.map(s=>`<li>${h(s)}</li>`).join('')}</ul>`:''}
     ${ev.improvements?.length?`<p><strong>⚠️ Improve:</strong></p><ul>${ev.improvements.map(s=>`<li>${h(s)}</li>`).join('')}</ul>`:''}
     ${ev.keyMissed?.length?`<p><strong>📚 Missed:</strong></p><ul>${ev.keyMissed.map(s=>`<li>${h(s)}</li>`).join('')}</ul>`:''}
     <details style="margin-top:12px;"><summary style="cursor:pointer;color:var(--gold);font-weight:600;font-size:13px;">📖 Model Answer (ALAC Format)</summary>
-    <div style="margin-top:8px;padding:12px;background:rgba(255,255,255,.03);border-radius:9px;font-size:13px;line-height:1.9;"><span class="alac-model">${h(ev.modelAnswer||'')}</span></div></details>
+    <div style="margin-top:8px;padding:12px;background:rgba(255,255,255,.03);border-radius:9px;">${renderModelAnswer(ev.modelAnswer||'')}</div></details>
   </div>`;
 }
 async function submitEssay(){
@@ -1801,6 +1825,7 @@ function pollJob(jobId,sta,onDone){
   },8000);
 }
 async function refreshAdminKB(){
+  loadStorageInfo();
   const el=document.getElementById('adminKbList');if(!el)return;
   const items=[
     ...(KB.hasSyllabus?[{name:KB.syllabusName||'Syllabus',subject:'all',type:'syllabus',id:'_syl'}]:[]),
@@ -1813,6 +1838,33 @@ async function refreshAdminKB(){
     <div style="flex:1;min-width:0;"><div class="kl-name">${h(i.name)}</div><div class="kl-sub">${i.subject||''} ${i.year?'· '+i.year:''} ${i.qCount!==undefined?'· '+i.qCount+' Qs':i.type?'· '+i.type:''}</div></div>
     ${i.id!=='_syl'?`<button class="kl-del" onclick="deleteItem('${i.id}',this)">✕</button>`:`<button class="kl-del" onclick="deleteSyllabus(this)">✕</button>`}
   </div>`).join('');
+}
+async function loadStorageInfo(){
+  const el=document.getElementById('storageIndicator');if(!el)return;
+  try{
+    const r=await fetch('/api/storage-info',{headers:{'x-admin-key':adminKey}});
+    if(!r.ok){el.innerHTML='<span style="color:var(--muted);">Storage info unavailable.</span>';return;}
+    const d=await r.json();
+    const kb=d.files['kb.json'],ct=d.files['content.json'];
+    const fmt=b=>b>=1024*1024?(b/1024/1024).toFixed(1)+'MB':b>=1024?(b/1024).toFixed(1)+'KB':b+'B';
+    const persistColor=d.persistent?'#14b4a0':'#e09050';
+    const persistLabel=d.persistent?'✅ Persistent (Railway Volume)':'⚠️ Ephemeral — data lost on redeploy';
+    el.innerHTML=`<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+      <span style="color:${persistColor};font-weight:600;">${persistLabel}</span>
+    </div>
+    <div style="color:rgba(248,246,241,.6);line-height:1.7;">
+      📄 kb.json: ${kb.exists?fmt(kb.bytes):'not found'} &nbsp;|&nbsp;
+      📄 content.json: ${ct.exists?fmt(ct.bytes):'not found'}<br>
+      📁 Path: <code style="font-size:11px;background:rgba(255,255,255,.06);padding:1px 5px;border-radius:4px;">${h(d.storageDir)}</code>
+    </div>
+    ${!d.persistent?`<div style="margin-top:8px;padding:8px 10px;background:rgba(224,144,80,.08);border:1px solid rgba(224,144,80,.25);border-radius:8px;color:#e09050;line-height:1.6;">
+      <strong>To enable persistent storage on Railway:</strong><br>
+      1. Add a Volume to your Railway service (Storage → Add Volume)<br>
+      2. Set mount path (e.g. <code style="font-size:11px;">/data</code>)<br>
+      3. Add env var: <code style="font-size:11px;">PERSISTENT_STORAGE_PATH=/data</code><br>
+      4. Redeploy — your KB will survive future redeploys.
+    </div>`:''}`;
+  }catch(e){el.innerHTML=`<span style="color:var(--muted);">Storage info unavailable.</span>`;}
 }
 async function deleteItem(id,btn){
   if(!confirm('Delete this material?'))return;btn.disabled=true;
