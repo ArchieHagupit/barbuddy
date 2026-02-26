@@ -601,12 +601,12 @@ A — Application (4.0 pts): HIGHEST WEIGHT. How well the student applies the la
 
 C — Conclusion (1.5 pts): Clear restatement of the answer with finality. Shows the student can synthesize their analysis.
 
-Grade thresholds for the "grade" field (based on numericScore out of 10):
-  Excellent:         numericScore >= 8.5
-  Good:              numericScore >= 7.0
-  Satisfactory:      numericScore >= 5.5
-  Needs Improvement: numericScore >= 4.0
-  Poor:              numericScore < 4.0
+Assign grade based on numericScore (passing score is 7.0/10):
+  Excellent:          8.5 and above
+  Good:               7.0 to 8.4  ← passing starts here
+  Satisfactory:       5.5 to 6.9
+  Needs Improvement:  4.0 to 5.4
+  Poor:               below 4.0
 
 Respond ONLY with valid JSON (no markdown):
 {

@@ -1309,8 +1309,8 @@ function nextQ(){qIdx++;renderQuizQ();}
 function showQuizResults(){
   const pct=qIdx>0?Math.round(qScore/qIdx*100):0;
   document.getElementById('qmBody').innerHTML=`<div class="quiz-results">
-    <div style="font-size:48px;margin-bottom:12px;">${pct>=75?'⚖️':pct>=50?'📖':'💪'}</div>
-    <div style="font-family:var(--fd);font-size:26px;font-weight:700;color:var(--gold-l);margin-bottom:5px;">${pct>=75?'Excellent!':pct>=50?'Good Effort!':'Keep Reviewing!'}</div>
+    <div style="font-size:48px;margin-bottom:12px;">${pct>=70?'⚖️':pct>=50?'📖':'💪'}</div>
+    <div style="font-family:var(--fd);font-size:26px;font-weight:700;color:var(--gold-l);margin-bottom:5px;">${pct>=70?'Excellent!':pct>=50?'Good Effort!':'Keep Reviewing!'}</div>
     <div class="qr-stats">
       <div class="qr-stat"><div class="n">${qScore}</div><div class="l">Correct</div></div>
       <div class="qr-stat"><div class="n">${qIdx-qScore}</div><div class="l">Wrong</div></div>
@@ -1475,7 +1475,8 @@ async function endMockSession(){
     <div style="font-size:32px;margin-bottom:8px;">🏛</div>
     <div style="font-family:var(--fd);font-size:20px;font-weight:700;color:#ff8c42;margin-bottom:4px;">Mock Bar Results</div>
     <div class="mr-grade">${avg}/10</div>
-    <div style="font-size:16px;font-weight:700;color:${pct>=75?'#14b4a0':pct>=55?'var(--gold)':'#e07080'};margin-bottom:18px;">${pct}% — ${pct>=75?'✅ Passing Level':'❌ Needs Improvement'}</div>
+    <div style="font-size:16px;font-weight:700;color:${pct>=70?'#14b4a0':pct>=55?'#c9a84c':'#e07080'};margin-bottom:4px;">${pct}% — ${pct>=70?'✅ PASSED':pct>=55?'📖 Keep Studying':'❌ Needs More Review'}</div>
+    <div style="font-size:12px;color:var(--muted);font-family:var(--fm);margin-bottom:18px;">Passing score: 7.0/10 (70%)</div>
     <div class="mr-stats">
       <div class="mr-stat"><div class="n">${answered}</div><div class="l">Answered</div></div>
       <div class="mr-stat"><div class="n">${mockQs.length-answered}</div><div class="l">Skipped</div></div>
@@ -1493,14 +1494,16 @@ async function endMockSession(){
       const s=scores[i],sub=SUBJS.find(x=>x.key===q.subject)||{name:q.subject,cls:'sg-gen'},ns=s.numericScore||0;
       const qText=q.prompt||q.q||'';
       const isSit=(q.type==='situational')&&q.context;
+      const qBadgeCls=ns>=7?'qsb-high':ns>=5?'qsb-mid':'qsb-low';
       return `<div class="q-review-item">
-        <div style="font-size:11px;color:#a08060;margin-bottom:5px;display:flex;align-items:center;gap:8px;">
+        <div style="font-size:11px;color:#a08060;margin-bottom:5px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
           Q${i+1} · <span class="sbg ${sub.cls}">${sub.name}</span>
           ${q.isReal?'<span style="font-size:9px;">📜 Past Bar</span>':q.source==='Pre-generated'?'<span style="font-size:9px;color:var(--teal);">📚 Pre-gen</span>':'<span style="font-size:9px;">🤖 AI</span>'}
+          <span class="q-score-badge ${s.grade==='Not Answered'?'qsb-low':qBadgeCls}" style="margin-left:auto;">${s.grade==='Not Answered'?'Not Answered':ns+'/10'}</span>
         </div>
         ${isSit?`<div class="essay-ctx" style="margin-bottom:8px;"><span class="facts-label">Facts</span>${h(q.context)}</div><span class="q-label">Question</span>`:''}
         <div style="font-size:13px;color:rgba(248,246,241,.85);margin-bottom:8px;line-height:1.6;">${h(qText)}</div>
-        ${s.grade==='Not Answered'?`<span class="q-score-badge qsb-low">Not Answered</span>`:`
+        ${s.grade==='Not Answered'?'':`
         <div class="ai-fb show" style="margin-top:8px;">${renderAlacCard(s)}</div>`}
         <details style="margin-top:8px;"><summary style="cursor:pointer;color:var(--muted);font-size:12px;font-weight:600;">Your answer</summary>
           <div style="margin-top:6px;padding:10px;background:rgba(255,255,255,.03);border-radius:8px;font-size:12px;line-height:1.7;color:rgba(248,246,241,.8);">${h(mockAnswers[i]||'(no answer)')}</div>
@@ -1595,7 +1598,7 @@ function buildResultsHtml(){
   const totalSc=mockScores.reduce((a,s)=>a+(s.numericScore||0),0);
   const avg=mockScores.length?Math.round(totalSc/mockScores.length*10)/10:0;
   const pct=Math.round(avg/10*100);
-  const passColor=pct>=75?'#1a7a5e':pct>=55?'#8b6914':'#b32d2d';
+  const passColor=pct>=70?'#1a7a5e':pct>=55?'#8b6914':'#b32d2d';
 
   const alacTr=(label,c,max)=>c?`<tr><td style="padding:6px 8px;border:1px solid #d0b870;font-weight:600;">${label}</td><td style="padding:6px 8px;border:1px solid #d0b870;text-align:center;font-weight:bold;">${c.score!=null?c.score+'/'+max:'—'}</td><td style="padding:6px 8px;border:1px solid #d0b870;">${e(c.feedback||'')}</td></tr>`:'';
 
@@ -1641,7 +1644,8 @@ function buildResultsHtml(){
       <div><strong>Subject:</strong> ${e(subjStr)}</div>
       <div><strong>Questions:</strong> ${answered} answered / ${mockQs.length} total</div>
     </div>
-    <div style="font-size:20px;font-weight:bold;color:${passColor};margin:10px 0 20px;">Overall Score: ${avg}/10 — ${pct>=75?'✅ PASSING LEVEL':'❌ NEEDS IMPROVEMENT'}</div>
+    <div style="font-size:20px;font-weight:bold;color:${passColor};margin:10px 0 5px;">Overall Score: ${avg}/10 — ${pct>=70?'✅ PASSED':pct>=55?'📖 KEEP STUDYING':'❌ NEEDS MORE REVIEW'}</div>
+    <div style="font-size:12px;color:#888;margin-bottom:20px;">Passing score: 7.0/10 (70%)</div>
     ${qHtml}
     <div style="margin-top:30px;padding-top:12px;border-top:1px solid #ccc;font-size:11px;color:#666;text-align:center;">Generated by BarBuddy — Philippine Bar Exam Companion</div>
   </div>`;
