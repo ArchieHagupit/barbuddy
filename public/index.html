@@ -257,8 +257,13 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .q-feedback.no{background:rgba(155,35,53,.1);border:1px solid rgba(155,35,53,.3);color:#e07080;}
 /* ESSAY */
 .essay-prompt{font-size:15px;font-weight:600;line-height:1.75;margin-bottom:10px;color:var(--white);}
-.essay-ctx{background:rgba(0,56,168,.07);border:1px solid rgba(0,56,168,.2);border-radius:11px;padding:13px 15px;margin-bottom:13px;font-size:13px;line-height:1.75;color:rgba(248,246,241,.78);font-style:italic;}
-.facts-label{font-size:10px;font-weight:700;color:#6b9fff;text-transform:uppercase;letter-spacing:.09em;margin-bottom:6px;display:block;}
+.facts-box,.essay-ctx{background:rgba(248,246,241,.07);border-left:4px solid var(--gold);border-radius:0 12px 12px 0;padding:20px 22px;margin-bottom:22px;}
+.facts-label{font-family:var(--fd);font-size:11px;font-weight:800;letter-spacing:.12em;color:var(--gold);text-transform:uppercase;margin-bottom:12px;display:flex;align-items:center;gap:7px;}
+.facts-label::before{content:'';display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--gold);}
+.facts-text{font-size:16px;font-style:normal;font-weight:400;line-height:1.85;color:rgba(248,246,241,.95);font-family:var(--fb);}
+.question-label{font-family:var(--fd);font-size:11px;font-weight:800;letter-spacing:.12em;color:var(--og);text-transform:uppercase;margin-bottom:10px;margin-top:20px;display:flex;align-items:center;gap:7px;}
+.question-label::before{content:'';display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--og);}
+.question-text{font-size:15px;font-weight:700;line-height:1.75;color:rgba(248,246,241,1);font-family:var(--fb);}
 .q-label{font-size:10px;font-weight:700;color:var(--gold);text-transform:uppercase;letter-spacing:.09em;margin-bottom:5px;display:block;}
 .alac-table{width:100%;border-collapse:collapse;font-size:13px;margin:10px 0;}
 .alac-table th{text-align:left;padding:6px 10px;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--bdr2);}
@@ -1370,8 +1375,12 @@ function renderQuizQ(){
     body.innerHTML=`<div style="display:flex;gap:7px;margin-bottom:14px;flex-wrap:wrap;"><span class="sbg ${sub.cls}">${sub.name}</span><span class="tag tg-e">Essay</span></div>
       <div class="q-prog-track"><div class="q-prog-fill" style="width:${(qIdx/qs.length)*100}%"></div></div>
       <div class="q-prog-meta"><span>Q${qIdx+1} of ${qs.length}</span><span>Write answer → AI feedback</span></div>
-      ${(cur.type==='situational'&&cur.context)?`<div class="essay-ctx"><span class="facts-label">Facts</span>${h(cur.context)}</div><span class="q-label">Question</span>`:cur.context?`<div class="essay-ctx">${h(cur.context)}</div>`:''}
-      <div class="essay-prompt">${h(cur.prompt||cur.q||'')}</div>
+      ${(cur.type==='situational'&&cur.context&&cur.context.trim())
+        ? `<div class="facts-box"><div class="facts-label">📋 Facts</div><div class="facts-text">${h(cur.context)}</div></div>
+           <div class="question-label">❓ Question</div>
+           <div class="question-text">${h(cur.prompt||cur.q||'')}</div>`
+        : `<div class="question-text" style="font-size:17px;">${h(cur.prompt||cur.q||'')}</div>`
+      }
       <textarea class="essay-box" id="essayBox" placeholder="Write your answer…"></textarea>
       <div style="display:flex;gap:8px;margin-top:10px;">
         <button class="btn-gold" id="essFB" onclick="submitEssay()">🤖 Get AI Feedback</button>
@@ -1638,7 +1647,7 @@ function renderMockQ(){
   document.getElementById('ms-prog').style.width=`${((mockIdx+1)/mockQs.length)*100}%`;
   const sub=SUBJS.find(s=>s.key===q.subject)||{name:q.subject,cls:'sg-gen'};
   document.getElementById('ms-src').innerHTML=q.isReal
-    ?`<span class="ms-source">📜 ${h(q.source||'')} ${h(q.year||'')}</span>`
+    ?`<span class="ms-source">📜 Past Bar ${h(q.year||q.source||'')}</span>`
     :q.source==='Pre-generated'
       ?`<span class="ms-source">📚 Pre-generated</span>`
       :`<span class="ms-source">🤖 AI Generated</span>`;
@@ -1646,12 +1655,15 @@ function renderMockQ(){
     m.className='q-marker'+(mockAnswers[i]?.trim()?' done':'')+(i===mockIdx?' current':'');
   });
   const qText = q.prompt || q.q || '';
-  const isSituational = (q.type === 'situational') && q.context;
+  const isSituational = (q.type === 'situational') && q.context && q.context.trim();
   document.getElementById('mockQArea').innerHTML=`
-    <div style="display:flex;gap:7px;margin-bottom:14px;flex-wrap:wrap;"><span class="sbg ${sub.cls}">${h(sub.name)}</span><span class="tag tg-e">Bar Essay</span></div>
-    ${isSituational?`<div class="essay-ctx"><span class="facts-label">Facts</span>${h(q.context)}</div><span class="q-label">Question</span>`:''}
-    ${!isSituational&&q.context?`<div class="essay-ctx">${h(q.context)}</div>`:''}
-    <div class="essay-prompt">${h(qText)}</div>
+    <div style="display:flex;gap:7px;margin-bottom:18px;flex-wrap:wrap;"><span class="sbg ${sub.cls}">${h(sub.name)}</span><span class="tag tg-e">Bar Essay</span></div>
+    ${isSituational
+      ? `<div class="facts-box"><div class="facts-label">📋 Facts</div><div class="facts-text">${h(q.context)}</div></div>
+         <div class="question-label">❓ Question</div>
+         <div class="question-text">${h(qText)}</div>`
+      : `<div class="question-text" style="font-size:17px;">${h(qText)}</div>`
+    }
     <div style="font-size:11px;color:var(--muted);margin:8px 0 10px;">Write a complete bar exam answer. Navigate freely between questions before submitting.</div>
     <textarea class="essay-box" id="mockBox" style="min-height:220px;" placeholder="Write your answer…" oninput="saveMock()">${h(mockAnswers[mockIdx]||'')}</textarea>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;">
@@ -1724,8 +1736,15 @@ async function endMockSession(){
           ${q.isReal?'<span style="font-size:9px;">📜 Past Bar</span>':q.source==='Pre-generated'?'<span style="font-size:9px;color:var(--teal);">📚 Pre-gen</span>':'<span style="font-size:9px;">🤖 AI</span>'}
           <span class="q-score-badge ${s.grade==='Not Answered'?'qsb-low':qBadgeCls}" style="margin-left:auto;">${s.grade==='Not Answered'?'Not Answered':ns+'/10'}</span>
         </div>
-        ${isSit?`<div class="essay-ctx" style="margin-bottom:8px;"><span class="facts-label">Facts</span>${h(q.context)}</div><span class="q-label">Question</span>`:''}
-        <div style="font-size:13px;color:rgba(248,246,241,.85);margin-bottom:8px;line-height:1.6;">${h(qText)}</div>
+        ${isSit
+          ? `<div class="facts-box" style="margin-bottom:16px;">
+               <div class="facts-label">📋 Facts</div>
+               <div class="facts-text" style="font-size:15px;">${h(q.context)}</div>
+             </div>
+             <div class="question-label">❓ Question</div>
+             <div class="question-text" style="font-size:14px;margin-bottom:10px;">${h(qText)}</div>`
+          : `<div class="question-text" style="font-size:14px;margin-bottom:10px;">${h(qText)}</div>`
+        }
         ${s.grade==='Not Answered'?'':`
         <div class="ai-fb show" style="margin-top:8px;">${renderEvalCard(s)}</div>`}
         <details style="margin-top:8px;"><summary style="cursor:pointer;color:var(--muted);font-size:12px;font-weight:600;">Your answer</summary>
@@ -1837,7 +1856,7 @@ function buildResultsHtml(){
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
         <span style="font-size:17px;font-weight:bold;color:#7a6128;">Q${i+1}</span>
         <span style="background:#eee;border-radius:4px;padding:2px 8px;font-size:12px;color:#333;">${e(sub.name)}</span>
-        <span style="color:#666;font-size:12px;">${q.isReal?'📜 Past Bar '+(q.year||''):q.source==='Pre-generated'?'📚 Pre-generated':'🤖 AI Generated'}</span>
+        <span style="color:#666;font-size:12px;">${q.isReal?'📜 Past Bar '+(q.year||q.source||''):q.source==='Pre-generated'?'📚 Pre-generated':'🤖 AI Generated'}</span>
       </div>
       ${isSit?`<div style="background:#f0f4ff;border-left:3px solid #3a5abf;padding:10px 14px;margin-bottom:12px;border-radius:4px;"><div style="font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:.08em;color:#3a5abf;margin-bottom:5px;">FACTS</div><div style="font-size:13px;line-height:1.7;">${e(q.context)}</div></div>`:''}
       <div style="font-size:14px;font-weight:bold;line-height:1.7;margin-bottom:14px;">${e(qText)}</div>
