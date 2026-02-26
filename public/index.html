@@ -324,6 +324,16 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .sb-real{background:rgba(155,35,53,.15);color:#e07080;border:1px solid rgba(155,35,53,.25);}
 .sb-pregen{background:rgba(20,180,160,.1);color:var(--teal);border:1px solid rgba(20,180,160,.2);}
 .sb-ai{background:rgba(255,140,66,.1);color:#ff8c42;border:1px solid rgba(255,140,66,.2);}
+/* MANUAL ENTRY DIVIDER */
+.manual-divider{display:flex;align-items:center;gap:10px;font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.05em;margin:20px 0 14px;text-transform:uppercase;}
+.manual-divider::before,.manual-divider::after{content:'';flex:1;height:1px;background:var(--bdr);}
+.mn-note{background:rgba(20,180,160,.07);border:1px solid rgba(20,180,160,.2);border-radius:10px;padding:10px 13px;font-size:12px;color:var(--teal);line-height:1.55;margin-bottom:14px;}
+.mn-preview{display:flex;flex-direction:column;gap:5px;margin:12px 0;}
+.mn-prev-item{display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.04);border:1px solid var(--bdr2);border-radius:8px;padding:7px 11px;font-size:12px;color:var(--white);}
+.mn-prev-item .mn-rm{margin-left:auto;background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;line-height:1;padding:0 2px;}
+.mn-prev-item .mn-rm:hover{color:#e07080;}
+.mn-radio-group{display:flex;gap:14px;margin-bottom:10px;}
+.mn-radio-group label{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--white);cursor:pointer;}
 /* ─── ADMIN ─── */
 .admin-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px;}
 .admin-panel{background:var(--card);border:1px solid var(--bdr2);border-radius:16px;padding:20px;}
@@ -715,6 +725,48 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
         </div>
         <div id="pb-status"></div>
         <button class="btn-gold" onclick="uploadPastBar()" style="width:100%;justify-content:center;">📜 Save Past Bar</button>
+
+        <div class="manual-divider">Or Add Questions Manually</div>
+        <div class="mn-note">💡 Manual entry saves instantly with no AI processing — use this to add questions one by one with full control over the fact pattern, suggested answer, and key points.</div>
+
+        <label class="form-label">Question Number</label>
+        <input class="form-input" id="mn-num" type="number" value="1" min="1">
+        <label class="form-label">Question Type</label>
+        <div class="mn-radio-group">
+          <label><input type="radio" name="mn-type" value="situational" checked onchange="toggleManualContext()"> Situational (has fact pattern)</label>
+          <label><input type="radio" name="mn-type" value="conceptual" onchange="toggleManualContext()"> Conceptual (define/distinguish)</label>
+        </div>
+        <div id="mn-context-wrap">
+          <label class="form-label">Fact Pattern / Context</label>
+          <textarea class="form-input" id="mn-context" rows="4" placeholder="Full facts of the case — all parties, events, and circumstances…" style="resize:vertical;"></textarea>
+        </div>
+        <label class="form-label">Question</label>
+        <textarea class="form-input" id="mn-q" rows="3" placeholder="The actual question asked (e.g. Is X liable? What are the rights of Y?)" style="resize:vertical;"></textarea>
+        <label class="form-label">Suggested Answer</label>
+        <textarea class="form-input" id="mn-answer" rows="5" placeholder="Model answer (ideally in ALAC format)…" style="resize:vertical;"></textarea>
+        <label class="form-label">Key Legal Points (one per line)</label>
+        <textarea class="form-input" id="mn-points" rows="3" placeholder="Article 94, Labor Code&#10;G.R. No. 12345&#10;Doctrine of…" style="resize:vertical;"></textarea>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+          <div>
+            <label class="form-label">Subject</label>
+            <select class="form-select" id="mn-subject">
+              <option value="general">All subjects</option>
+              <option value="civil">Civil Law</option><option value="criminal">Criminal Law</option>
+              <option value="political">Political Law</option><option value="labor">Labor Law</option>
+              <option value="commercial">Commercial Law</option><option value="taxation">Taxation</option>
+              <option value="remedial">Remedial Law</option><option value="ethics">Legal Ethics</option>
+            </select>
+          </div>
+          <div><label class="form-label">Year</label><input class="form-input" id="mn-year" placeholder="e.g. 2023"></div>
+        </div>
+        <label class="form-label">Batch Name</label>
+        <input class="form-input" id="mn-name" placeholder="e.g. 2023 Bar — Civil Law (Manual)">
+        <div id="mn-preview" class="mn-preview"></div>
+        <div id="mn-status"></div>
+        <div style="display:flex;gap:8px;margin-top:4px;">
+          <button class="btn-og" onclick="addManualQ()" style="flex:1;justify-content:center;">+ Add to Batch</button>
+          <button class="btn-gold" onclick="saveManualBatch()" style="flex:1;justify-content:center;">💾 Save All</button>
+        </div>
       </div>
       <!-- CURRENT KB -->
       <div class="admin-panel">
@@ -749,6 +801,24 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 </div>
 </div>
 
+<!-- EMAIL RESULTS MODAL -->
+<div class="overlay" id="emailOverlay">
+<div class="modal" style="max-width:460px;">
+  <button class="modal-x" onclick="closeModal('emailOverlay')">✕</button>
+  <div class="modal-t">📧 Email Results</div>
+  <p class="modal-s">Send your mock bar results to an email address.</p>
+  <label class="form-label" style="margin-top:4px;">Email Address</label>
+  <input class="form-input" id="email-to" type="email" placeholder="you@example.com" style="margin-bottom:10px;">
+  <label class="form-label">Subject Line</label>
+  <input class="form-input" id="email-subject" type="text" style="margin-bottom:10px;">
+  <div id="email-status" style="display:none;font-size:13px;padding:8px 12px;border-radius:8px;margin-bottom:10px;"></div>
+  <div style="display:flex;gap:8px;margin-top:4px;">
+    <button class="btn-gold" id="emailSendBtn" onclick="sendEmailResults()" style="flex:1;justify-content:center;">📧 Send Results</button>
+    <button class="btn-ghost" onclick="closeModal('emailOverlay')">Cancel</button>
+  </div>
+</div>
+</div>
+
 <script>
 // ══════════════════════════════════
 // STATE
@@ -762,6 +832,8 @@ let quizPool=[];         // flat list of {type,subject,topic,data} loaded from C
 let activeQuiz=null, qIdx=0, qScore=0, qMode='mcq';
 let chatHistory=[];
 let mockQs=[], mockIdx=0, mockAnswers=[], mockTimer=null, mockLeft=0;
+let mockScores=[], mockSubjectsUsed=[], mockSessionDate=null;
+let manualBatch=[], manualQNum=1;
 let adminKey='', sseSource=null;
 
 const SUBJS=[
@@ -1279,6 +1351,7 @@ async function startMockBar(){
   const allOn=document.querySelector('.mc-subj-tag[data-key="all"]').classList.contains('on');
   const subjects=allOn?['all']:Array.from(document.querySelectorAll('.mc-subj-tag.on')).map(t=>t.dataset.key);
   console.log('Starting mock bar with count:',count,'subjects:',subjects);
+  mockSubjectsUsed=subjects; mockSessionDate=new Date(); mockScores=[];
   const btn=document.getElementById('startMockBtn');
   btn.disabled=true;btn.textContent='⏳ Building question set…';
   document.getElementById('mockStartError').style.display='none';
@@ -1364,10 +1437,15 @@ async function endMockSession(){
     }catch(e){scores.push({score:'?/10',numericScore:0,grade:'Error',overallFeedback:e.message,keyMissed:[]});}
   }
 
+  mockScores=scores;
   const total=scores.reduce((a,s)=>a+(s.numericScore||0),0);
   const avg=scores.length?Math.round(total/scores.length*10)/10:0;
   const pct=Math.round(avg/10*100);
   totalQDone+=answered;totalCorrect+=Math.round(pct/100*answered);updateDash();
+
+  // Pre-fill email modal subject
+  const emailSubj=`BarBuddy Mock Bar Results — ${new Date().toLocaleDateString('en-PH')} — ${avg}/10`;
+  document.getElementById('email-subject').value=emailSubj;
 
   res.innerHTML=`<div class="mock-results">
     <div style="font-size:32px;margin-bottom:8px;">🏛</div>
@@ -1383,6 +1461,8 @@ async function endMockSession(){
     <div style="display:flex;gap:8px;justify-content:center;margin-bottom:22px;flex-wrap:wrap;">
       <button class="btn-mock" onclick="document.getElementById('mockConfig').style.display='block';res.style.display='none';">⏱ New Session</button>
       <button class="btn-ghost" onclick="nav('learn',document.getElementById('tab-learn'))">📖 Back to Learn</button>
+      <button class="btn-ghost" onclick="printMockResults()">🖨️ Print</button>
+      <button class="btn-ghost" onclick="openModal('emailOverlay')">📧 Email</button>
     </div>
     <h3 style="font-family:var(--fd);font-size:20px;font-weight:700;color:var(--gold-l);margin-bottom:14px;text-align:left;">📋 Question Review</h3>
     ${mockQs.map((q,i)=>{
@@ -1406,12 +1486,173 @@ async function endMockSession(){
   </div>`;
 }
 
+// ══════════════════════════════════
+// MANUAL QUESTION UPLOAD
+// ══════════════════════════════════
+function toggleManualContext(){
+  const isSit=document.querySelector('input[name="mn-type"]:checked')?.value==='situational';
+  document.getElementById('mn-context-wrap').style.display=isSit?'block':'none';
+}
+function updateManualPreview(){
+  const el=document.getElementById('mn-preview');
+  if(!manualBatch.length){el.innerHTML='';return;}
+  el.innerHTML=manualBatch.map((q,i)=>`
+    <div class="mn-prev-item">
+      <span style="font-weight:700;color:var(--gold);font-family:var(--fm);flex-shrink:0;">Q${i+1}</span>
+      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${h(q.q.slice(0,80))}${q.q.length>80?'…':''}</span>
+      <button class="mn-rm" onclick="removeManualQ(${i})">✕</button>
+    </div>`).join('');
+}
+function removeManualQ(i){
+  manualBatch.splice(i,1);
+  updateManualPreview();
+}
+function addManualQ(){
+  const qText=document.getElementById('mn-q').value.trim();
+  if(!qText){document.getElementById('mn-q').focus();document.getElementById('mn-status').innerHTML='<div style="color:#e07080;font-size:12px;padding:4px 0;">⚠️ Enter the question text first.</div>';return;}
+  const type=document.querySelector('input[name="mn-type"]:checked')?.value||'situational';
+  const context=type==='situational'?document.getElementById('mn-context').value.trim():'';
+  const rawPoints=document.getElementById('mn-points').value.trim();
+  const keyPoints=rawPoints?rawPoints.split('\n').map(l=>l.trim()).filter(Boolean):[];
+  manualBatch.push({
+    q:qText,
+    context,
+    modelAnswer:document.getElementById('mn-answer').value.trim(),
+    keyPoints,
+    type,
+  });
+  // Auto-increment number, clear question-specific fields
+  manualQNum++;
+  document.getElementById('mn-num').value=manualQNum;
+  document.getElementById('mn-q').value='';
+  document.getElementById('mn-context').value='';
+  document.getElementById('mn-answer').value='';
+  document.getElementById('mn-points').value='';
+  document.getElementById('mn-status').innerHTML='';
+  updateManualPreview();
+}
+async function saveManualBatch(){
+  if(!manualBatch.length){document.getElementById('mn-status').innerHTML='<div style="color:#e07080;font-size:12px;padding:4px 0;">⚠️ Add at least one question first.</div>';return;}
+  const name=document.getElementById('mn-name').value.trim();
+  if(!name){document.getElementById('mn-name').focus();document.getElementById('mn-status').innerHTML='<div style="color:#e07080;font-size:12px;padding:4px 0;">⚠️ Enter a batch name.</div>';return;}
+  const subject=document.getElementById('mn-subject').value;
+  const year=document.getElementById('mn-year').value.trim();
+  const sta=document.getElementById('mn-status');
+  sta.innerHTML='<div style="color:var(--gold-l);font-size:12px;padding:4px 0;">⏳ Saving…</div>';
+  try{
+    const r=await fetch('/api/admin/pastbar/manual',{method:'POST',headers:{'Content-Type':'application/json','x-admin-key':adminKey},body:JSON.stringify({name,subject,year,questions:manualBatch})});
+    const d=await r.json();
+    if(d.error)throw new Error(d.error);
+    sta.innerHTML=`<div style="color:var(--teal);font-size:12px;padding:4px 0;">✅ Saved ${d.questionsAdded} question${d.questionsAdded===1?'':'s'} to Knowledge Base.</div>`;
+    manualBatch=[];manualQNum=1;
+    document.getElementById('mn-num').value=1;
+    document.getElementById('mn-name').value='';
+    updateManualPreview();
+    await loadKB();refreshAdminKB();renderPastBarList();
+  }catch(e){sta.innerHTML=`<div style="color:#e07080;font-size:12px;padding:4px 0;">⚠️ ${h(e.message)}</div>`;}
+}
+
 function renderPastBarList(){
   const el=document.getElementById('pb-list');if(!el)return;
   if(!KB.pastBar?.length){el.innerHTML=`<div style="font-size:13px;color:var(--muted);text-align:center;padding:12px 0;">No past bar materials uploaded yet.</div>`;return;}
   el.innerHTML=KB.pastBar.map(pb=>{const sub=SUBJS.find(s=>s.key===pb.subject)||{cls:'sg-gen',name:pb.subject};
     return `<div class="r-item" style="cursor:default;"><div class="r-ic">📜</div><div class="r-info"><div class="r-title">${h(pb.name)}</div><div class="r-sub">${pb.year} · ${pb.qCount} questions extracted</div></div><span class="sbg ${sub.cls}">${sub.name}</span></div>`;
   }).join('');
+}
+
+// ══════════════════════════════════
+// PRINT / EMAIL RESULTS
+// ══════════════════════════════════
+function buildResultsHtml(){
+  const e=s=>String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+  const dateStr=mockSessionDate?mockSessionDate.toLocaleString('en-PH'):new Date().toLocaleString('en-PH');
+  const subjStr=(!mockSubjectsUsed.length||mockSubjectsUsed.includes('all'))?'All Subjects':mockSubjectsUsed.map(s=>SUBJS.find(x=>x.key===s)?.name||s).join(', ');
+  const answered=mockAnswers.filter(a=>a?.trim()).length;
+  const totalSc=mockScores.reduce((a,s)=>a+(s.numericScore||0),0);
+  const avg=mockScores.length?Math.round(totalSc/mockScores.length*10)/10:0;
+  const pct=Math.round(avg/10*100);
+  const passColor=pct>=75?'#1a7a5e':pct>=55?'#8b6914':'#b32d2d';
+
+  const alacTr=(label,c,max)=>c?`<tr><td style="padding:6px 8px;border:1px solid #d0b870;font-weight:600;">${label}</td><td style="padding:6px 8px;border:1px solid #d0b870;text-align:center;font-weight:bold;">${c.score!=null?c.score+'/'+max:'—'}</td><td style="padding:6px 8px;border:1px solid #d0b870;">${e(c.feedback||'')}</td></tr>`:'';
+
+  const qHtml=mockQs.map((q,i)=>{
+    const s=mockScores[i]||{};
+    const sub=SUBJS.find(x=>x.key===q.subject)||{name:q.subject||'Unknown'};
+    const qText=q.prompt||q.q||'';
+    const ans=mockAnswers[i]||'';
+    const al=s.alac||{};
+    const isSit=(q.type==='situational')&&q.context;
+    const pageBreak=i<mockQs.length-1?'page-break-after:always;':'';
+    return `<div style="padding:22px 0;${pageBreak}${i>0?'border-top:1px solid #e0d0a0;':''}">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
+        <span style="font-size:17px;font-weight:bold;color:#7a6128;">Q${i+1}</span>
+        <span style="background:#eee;border-radius:4px;padding:2px 8px;font-size:12px;color:#333;">${e(sub.name)}</span>
+        <span style="color:#666;font-size:12px;">${q.isReal?'📜 Past Bar '+(q.year||''):q.source==='Pre-generated'?'📚 Pre-generated':'🤖 AI Generated'}</span>
+      </div>
+      ${isSit?`<div style="background:#f0f4ff;border-left:3px solid #3a5abf;padding:10px 14px;margin-bottom:12px;border-radius:4px;"><div style="font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:.08em;color:#3a5abf;margin-bottom:5px;">FACTS</div><div style="font-size:13px;line-height:1.7;">${e(q.context)}</div></div>`:''}
+      <div style="font-size:14px;font-weight:bold;line-height:1.7;margin-bottom:14px;">${e(qText)}</div>
+      ${ans.trim()?`
+      <div style="font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:.08em;color:#7a6128;margin:12px 0 5px;">ALAC SCORECARD</div>
+      <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:12px;">
+        <tr style="background:#f5efe0;"><th style="text-align:left;padding:6px 8px;border:1px solid #d0b870;font-size:11px;">Component</th><th style="padding:6px 8px;border:1px solid #d0b870;font-size:11px;">Score</th><th style="text-align:left;padding:6px 8px;border:1px solid #d0b870;font-size:11px;">Feedback</th></tr>
+        ${alacTr('A — Answer',al.answer,1.5)}
+        ${alacTr('L — Legal Basis',al.legalBasis,3.0)}
+        ${alacTr('A — Application',al.application,4.0)}
+        ${alacTr('C — Conclusion',al.conclusion,1.5)}
+        <tr style="background:#faf5e0;"><td colspan="2" style="padding:7px 8px;border:1px solid #d0b870;font-weight:bold;">TOTAL: ${e(s.score||'?/10')} — ${e(s.grade||'')}</td><td style="padding:7px 8px;border:1px solid #d0b870;font-size:12px;">${e(s.overallFeedback||'')}</td></tr>
+      </table>
+      ${s.keyMissed?.length?`<div style="font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:.08em;color:#7a6128;margin:12px 0 5px;">KEY POINTS MISSED</div><ul style="margin:4px 0 12px 20px;font-size:13px;">${s.keyMissed.map(k=>`<li>${e(k)}</li>`).join('')}</ul>`:''}
+      <div style="font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:.08em;color:#7a6128;margin:12px 0 5px;">STUDENT ANSWER</div>
+      <div style="background:#f9f9f9;border:1px solid #ddd;border-radius:4px;padding:10px 14px;font-size:13px;line-height:1.7;margin-bottom:10px;">${e(ans)}</div>
+      <div style="font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:.08em;color:#7a6128;margin:12px 0 5px;">MODEL ANSWER</div>
+      <div style="background:#f0f8f0;border:1px solid #b0d8b0;border-radius:4px;padding:10px 14px;font-size:13px;line-height:1.7;">${e(s.modelAnswer||'—')}</div>
+      `:'<div style="color:#999;font-style:italic;font-size:13px;margin:8px 0;">— Not Answered —</div>'}
+    </div>`;
+  }).join('');
+
+  return `<div style="font-family:Georgia,serif;color:#111;max-width:800px;margin:0 auto;padding:20px;">
+    <h1 style="font-size:22px;color:#7a6128;border-bottom:2px solid #7a6128;padding-bottom:8px;margin-bottom:8px;">BarBuddy — Mock Bar Examination Results</h1>
+    <div style="font-size:13px;color:#333;margin-bottom:14px;line-height:2;">
+      <div><strong>Date:</strong> ${e(dateStr)}</div>
+      <div><strong>Subject:</strong> ${e(subjStr)}</div>
+      <div><strong>Questions:</strong> ${answered} answered / ${mockQs.length} total</div>
+    </div>
+    <div style="font-size:20px;font-weight:bold;color:${passColor};margin:10px 0 20px;">Overall Score: ${avg}/10 — ${pct>=75?'✅ PASSING LEVEL':'❌ NEEDS IMPROVEMENT'}</div>
+    ${qHtml}
+    <div style="margin-top:30px;padding-top:12px;border-top:1px solid #ccc;font-size:11px;color:#666;text-align:center;">Generated by BarBuddy — Philippine Bar Exam Companion</div>
+  </div>`;
+}
+
+function printMockResults(){
+  if(!mockQs.length)return;
+  const body=buildResultsHtml();
+  const w=window.open('','_blank');
+  if(!w){alert('Pop-up blocked. Please allow pop-ups to print results.');return;}
+  w.document.write(`<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>BarBuddy Results</title><style>@media print{@page{margin:1.5cm;}}</style></head><body>${body}</body></html>`);
+  w.document.close();w.focus();
+  setTimeout(()=>w.print(),600);
+}
+
+async function sendEmailResults(){
+  const to=document.getElementById('email-to').value.trim();
+  const subject=document.getElementById('email-subject').value.trim();
+  const sta=document.getElementById('email-status');
+  const btn=document.getElementById('emailSendBtn');
+  if(!to){sta.style.display='block';sta.style.background='rgba(155,35,53,.15)';sta.style.color='#e07080';sta.textContent='⚠️ Enter an email address.';return;}
+  btn.disabled=true;btn.textContent='⏳ Sending…';
+  sta.style.display='block';sta.style.background='rgba(201,168,76,.1)';sta.style.color='var(--gold-l)';sta.textContent='Sending…';
+  try{
+    const r=await fetch('/api/email-results',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({to,subject,htmlBody:buildResultsHtml()})});
+    const d=await r.json();
+    if(d.error){
+      sta.style.background='rgba(155,35,53,.15)';sta.style.color='#e07080';
+      sta.innerHTML=`⚠️ ${h(d.error)}${d.error.includes('not configured')?'<br><small style="display:block;margin-top:5px;opacity:.8;">Go to Railway → Variables → add EMAIL_USER and EMAIL_PASS (Gmail app password).</small>':''}`;
+    }else{
+      sta.style.background='rgba(20,180,160,.1)';sta.style.color='var(--teal)';
+      sta.textContent=`✅ Results sent to ${to}`;
+    }
+  }catch(err){sta.style.background='rgba(155,35,53,.15)';sta.style.color='#e07080';sta.textContent='⚠️ '+err.message;}
+  btn.disabled=false;btn.textContent='📧 Send Results';
 }
 
 // ══════════════════════════════════

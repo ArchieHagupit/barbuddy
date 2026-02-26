@@ -1,10 +1,11 @@
-const express  = require('express');
-const cors     = require('cors');
-const path     = require('path');
-const fs       = require('fs');
-const multer   = require('multer');
-const pdfParse = require('pdf-parse');
-const mammoth  = require('mammoth');
+const express    = require('express');
+const cors       = require('cors');
+const path       = require('path');
+const fs         = require('fs');
+const multer     = require('multer');
+const pdfParse   = require('pdf-parse');
+const mammoth    = require('mammoth');
+const nodemailer = require('nodemailer');
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
@@ -573,6 +574,54 @@ Respond ONLY with valid JSON (no markdown):
 }` }], 2000);
     res.json(JSON.parse(raw.replace(/^```json\s*/i,'').replace(/```$/,'').trim()));
   } catch(err) { res.status(500).json({ error:err.message }); }
+});
+
+// ── EMAIL RESULTS ────────────────────────────────────────────
+app.post('/api/email-results', async (req, res) => {
+  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+    return res.json({ error: 'Email not configured. Add EMAIL_USER and EMAIL_PASS to Railway environment variables.' });
+  }
+  const { to, subject, htmlBody } = req.body;
+  if (!to || !htmlBody) return res.status(400).json({ error: 'to and htmlBody required' });
+  try {
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
+    });
+    await transporter.sendMail({
+      from: process.env.EMAIL_FROM || `BarBuddy Results <${process.env.EMAIL_USER}>`,
+      to,
+      subject: subject || 'BarBuddy Mock Bar Results',
+      html: `<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body>${htmlBody}</body></html>`,
+    });
+    res.json({ success: true });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── ADMIN: Manual past bar question entry (no AI) ────────────
+app.post('/api/admin/pastbar/manual', adminOnly, (req, res) => {
+  const { name, subject, year, questions } = req.body;
+  if (!name || !Array.isArray(questions) || !questions.length)
+    return res.status(400).json({ error: 'name and questions[] required' });
+  const id = `pb_${Date.now()}_${Math.random().toString(36).slice(2,7)}`;
+  const entry = {
+    id, name,
+    subject: subject || 'general',
+    year: year || 'Unknown',
+    questions: questions.map(q => ({
+      q: q.q || '',
+      context: q.context || '',
+      modelAnswer: q.modelAnswer || '',
+      keyPoints: Array.isArray(q.keyPoints) ? q.keyPoints : [],
+      type: q.type || 'situational',
+    })),
+    qCount: questions.length,
+    extracting: false,
+    uploadedAt: new Date().toISOString(),
+  };
+  KB.pastBar.push(entry);
+  saveKB();
+  res.json({ success: true, id, name, questionsAdded: questions.length });
 });
 
 // ── HELPERS ─────────────────────────────────────────────────
