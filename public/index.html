@@ -356,6 +356,9 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .kl-del:hover{background:rgba(155,35,53,.25);}
 .kl-dl{font-size:11px;color:var(--gold);cursor:pointer;padding:3px 7px;border-radius:5px;background:rgba(201,168,76,.1);border:1px solid rgba(201,168,76,.3);margin-right:4px;transition:background .18s;}
 .kl-dl:hover{background:rgba(201,168,76,.2);}
+.tab-toggle-btn{padding:7px 14px;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer;border:1px solid;font-family:var(--fm);transition:all .2s;white-space:nowrap;}
+.tt-on{background:rgba(20,180,160,.15);border-color:rgba(20,180,160,.4);color:#14b4a0;}
+.tt-off{background:rgba(155,35,53,.15);border-color:rgba(155,35,53,.4);color:#e07080;}
 .dl-picker{display:none;align-items:center;gap:6px;flex-wrap:wrap;padding:7px 10px 10px 40px;background:rgba(255,255,255,.03);border:1px solid var(--bdr2);border-top:none;border-radius:0 0 9px 9px;margin-top:-6px;margin-bottom:6px;}
 .admin-locked{text-align:center;padding:48px;color:var(--muted);}
 /* Gen progress panel */
@@ -661,6 +664,16 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
         <button class="btn-og" style="font-size:11px;" onclick="retriggerGen()">↺ Regenerate All</button>
       </div>
     </div>
+    <!-- TAB ACCESS CONTROL -->
+    <div style="background:var(--card);border:1px solid var(--bdr2);border-radius:16px;padding:20px;margin-bottom:18px;">
+      <h3 style="font-family:var(--fd);font-size:18px;font-weight:700;color:var(--gold-l);margin-bottom:5px;">🔒 Tab Access Control</h3>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:16px;line-height:1.55;">Temporarily disable tabs for students. Disabled tabs are hidden from navigation. Mock Bar and Admin are always accessible.</p>
+      <div id="tabToggleList"></div>
+      <div style="display:flex;gap:8px;margin-top:14px;">
+        <button class="btn-gold" id="saveTabBtn" onclick="saveTabSettings()" style="font-size:12px;padding:8px 16px;">💾 Save Access Settings</button>
+        <button class="btn-og" onclick="enableAllTabs()" style="font-size:12px;">↺ Enable All</button>
+      </div>
+    </div>
     <div class="admin-grid">
       <!-- SYLLABUS -->
       <div class="admin-panel">
@@ -866,6 +879,7 @@ async function init() {
   loadLocalCache();
   renderSubjectTracker();
   await loadKB();
+  await applyTabSettings();
   subscribeToProgress();
   checkAPIStatus();
 }
@@ -1022,13 +1036,23 @@ function updateProgressUI(d) {
 // NAVIGATION
 // ══════════════════════════════════
 function nav(id, btn) {
+  // Guard: show locked message if tab is disabled (mockbar + admin always allowed)
+  if(window.TAB_SETTINGS&&['dashboard','learn','practice'].includes(id)&&window.TAB_SETTINGS[id]===false){
+    const page=document.getElementById('page-'+id);
+    if(page) page.innerHTML=`<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:70vh;text-align:center;padding:36px;">
+      <div style="font-size:64px;margin-bottom:16px;">🔒</div>
+      <div style="font-family:var(--fd);font-size:28px;font-weight:700;color:var(--gold-l);margin-bottom:8px;">Tab Temporarily Disabled</div>
+      <div style="font-size:14px;color:var(--muted);max-width:360px;line-height:1.65;margin-bottom:22px;">This section has been temporarily disabled by the administrator. Please check back later or contact your instructor.</div>
+      <button class="btn-mock" onclick="nav('mockbar',document.getElementById('tab-mockbar'))">⏱ Go to Mock Bar</button>
+    </div>`;
+  }
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('on'));
   document.querySelectorAll('.tb-tab,.s-btn').forEach(b=>b.classList.remove('on'));
-  document.getElementById('page-'+id).classList.add('on');
-  if (btn) btn.classList.add('on');
+  document.getElementById('page-'+id)?.classList.add('on');
+  if(btn) btn.classList.add('on');
   const map={dashboard:0,learn:1,practice:2,mockbar:3,admin:5};
   const sb=document.querySelectorAll('.s-btn');
-  if (map[id]!==undefined&&sb[map[id]]) sb[map[id]].classList.add('on');
+  if(map[id]!==undefined&&sb[map[id]]) sb[map[id]].classList.add('on');
   document.getElementById('tab-'+id)?.classList.add('on');
 }
 const openModal  = id => document.getElementById(id).classList.add('on');
@@ -1761,6 +1785,83 @@ async function sendEmailResults(){
 // ══════════════════════════════════
 // ADMIN
 // ══════════════════════════════════
+// ══════════════════════════════════
+// TAB ACCESS CONTROL
+// ══════════════════════════════════
+let pendingTabSettings={dashboard:true,learn:true,practice:true};
+
+async function applyTabSettings(){
+  try{
+    const r=await fetch('/api/tab-settings');
+    const settings=await r.json();
+    window.TAB_SETTINGS=settings;
+    const sidebarBtns={
+      dashboard:document.querySelector('.s-btn[onclick*="dashboard"]'),
+      learn:    document.querySelector('.s-btn[onclick*="learn"]'),
+      practice: document.querySelector('.s-btn[onclick*="practice"]'),
+    };
+    const topbarTabs={
+      dashboard:document.getElementById('tab-dashboard'),
+      learn:    document.getElementById('tab-learn'),
+      practice: document.getElementById('tab-practice'),
+    };
+    Object.entries(settings).forEach(([tab,enabled])=>{
+      if(sidebarBtns[tab]) sidebarBtns[tab].style.display=enabled?'':'none';
+      if(topbarTabs[tab])  topbarTabs[tab].style.display=enabled?'':'none';
+    });
+    // If currently on a disabled tab, redirect
+    const cur=document.querySelector('.page.on');
+    if(cur){
+      const curId=cur.id.replace('page-','');
+      if(settings[curId]===false){
+        const fallback=['mockbar','admin'].find(t=>document.getElementById('page-'+t));
+        if(fallback) nav(fallback,document.getElementById('tab-'+fallback));
+      }
+    }
+  }catch(e){console.warn('Tab settings load failed:',e.message);}
+}
+function initTabToggles(){
+  if(window.TAB_SETTINGS) pendingTabSettings={...window.TAB_SETTINGS};
+  renderTabToggles();
+}
+function renderTabToggles(){
+  const tabs=[
+    {key:'dashboard',label:'🏛 Dashboard',  desc:'Show the main dashboard and stats'},
+    {key:'learn',    label:'📖 Learn',       desc:'Show syllabus tree and lesson viewer'},
+    {key:'practice', label:'✍️ Practice',     desc:'Show MCQ and essay practice quizzes'},
+  ];
+  document.getElementById('tabToggleList').innerHTML=tabs.map(t=>{
+    const on=pendingTabSettings[t.key]!==false;
+    return `<div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--bdr2);">
+      <div style="flex:1;">
+        <div style="font-size:13px;font-weight:600;margin-bottom:2px;">${t.label}</div>
+        <div style="font-size:11px;color:var(--muted);">${t.desc}</div>
+      </div>
+      <button class="tab-toggle-btn ${on?'tt-on':'tt-off'}" onclick="toggleTab('${t.key}')">${on?'● Enabled':'○ Disabled'}</button>
+    </div>`;
+  }).join('');
+}
+function toggleTab(key){
+  pendingTabSettings[key]=!pendingTabSettings[key];
+  renderTabToggles();
+}
+async function saveTabSettings(){
+  const btn=document.getElementById('saveTabBtn');
+  btn.disabled=true;btn.textContent='⏳ Saving…';
+  try{
+    const r=await fetch('/api/admin/tab-settings',{method:'POST',headers:{'Content-Type':'application/json','x-admin-key':adminKey},body:JSON.stringify(pendingTabSettings)});
+    const d=await r.json();
+    if(d.error)throw new Error(d.error);
+    window.TAB_SETTINGS={...pendingTabSettings};
+    await applyTabSettings();
+    btn.textContent='✅ Saved!';
+    setTimeout(()=>{btn.disabled=false;btn.textContent='💾 Save Access Settings';},2000);
+  }catch(e){btn.textContent='⚠️ '+e.message;btn.disabled=false;}
+}
+function enableAllTabs(){
+  pendingTabSettings={dashboard:true,learn:true,practice:true};
+  renderTabToggles();
+}
 async function unlockAdmin(){
   adminKey=document.getElementById('adminKeyInput').value.trim();
   if(!adminKey)return;
@@ -1770,7 +1871,7 @@ async function unlockAdmin(){
     document.getElementById('adminLocked').style.display='none';
     document.getElementById('adminUnlocked').style.display='block';
     document.getElementById('adminStatus').textContent='✓ Unlocked';
-    refreshAdminKB();updateSyllabusStatus();
+    refreshAdminKB();updateSyllabusStatus();initTabToggles();
     // Show gen panel if running
     if(KB.genState?.running) document.getElementById('adminGenPanel').style.display='block';
     else if(KB.genState?.finishedAt) document.getElementById('adminGenDone').style.display='block';

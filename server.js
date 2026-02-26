@@ -33,8 +33,9 @@ ABSOLUTE RULES — never break these:
 const UPLOADS_DIR  = process.env.PERSISTENT_STORAGE_PATH
   ? path.join(process.env.PERSISTENT_STORAGE_PATH, 'uploads')
   : path.join(__dirname, 'uploads');
-const KB_PATH      = path.join(UPLOADS_DIR, 'kb.json');
-const CONTENT_PATH = path.join(UPLOADS_DIR, 'content.json');
+const KB_PATH           = path.join(UPLOADS_DIR, 'kb.json');
+const CONTENT_PATH      = path.join(UPLOADS_DIR, 'content.json');
+const TAB_SETTINGS_PATH = path.join(UPLOADS_DIR, 'tab_settings.json');
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
 // Knowledge Base — syllabus + references + past bar
@@ -43,6 +44,9 @@ const KB = {
   references: [],     // [{ id, name, subject, type, text, summary, size, uploadedAt }]
   pastBar:    [],     // [{ id, name, subject, year, questions:[{q,modelAnswer,keyPoints}], uploadedAt }]
 };
+
+// Tab visibility settings (admin-controlled)
+const TAB_SETTINGS = { dashboard: true, learn: true, practice: true };
 
 // Pre-generated content per topic
 // { [subject_key]: { [topic_name]: { lesson, mcq, essay, generatedAt } } }
@@ -64,14 +68,17 @@ function loadData() {
   const persistent = !!process.env.PERSISTENT_STORAGE_PATH;
   console.log(`Storage: ${persistent ? '✅ Persistent (Railway Volume)' : '⚠️  Ephemeral (local)'} → ${UPLOADS_DIR}`);
   try {
-    if (fs.existsSync(KB_PATH))      Object.assign(KB, JSON.parse(fs.readFileSync(KB_PATH, 'utf8')));
-    if (fs.existsSync(CONTENT_PATH)) CONTENT = JSON.parse(fs.readFileSync(CONTENT_PATH, 'utf8'));
+    if (fs.existsSync(KB_PATH))           Object.assign(KB, JSON.parse(fs.readFileSync(KB_PATH, 'utf8')));
+    if (fs.existsSync(CONTENT_PATH))      CONTENT = JSON.parse(fs.readFileSync(CONTENT_PATH, 'utf8'));
+    if (fs.existsSync(TAB_SETTINGS_PATH)) Object.assign(TAB_SETTINGS, JSON.parse(fs.readFileSync(TAB_SETTINGS_PATH, 'utf8')));
     const n = Object.values(CONTENT).reduce((a,s) => a+Object.keys(s).length, 0);
     console.log(`KB loaded: syllabus=${!!KB.syllabus}, refs=${KB.references.length}, pastBar=${KB.pastBar.length}, content=${n} topics`);
+    console.log(`Tab settings: dashboard=${TAB_SETTINGS.dashboard}, learn=${TAB_SETTINGS.learn}, practice=${TAB_SETTINGS.practice}`);
   } catch(e) { console.error('Load error:', e.message); }
 }
-function saveKB()      { try { fs.writeFileSync(KB_PATH, JSON.stringify(KB)); } catch(e) { console.error('KB save:', e.message); } }
-function saveContent() { try { fs.writeFileSync(CONTENT_PATH, JSON.stringify(CONTENT)); } catch(e) { console.error('Content save:', e.message); } }
+function saveKB()          { try { fs.writeFileSync(KB_PATH, JSON.stringify(KB)); } catch(e) { console.error('KB save:', e.message); } }
+function saveContent()     { try { fs.writeFileSync(CONTENT_PATH, JSON.stringify(CONTENT)); } catch(e) { console.error('Content save:', e.message); } }
+function saveTabSettings() { try { fs.writeFileSync(TAB_SETTINGS_PATH, JSON.stringify(TAB_SETTINGS)); } catch(e) { console.error('Tab settings save:', e.message); } }
 loadData();
 
 // ── Middleware ──────────────────────────────────────────────
@@ -110,6 +117,18 @@ app.post('/api/admin/parse-file', adminOnly, upload.single('file'), async (req, 
 app.get('/api/health', (req, res) => {
   const n = Object.values(CONTENT).reduce((a,s) => a+Object.keys(s).length, 0);
   res.json({ status:'ok', keySet:!!API_KEY, kb:{ hasSyllabus:!!KB.syllabus, refs:KB.references.length, pastBar:KB.pastBar.length }, content:{ topics:n }, gen:{ running:GEN.running, done:GEN.done, total:GEN.total } });
+});
+
+// ── Tab settings (public read, admin write) ──────────────────
+app.get('/api/tab-settings', (_req, res) => res.json({ ...TAB_SETTINGS }));
+
+app.post('/api/admin/tab-settings', adminOnly, (req, res) => {
+  const { dashboard, learn, practice } = req.body;
+  if (typeof dashboard === 'boolean') TAB_SETTINGS.dashboard = dashboard;
+  if (typeof learn     === 'boolean') TAB_SETTINGS.learn     = learn;
+  if (typeof practice  === 'boolean') TAB_SETTINGS.practice  = practice;
+  saveTabSettings();
+  res.json({ success: true, settings: { ...TAB_SETTINGS } });
 });
 
 // ── GET KB state (public — browser caches) ─────────────────
