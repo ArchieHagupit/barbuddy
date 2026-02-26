@@ -3,4 +3,8 @@ node_modules/
 uploads/kb.json
 uploads/content.json
 uploads/tab_settings.json
+uploads/users.json
+uploads/sessions.json
+uploads/results.json
+uploads/settings.json
 *.log

@@ -360,6 +360,41 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .tt-on{background:rgba(20,180,160,.15);border-color:rgba(20,180,160,.4);color:#14b4a0;}
 .tt-off{background:rgba(155,35,53,.15);border-color:rgba(155,35,53,.4);color:#e07080;}
 .dl-picker{display:none;align-items:center;gap:6px;flex-wrap:wrap;padding:7px 10px 10px 40px;background:rgba(255,255,255,.03);border:1px solid var(--bdr2);border-top:none;border-radius:0 0 9px 9px;margin-top:-6px;margin-bottom:6px;}
+/* Auth wall */
+#authWall{position:fixed;inset:0;background:var(--bg);z-index:9000;display:flex;align-items:center;justify-content:center;padding:20px;}
+.auth-card{background:var(--card);border:1px solid rgba(201,168,76,.25);border-radius:22px;width:100%;max-width:420px;padding:40px 36px;position:relative;box-shadow:0 32px 80px rgba(0,0,0,.7);}
+.auth-card::before{content:'';position:absolute;top:0;left:10%;right:10%;height:1px;background:linear-gradient(90deg,transparent,var(--gold),transparent);}
+.auth-logo{font-family:var(--fd);font-size:28px;font-weight:800;color:var(--gold-l);text-align:center;margin-bottom:4px;letter-spacing:.02em;}
+.auth-sub{font-size:13px;color:var(--muted);text-align:center;margin-bottom:28px;}
+.auth-tabs{display:flex;gap:6px;margin-bottom:22px;background:rgba(255,255,255,.04);border-radius:11px;padding:4px;}
+.auth-tab-btn{flex:1;padding:8px;border:none;border-radius:8px;cursor:pointer;font-family:var(--fm);font-size:13px;font-weight:700;background:transparent;color:var(--muted);transition:all .2s;}
+.auth-tab-btn.active{background:rgba(201,168,76,.18);color:var(--gold-l);}
+.auth-field{margin-bottom:14px;}
+.auth-field label{display:block;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;}
+.auth-field input{width:100%;box-sizing:border-box;background:rgba(255,255,255,.05);border:1px solid var(--bdr2);border-radius:9px;padding:11px 14px;color:var(--white);font-family:var(--fb);font-size:14px;outline:none;transition:border-color .2s;}
+.auth-field input:focus{border-color:rgba(201,168,76,.5);}
+.auth-err{font-size:12px;color:#e07080;margin-bottom:10px;min-height:16px;text-align:center;}
+.auth-btn{width:100%;padding:13px;background:linear-gradient(135deg,#b8932a,#d4a843);border:none;border-radius:11px;color:#0a0e1a;font-family:var(--fm);font-size:15px;font-weight:800;cursor:pointer;transition:opacity .2s;letter-spacing:.03em;}
+.auth-btn:hover{opacity:.88;}
+.auth-btn:disabled{opacity:.5;cursor:not-allowed;}
+/* Topbar user display */
+#userNameDisplay{font-size:12px;font-weight:700;color:var(--gold);background:rgba(201,168,76,.1);border:1px solid rgba(201,168,76,.25);border-radius:8px;padding:5px 10px;white-space:nowrap;}
+/* Results detail modal */
+.res-detail-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:18px;}
+.res-dstat{background:rgba(255,255,255,.04);border:1px solid var(--bdr2);border-radius:10px;padding:12px;text-align:center;}
+.res-dstat-val{font-family:var(--fd);font-size:22px;font-weight:800;color:var(--gold-l);}
+.res-dstat-lbl{font-size:11px;color:var(--muted);margin-top:2px;}
+/* Admin user/results panels */
+.ur-row{display:flex;align-items:center;gap:10px;padding:10px 12px;background:rgba(255,255,255,.03);border:1px solid var(--bdr2);border-radius:10px;margin-bottom:7px;flex-wrap:wrap;}
+.ur-name{font-weight:700;font-size:14px;flex:1;min-width:120px;}
+.ur-meta{font-size:11px;color:var(--muted);}
+.ur-badge{font-size:10px;font-weight:700;padding:2px 7px;border-radius:5px;background:rgba(20,180,160,.15);color:#14b4a0;}
+.ur-badge.off{background:rgba(155,35,53,.15);color:#e07080;}
+.ur-act{font-size:11px;padding:4px 9px;border-radius:7px;cursor:pointer;border:1px solid;font-family:var(--fm);font-weight:700;transition:all .18s;}
+.ur-act.enable{color:#14b4a0;border-color:rgba(20,180,160,.4);background:rgba(20,180,160,.1);}
+.ur-act.disable{color:#e07080;border-color:rgba(155,35,53,.4);background:rgba(155,35,53,.1);}
+.ur-act.del{color:#e07080;border-color:rgba(155,35,53,.4);background:transparent;}
+.ur-act.view{color:var(--gold);border-color:rgba(201,168,76,.4);background:rgba(201,168,76,.1);}
 .admin-locked{text-align:center;padding:48px;color:var(--muted);}
 /* Gen progress panel */
 .gen-prog-panel{background:linear-gradient(135deg,#0a1000,#141800);border:1px solid rgba(255,140,66,.25);border-radius:14px;padding:18px;margin-top:14px;}
@@ -397,6 +432,34 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 </style>
 </head>
 <body>
+
+<!-- AUTH WALL -->
+<div id="authWall">
+  <div class="auth-card">
+    <div class="auth-logo">⚖️ BarBuddy</div>
+    <div class="auth-sub">Philippine Bar Exam AI Companion</div>
+    <div class="auth-tabs">
+      <button class="auth-tab-btn active" onclick="switchAuthTab('login')">Log In</button>
+      <button class="auth-tab-btn" onclick="switchAuthTab('register')">Register</button>
+    </div>
+    <!-- Login form -->
+    <div id="authFormLogin">
+      <div class="auth-field"><label>Email</label><input type="email" id="loginEmail" placeholder="you@email.com" autocomplete="email"></div>
+      <div class="auth-field"><label>Password</label><input type="password" id="loginPassword" placeholder="••••••••" autocomplete="current-password"></div>
+      <div class="auth-err" id="loginErr"></div>
+      <button class="auth-btn" id="loginBtn" onclick="doLogin()">Log In</button>
+    </div>
+    <!-- Register form -->
+    <div id="authFormRegister" style="display:none;">
+      <div class="auth-field"><label>Full Name</label><input type="text" id="regName" placeholder="Juan dela Cruz" autocomplete="name"></div>
+      <div class="auth-field"><label>Email</label><input type="email" id="regEmail" placeholder="you@email.com" autocomplete="email"></div>
+      <div class="auth-field"><label>Password</label><input type="password" id="regPassword" placeholder="••••••••" autocomplete="new-password"></div>
+      <div class="auth-err" id="regErr"></div>
+      <button class="auth-btn" id="regBtn" onclick="doRegister()">Create Account</button>
+    </div>
+  </div>
+</div>
+
 <div id="apiBanner">⚠️ Claude API is currently overloaded — some features may be slow or unavailable. <button onclick="document.getElementById('apiBanner').style.display='none'">Dismiss</button></div>
 <aside class="sidebar">
   <div class="s-logo">⚖️</div>
@@ -428,6 +491,8 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
     <div class="kb-ind empty" id="kbInd" onclick="nav('admin',document.getElementById('tab-admin'))">
       <div class="kb-dot"></div><span id="kbIndTxt">No KB</span>
     </div>
+    <span id="userNameDisplay" style="display:none;"></span>
+    <button class="btn-og" id="logoutBtn" style="display:none;font-size:11px;padding:5px 10px;" onclick="doLogout()">Log Out</button>
     <div class="avatar">BB</div>
   </div>
 </header>
@@ -804,11 +869,46 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
         </div>
       </div>
     </div>
+
+    <!-- USER MANAGEMENT PANEL -->
+    <div id="adminUserPanel" style="background:var(--card);border:1px solid var(--bdr2);border-radius:16px;padding:20px;margin-top:18px;display:none;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
+        <h3 style="font-family:var(--fd);font-size:18px;font-weight:700;color:var(--gold-l);margin:0;">👥 Registered Users</h3>
+        <div style="display:flex;gap:8px;">
+          <button class="btn-og" onclick="toggleRegistration()" id="regToggleBtn" style="font-size:11px;">Toggle Registration</button>
+          <button class="btn-og" onclick="loadAdminUsers()" style="font-size:11px;">↺ Refresh</button>
+        </div>
+      </div>
+      <div id="adminUserList"><div style="font-size:12px;color:var(--muted);">Loading…</div></div>
+    </div>
+
+    <!-- RESULTS DASHBOARD PANEL -->
+    <div id="adminResultsPanel" style="background:var(--card);border:1px solid var(--bdr2);border-radius:16px;padding:20px;margin-top:18px;display:none;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
+        <h3 style="font-family:var(--fd);font-size:18px;font-weight:700;color:var(--gold-l);margin:0;">📊 Mock Bar Results</h3>
+        <div style="display:flex;gap:8px;">
+          <button class="btn-og" onclick="exportResultsCSV()" style="font-size:11px;">⬇ Export CSV</button>
+          <button class="btn-og" onclick="loadAdminResults()" style="font-size:11px;">↺ Refresh</button>
+        </div>
+      </div>
+      <div id="adminResultsList"><div style="font-size:12px;color:var(--muted);">Loading…</div></div>
+    </div>
+
   </div>
 </div>
 </div>
 
 </div><!-- .main -->
+
+<!-- RESULTS DETAIL MODAL -->
+<div class="overlay" id="resultDetailOverlay">
+<div class="modal" style="max-width:680px;">
+  <button class="modal-x" onclick="closeModal('resultDetailOverlay')">✕</button>
+  <div class="modal-t" id="resultDetailTitle">📊 Result Detail</div>
+  <div class="res-detail-grid" id="resultDetailStats"></div>
+  <div id="resultDetailBody" style="font-size:13px;color:var(--muted);max-height:400px;overflow-y:auto;"></div>
+</div>
+</div>
 
 <!-- CHAT MODAL -->
 <div class="overlay" id="chatOverlay">
@@ -891,7 +991,14 @@ async function checkAPIStatus(){
     document.getElementById('apiBanner').style.display=d.apiOk?'none':'block';
   }catch(e){}
 }
-init();
+window.addEventListener('DOMContentLoaded', async () => {
+  const hasSession = await checkExistingSession();
+  if (!hasSession) {
+    // Auth wall stays visible; app boots once user logs in
+    document.getElementById('authWall').style.display = 'flex';
+  }
+  init();
+});
 
 // ══════════════════════════════════
 // LOCAL BROWSER CACHE
@@ -1474,7 +1581,7 @@ async function startMockBar(){
   const allOn=document.querySelector('.mc-subj-tag[data-key="all"]').classList.contains('on');
   const subjects=allOn?['all']:Array.from(document.querySelectorAll('.mc-subj-tag.on')).map(t=>t.dataset.key);
   console.log('Starting mock bar with count:',count,'subjects:',subjects);
-  mockSubjectsUsed=subjects; mockSessionDate=new Date(); mockScores=[];
+  mockSubjectsUsed=subjects; mockSessionDate=new Date(); mockScores=[]; window.mockStartTime=Date.now();
   const btn=document.getElementById('startMockBtn');
   btn.disabled=true;btn.textContent='⏳ Building question set…';
   document.getElementById('mockStartError').style.display='none';
@@ -1565,12 +1672,14 @@ async function endMockSession(){
   const avg=scores.length?Math.round(total/scores.length*10)/10:0;
   const pct=Math.round(avg/10*100);
   totalQDone+=answered;totalCorrect+=Math.round(pct/100*answered);updateDash();
+  saveMockBarResults(scores.map((s,i)=>({q:(mockQs[i]?.prompt||mockQs[i]?.q||'').slice(0,120),score:s.numericScore||0,max:10})));
 
   // Pre-fill email modal subject
   const emailSubj=`BarBuddy Mock Bar Results — ${new Date().toLocaleDateString('en-PH')} — ${avg}/10`;
   document.getElementById('email-subject').value=emailSubj;
 
   res.innerHTML=`<div class="mock-results">
+    ${currentUser?`<div style="font-size:12px;color:var(--muted);background:rgba(201,168,76,.07);border:1px solid rgba(201,168,76,.18);border-radius:9px;padding:8px 14px;margin-bottom:14px;text-align:left;">🎓 <strong style="color:var(--gold-l);">${h(currentUser.name)}</strong> &nbsp;·&nbsp; ${new Date().toLocaleDateString('en-PH')}</div>`:''}
     <div style="font-size:32px;margin-bottom:8px;">🏛</div>
     <div style="font-family:var(--fd);font-size:20px;font-weight:700;color:#ff8c42;margin-bottom:4px;">Mock Bar Results</div>
     <div class="mr-grade">${avg}/10</div>
@@ -1865,6 +1974,7 @@ function enableAllTabs(){
 async function unlockAdmin(){
   adminKey=document.getElementById('adminKeyInput').value.trim();
   if(!adminKey)return;
+  window._adminKey=adminKey;
   document.getElementById('adminStatus').textContent='Checking…';
   try{
     await fetch('/api/kb');
@@ -1872,6 +1982,15 @@ async function unlockAdmin(){
     document.getElementById('adminUnlocked').style.display='block';
     document.getElementById('adminStatus').textContent='✓ Unlocked';
     refreshAdminKB();updateSyllabusStatus();initTabToggles();
+    // Show admin panels
+    document.getElementById('adminUserPanel').style.display='block';
+    document.getElementById('adminResultsPanel').style.display='block';
+    loadAdminUsers();loadAdminResults();
+    // Update registration toggle label
+    fetch('/api/settings').then(r=>r.json()).then(s=>{
+      const btn=document.getElementById('regToggleBtn');
+      if(btn)btn.textContent=s.registrationOpen?'Close Registration':'Open Registration';
+    }).catch(()=>{});
     // Show gen panel if running
     if(KB.genState?.running) document.getElementById('adminGenPanel').style.display='block';
     else if(KB.genState?.finishedAt) document.getElementById('adminGenDone').style.display='block';
@@ -2161,6 +2280,242 @@ async function callAPI(payload){
 // UTILS
 // ══════════════════════════════════
 function h(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+
+// ══════════════════════════════════
+// AUTH STATE
+// ══════════════════════════════════
+let currentUser  = null;
+let sessionToken = null;
+
+function switchAuthTab(tab) {
+  document.getElementById('authFormLogin').style.display    = tab === 'login'    ? '' : 'none';
+  document.getElementById('authFormRegister').style.display = tab === 'register' ? '' : 'none';
+  document.querySelectorAll('.auth-tab-btn').forEach((b,i) => b.classList.toggle('active', (i===0&&tab==='login')||(i===1&&tab==='register')));
+}
+
+async function doLogin() {
+  const email    = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const errEl    = document.getElementById('loginErr');
+  const btn      = document.getElementById('loginBtn');
+  errEl.textContent = '';
+  if (!email || !password) { errEl.textContent = 'Please fill in all fields.'; return; }
+  btn.disabled = true; btn.textContent = 'Logging in…';
+  try {
+    const r = await fetch('/api/auth/login', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ email, password }) });
+    const d = await r.json();
+    if (!r.ok) { errEl.textContent = d.error || 'Login failed.'; return; }
+    onAuthSuccess(d.token, d.user);
+  } catch(e) { errEl.textContent = 'Network error. Try again.'; }
+  finally { btn.disabled = false; btn.textContent = 'Log In'; }
+}
+
+async function doRegister() {
+  const name     = document.getElementById('regName').value.trim();
+  const email    = document.getElementById('regEmail').value.trim();
+  const password = document.getElementById('regPassword').value;
+  const errEl    = document.getElementById('regErr');
+  const btn      = document.getElementById('regBtn');
+  errEl.textContent = '';
+  if (!name || !email || !password) { errEl.textContent = 'Please fill in all fields.'; return; }
+  if (password.length < 6) { errEl.textContent = 'Password must be at least 6 characters.'; return; }
+  btn.disabled = true; btn.textContent = 'Creating account…';
+  try {
+    const r = await fetch('/api/auth/register', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ name, email, password }) });
+    const d = await r.json();
+    if (!r.ok) { errEl.textContent = d.error || 'Registration failed.'; return; }
+    onAuthSuccess(d.token, d.user);
+  } catch(e) { errEl.textContent = 'Network error. Try again.'; }
+  finally { btn.disabled = false; btn.textContent = 'Create Account'; }
+}
+
+function onAuthSuccess(token, user) {
+  sessionToken = token;
+  currentUser  = user;
+  localStorage.setItem('bb_token', token);
+  localStorage.setItem('bb_user', JSON.stringify(user));
+  document.getElementById('authWall').style.display = 'none';
+  updateUserDisplay();
+}
+
+function updateUserDisplay() {
+  const disp   = document.getElementById('userNameDisplay');
+  const logBtn = document.getElementById('logoutBtn');
+  if (currentUser) {
+    disp.textContent = currentUser.name;
+    disp.style.display  = '';
+    logBtn.style.display = '';
+  } else {
+    disp.style.display  = 'none';
+    logBtn.style.display = 'none';
+  }
+}
+
+async function doLogout() {
+  if (sessionToken) {
+    try { await fetch('/api/auth/logout', { method:'POST', headers:{'x-session-token': sessionToken} }); } catch(e) {}
+  }
+  sessionToken = null;
+  currentUser  = null;
+  localStorage.removeItem('bb_token');
+  localStorage.removeItem('bb_user');
+  document.getElementById('authWall').style.display = 'flex';
+  updateUserDisplay();
+}
+
+async function checkExistingSession() {
+  const savedToken = localStorage.getItem('bb_token');
+  if (!savedToken) return false;
+  try {
+    const r = await fetch('/api/auth/me', { headers:{'x-session-token': savedToken} });
+    if (!r.ok) { localStorage.removeItem('bb_token'); localStorage.removeItem('bb_user'); return false; }
+    const user = await r.json();
+    sessionToken = savedToken;
+    currentUser  = user;
+    localStorage.setItem('bb_user', JSON.stringify(user));
+    document.getElementById('authWall').style.display = 'none';
+    updateUserDisplay();
+    return true;
+  } catch(e) { return false; }
+}
+
+// ══════════════════════════════════
+// SAVE MOCK BAR RESULTS
+// ══════════════════════════════════
+async function saveMockBarResults(scores) {
+  if (!sessionToken || !currentUser) return;
+  const total     = scores.length;
+  const scoreSum  = scores.reduce((a,s) => a + (s.score||0), 0);
+  const maxSum    = scores.reduce((a,s) => a + (s.max||10), 0);
+  const timeTaken = window.mockStartTime ? Date.now() - window.mockStartTime : null;
+  try {
+    await fetch('/api/results/save', {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json', 'x-session-token': sessionToken },
+      body: JSON.stringify({
+        score:       parseFloat((scoreSum / total).toFixed(2)),
+        total,
+        subject:     'Mock Bar',
+        questions:   scores.map(s => ({ q: s.q, score: s.score, max: s.max })),
+        timeTakenMs: timeTaken,
+      }),
+    });
+  } catch(e) { console.warn('Could not save results:', e.message); }
+}
+
+// ══════════════════════════════════
+// ADMIN: USERS
+// ══════════════════════════════════
+async function loadAdminUsers() {
+  const el = document.getElementById('adminUserList');
+  if (!el) return;
+  try {
+    const r = await fetch('/api/admin/users', { headers:{'x-admin-key': window._adminKey||''} });
+    const users = await r.json();
+    if (!users.length) { el.innerHTML = '<div style="font-size:12px;color:var(--muted);">No registered users yet.</div>'; return; }
+    el.innerHTML = users.map(u => {
+      const avg = u.stats.totalAttempts ? (u.stats.totalScore / u.stats.totalAttempts).toFixed(2) : '—';
+      return `<div class="ur-row">
+        <div><div class="ur-name">${h(u.name)}</div><div class="ur-meta">${h(u.email)} &nbsp;·&nbsp; Joined ${u.createdAt.slice(0,10)} &nbsp;·&nbsp; ${u.stats.totalAttempts} attempt(s), avg ${avg}/10</div></div>
+        <span class="ur-badge${u.active?'':' off'}">${u.active?'Active':'Disabled'}</span>
+        <button class="ur-act view" onclick="viewUserResults('${u.id}','${h(u.name)}')">Results</button>
+        <button class="ur-act ${u.active?'disable':'enable'}" onclick="toggleUserAccess('${u.id}',${!u.active})">${u.active?'Disable':'Enable'}</button>
+        <button class="ur-act del" onclick="deleteUser('${u.id}','${h(u.name)}')">Delete</button>
+      </div>`;
+    }).join('');
+  } catch(e) { el.innerHTML = '<div style="font-size:12px;color:#e07080;">Failed to load users.</div>'; }
+}
+
+async function toggleUserAccess(userId, active) {
+  if (!window._adminKey) return;
+  await fetch(`/api/admin/users/${userId}`, { method:'PATCH', headers:{'Content-Type':'application/json','x-admin-key':window._adminKey}, body:JSON.stringify({ active }) });
+  loadAdminUsers();
+}
+
+async function deleteUser(userId, name) {
+  if (!confirm(`Delete user "${name}"? This cannot be undone.`)) return;
+  await fetch(`/api/admin/users/${userId}`, { method:'DELETE', headers:{'x-admin-key':window._adminKey||''} });
+  loadAdminUsers();
+}
+
+async function toggleRegistration() {
+  const r = await fetch('/api/settings');
+  const s = await r.json();
+  await fetch('/api/admin/settings', { method:'POST', headers:{'Content-Type':'application/json','x-admin-key':window._adminKey||''}, body:JSON.stringify({ registrationOpen: !s.registrationOpen }) });
+  const newState = !s.registrationOpen;
+  const btn = document.getElementById('regToggleBtn');
+  if (btn) btn.textContent = newState ? 'Close Registration' : 'Open Registration';
+  loadAdminUsers();
+}
+
+// ══════════════════════════════════
+// ADMIN: RESULTS
+// ══════════════════════════════════
+async function loadAdminResults() {
+  const el = document.getElementById('adminResultsList');
+  if (!el) return;
+  try {
+    const r    = await fetch('/api/admin/results', { headers:{'x-admin-key': window._adminKey||''} });
+    const rows = await r.json();
+    if (!rows.length) { el.innerHTML = '<div style="font-size:12px;color:var(--muted);">No results saved yet.</div>'; return; }
+    el.innerHTML = rows.map(row => {
+      const pct   = ((row.score / 10) * 100).toFixed(0);
+      const passed = row.score >= 7;
+      return `<div class="ur-row">
+        <div><div class="ur-name">${h(row.userName)}</div><div class="ur-meta">${row.completedAt.slice(0,10)} &nbsp;·&nbsp; ${row.total} questions</div></div>
+        <span class="ur-badge${passed?'':' off'}">${row.score}/10 (${pct}%)</span>
+        <button class="ur-act view" onclick="viewResult('${row.id}')">View</button>
+        <button class="ur-act del" onclick="deleteResult('${row.id}')">Delete</button>
+      </div>`;
+    }).join('');
+  } catch(e) { el.innerHTML = '<div style="font-size:12px;color:#e07080;">Failed to load results.</div>'; }
+}
+
+async function viewUserResults(userId, name) {
+  const r    = await fetch(`/api/admin/results/${userId}`, { headers:{'x-admin-key': window._adminKey||''} });
+  const rows = await r.json();
+  document.getElementById('resultDetailTitle').textContent = `📊 ${name} — Results`;
+  document.getElementById('resultDetailStats').innerHTML = `
+    <div class="res-dstat"><div class="res-dstat-val">${rows.length}</div><div class="res-dstat-lbl">Attempts</div></div>
+    <div class="res-dstat"><div class="res-dstat-val">${rows.length ? (rows.reduce((a,r)=>a+r.score,0)/rows.length).toFixed(2) : '—'}</div><div class="res-dstat-lbl">Avg Score</div></div>
+    <div class="res-dstat"><div class="res-dstat-val">${rows.filter(r=>r.score>=7).length}</div><div class="res-dstat-lbl">Passed</div></div>`;
+  document.getElementById('resultDetailBody').innerHTML = rows.map(r =>
+    `<div style="padding:8px 0;border-bottom:1px solid var(--bdr2);font-size:12px;">${r.completedAt.slice(0,10)} &nbsp; <strong>${r.score}/10</strong> &nbsp; ${r.total} questions</div>`
+  ).join('') || '<div style="color:var(--muted);">No results.</div>';
+  document.getElementById('resultDetailOverlay').classList.add('on');
+}
+
+async function viewResult(resultId) {
+  const r    = await fetch('/api/admin/results', { headers:{'x-admin-key': window._adminKey||''} });
+  const rows = await r.json();
+  const row  = rows.find(x => x.id === resultId);
+  if (!row) return;
+  document.getElementById('resultDetailTitle').textContent = `📊 ${row.userName} — ${row.completedAt.slice(0,10)}`;
+  const pct = ((row.score/10)*100).toFixed(0);
+  document.getElementById('resultDetailStats').innerHTML = `
+    <div class="res-dstat"><div class="res-dstat-val">${row.score}/10</div><div class="res-dstat-lbl">Score</div></div>
+    <div class="res-dstat"><div class="res-dstat-val">${pct}%</div><div class="res-dstat-lbl">Percentage</div></div>
+    <div class="res-dstat"><div class="res-dstat-val">${row.total}</div><div class="res-dstat-lbl">Questions</div></div>`;
+  document.getElementById('resultDetailBody').innerHTML = (row.questions||[]).map((q,i)=>
+    `<div style="padding:7px 0;border-bottom:1px solid var(--bdr2);font-size:12px;"><strong>Q${i+1}:</strong> ${h((q.q||'').slice(0,120))} &nbsp;<span style="color:var(--gold);">${q.score}/${q.max||10}</span></div>`
+  ).join('') || '<div style="color:var(--muted);">No question detail.</div>';
+  document.getElementById('resultDetailOverlay').classList.add('on');
+}
+
+async function deleteResult(resultId) {
+  if (!confirm('Delete this result?')) return;
+  await fetch(`/api/admin/results/${resultId}`, { method:'DELETE', headers:{'x-admin-key':window._adminKey||''} });
+  loadAdminResults();
+}
+
+async function exportResultsCSV() {
+  const r    = await fetch('/api/admin/results', { headers:{'x-admin-key': window._adminKey||''} });
+  const rows = await r.json();
+  const lines = ['Name,Email,Date,Score,Total,Questions'];
+  rows.forEach(row => lines.push(`"${row.userName}","","${row.completedAt.slice(0,10)}","${row.score}","${row.total}","${row.total}"`));
+  const blob = new Blob([lines.join('\n')], { type:'text/csv' });
+  const a    = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'barbuddy_results.csv'; a.click();
+}
 </script>
 </body>
 </html>

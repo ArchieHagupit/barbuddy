@@ -6,6 +6,7 @@ const multer     = require('multer');
 const pdfParse   = require('pdf-parse');
 const mammoth    = require('mammoth');
 const nodemailer = require('nodemailer');
+const crypto     = require('crypto');
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
@@ -36,6 +37,10 @@ const UPLOADS_DIR  = process.env.PERSISTENT_STORAGE_PATH
 const KB_PATH           = path.join(UPLOADS_DIR, 'kb.json');
 const CONTENT_PATH      = path.join(UPLOADS_DIR, 'content.json');
 const TAB_SETTINGS_PATH = path.join(UPLOADS_DIR, 'tab_settings.json');
+const USERS_PATH        = path.join(UPLOADS_DIR, 'users.json');
+const SESSIONS_PATH     = path.join(UPLOADS_DIR, 'sessions.json');
+const RESULTS_PATH      = path.join(UPLOADS_DIR, 'results.json');
+const SETTINGS_PATH     = path.join(UPLOADS_DIR, 'settings.json');
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
 // Knowledge Base — syllabus + references + past bar
@@ -47,6 +52,12 @@ const KB = {
 
 // Tab visibility settings (admin-controlled)
 const TAB_SETTINGS = { dashboard: true, learn: true, practice: true };
+
+// User auth state
+let USERS      = {};   // { [userId]: { id, name, email, passwordHash, role, active, createdAt, stats } }
+let SESSIONS   = {};   // { [token]: { userId, createdAt, expiresAt } }
+let RESULTS_DB = [];   // [{ id, userId, userName, score, total, subject, questions, completedAt }]
+const SETTINGS = { registrationOpen: true, mockBarPublic: true };
 
 // Pre-generated content per topic
 // { [subject_key]: { [topic_name]: { lesson, mcq, essay, generatedAt } } }
@@ -79,7 +90,50 @@ function loadData() {
 function saveKB()          { try { fs.writeFileSync(KB_PATH, JSON.stringify(KB)); } catch(e) { console.error('KB save:', e.message); } }
 function saveContent()     { try { fs.writeFileSync(CONTENT_PATH, JSON.stringify(CONTENT)); } catch(e) { console.error('Content save:', e.message); } }
 function saveTabSettings() { try { fs.writeFileSync(TAB_SETTINGS_PATH, JSON.stringify(TAB_SETTINGS)); } catch(e) { console.error('Tab settings save:', e.message); } }
+function saveUsers()       { try { fs.writeFileSync(USERS_PATH,    JSON.stringify(USERS));      } catch(e) { console.error('Users save:', e.message); } }
+function saveSessions()    { try { fs.writeFileSync(SESSIONS_PATH, JSON.stringify(SESSIONS));   } catch(e) { console.error('Sessions save:', e.message); } }
+function saveResults()     { try { fs.writeFileSync(RESULTS_PATH,  JSON.stringify(RESULTS_DB)); } catch(e) { console.error('Results save:', e.message); } }
+function saveSettings()    { try { fs.writeFileSync(SETTINGS_PATH, JSON.stringify(SETTINGS));   } catch(e) { console.error('Settings save:', e.message); } }
+
+function loadUserData() {
+  try {
+    if (fs.existsSync(USERS_PATH))    USERS      = JSON.parse(fs.readFileSync(USERS_PATH, 'utf8'));
+    if (fs.existsSync(SESSIONS_PATH)) SESSIONS   = JSON.parse(fs.readFileSync(SESSIONS_PATH, 'utf8'));
+    if (fs.existsSync(RESULTS_PATH))  RESULTS_DB = JSON.parse(fs.readFileSync(RESULTS_PATH, 'utf8'));
+    if (fs.existsSync(SETTINGS_PATH)) Object.assign(SETTINGS, JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8')));
+    // Clean expired sessions on startup
+    const now = Date.now();
+    let cleaned = 0;
+    for (const token of Object.keys(SESSIONS)) {
+      if (SESSIONS[token].expiresAt < now) { delete SESSIONS[token]; cleaned++; }
+    }
+    if (cleaned > 0) saveSessions();
+    console.log(`Users: ${Object.keys(USERS).length}, Sessions: ${Object.keys(SESSIONS).length}, Results: ${RESULTS_DB.length}`);
+  } catch(e) { console.error('loadUserData error:', e.message); }
+}
+
+// ── Auth helpers ─────────────────────────────────────────────
+function hashPassword(pw) {
+  return crypto.createHash('sha256').update('barbuddy_salt_2025' + pw).digest('hex');
+}
+function generateToken() {
+  return crypto.randomBytes(32).toString('hex');
+}
+function requireAuth(req, res, next) {
+  const token = req.headers['x-session-token'];
+  if (!token || !SESSIONS[token]) return res.status(401).json({ error: 'Not authenticated' });
+  if (SESSIONS[token].expiresAt < Date.now()) {
+    delete SESSIONS[token];
+    saveSessions();
+    return res.status(401).json({ error: 'Session expired' });
+  }
+  req.userId = SESSIONS[token].userId;
+  req.user   = USERS[req.userId];
+  next();
+}
+
 loadData();
+loadUserData();
 
 // ── Middleware ──────────────────────────────────────────────
 app.use(cors());
@@ -91,6 +145,136 @@ function adminOnly(req, res, next) {
   if (key !== ADMIN_KEY) return res.status(401).json({ error: 'Unauthorized' });
   next();
 }
+
+// ── Auth routes ──────────────────────────────────────────────
+app.post('/api/auth/register', (req, res) => {
+  if (!SETTINGS.registrationOpen) return res.status(403).json({ error: 'Registration is currently closed' });
+  const { name, email, password } = req.body || {};
+  if (!name || !email || !password) return res.status(400).json({ error: 'Name, email, and password required' });
+  const existing = Object.values(USERS).find(u => u.email === email.toLowerCase());
+  if (existing) return res.status(409).json({ error: 'Email already registered' });
+  const id = 'u_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+  USERS[id] = {
+    id, name: name.trim(), email: email.toLowerCase(),
+    passwordHash: hashPassword(password),
+    role: 'student', active: true,
+    createdAt: new Date().toISOString(),
+    stats: { totalAttempts: 0, totalScore: 0, totalQuestions: 0 },
+  };
+  saveUsers();
+  const token = generateToken();
+  SESSIONS[token] = { userId: id, createdAt: Date.now(), expiresAt: Date.now() + 86400000 };
+  saveSessions();
+  res.json({ token, user: { id, name: USERS[id].name, email: USERS[id].email, role: USERS[id].role } });
+});
+
+app.post('/api/auth/login', (req, res) => {
+  const { email, password } = req.body || {};
+  if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
+  const user = Object.values(USERS).find(u => u.email === email.toLowerCase());
+  if (!user || user.passwordHash !== hashPassword(password)) return res.status(401).json({ error: 'Invalid email or password' });
+  if (!user.active) return res.status(403).json({ error: 'Account is disabled' });
+  const token = generateToken();
+  SESSIONS[token] = { userId: user.id, createdAt: Date.now(), expiresAt: Date.now() + 86400000 };
+  saveSessions();
+  res.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
+});
+
+app.post('/api/auth/logout', requireAuth, (req, res) => {
+  const token = req.headers['x-session-token'];
+  delete SESSIONS[token];
+  saveSessions();
+  res.json({ ok: true });
+});
+
+app.get('/api/auth/me', requireAuth, (req, res) => {
+  const u = req.user;
+  res.json({ id: u.id, name: u.name, email: u.email, role: u.role });
+});
+
+// ── Settings routes ───────────────────────────────────────────
+app.get('/api/settings', (_req, res) => res.json(SETTINGS));
+
+app.post('/api/admin/settings', adminOnly, (req, res) => {
+  const { registrationOpen, mockBarPublic } = req.body || {};
+  if (registrationOpen !== undefined) SETTINGS.registrationOpen = !!registrationOpen;
+  if (mockBarPublic     !== undefined) SETTINGS.mockBarPublic     = !!mockBarPublic;
+  saveSettings();
+  res.json(SETTINGS);
+});
+
+// ── Results routes ────────────────────────────────────────────
+app.post('/api/results/save', requireAuth, (req, res) => {
+  const { score, total, subject, questions, timeTakenMs } = req.body || {};
+  if (score === undefined || !total) return res.status(400).json({ error: 'score and total required' });
+  const id = 'r_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+  const result = {
+    id, userId: req.userId, userName: req.user.name,
+    score, total, subject: subject || 'Mixed',
+    questions: questions || [],
+    timeTakenMs: timeTakenMs || null,
+    completedAt: new Date().toISOString(),
+  };
+  RESULTS_DB.push(result);
+  saveResults();
+  // Update user stats
+  const u = USERS[req.userId];
+  u.stats.totalAttempts++;
+  u.stats.totalScore     += score;
+  u.stats.totalQuestions += total;
+  saveUsers();
+  res.json({ ok: true, id });
+});
+
+app.get('/api/admin/results', adminOnly, (_req, res) => {
+  const sorted = [...RESULTS_DB].sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt));
+  res.json(sorted);
+});
+
+app.get('/api/admin/results/:userId', adminOnly, (req, res) => {
+  const results = RESULTS_DB.filter(r => r.userId === req.params.userId)
+    .sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt));
+  res.json(results);
+});
+
+app.delete('/api/admin/results/:resultId', adminOnly, (req, res) => {
+  const idx = RESULTS_DB.findIndex(r => r.id === req.params.resultId);
+  if (idx === -1) return res.status(404).json({ error: 'Result not found' });
+  RESULTS_DB.splice(idx, 1);
+  saveResults();
+  res.json({ ok: true });
+});
+
+// ── Admin user-management routes ──────────────────────────────
+app.get('/api/admin/users', adminOnly, (_req, res) => {
+  const list = Object.values(USERS).map(u => ({
+    id: u.id, name: u.name, email: u.email, role: u.role,
+    active: u.active, createdAt: u.createdAt, stats: u.stats,
+  })).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  res.json(list);
+});
+
+app.patch('/api/admin/users/:userId', adminOnly, (req, res) => {
+  const user = USERS[req.params.userId];
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  const { active, role } = req.body || {};
+  if (active !== undefined) user.active = !!active;
+  if (role   !== undefined) user.role   = role;
+  saveUsers();
+  res.json({ ok: true });
+});
+
+app.delete('/api/admin/users/:userId', adminOnly, (req, res) => {
+  if (!USERS[req.params.userId]) return res.status(404).json({ error: 'User not found' });
+  delete USERS[req.params.userId];
+  // Also remove their sessions
+  for (const [token, s] of Object.entries(SESSIONS)) {
+    if (s.userId === req.params.userId) delete SESSIONS[token];
+  }
+  saveUsers();
+  saveSessions();
+  res.json({ ok: true });
+});
 
 // ── ADMIN: Parse uploaded file to text ─────────────────────
 app.post('/api/admin/parse-file', adminOnly, upload.single('file'), async (req, res) => {
