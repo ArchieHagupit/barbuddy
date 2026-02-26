@@ -200,6 +200,107 @@ app.post('/api/admin/pastbar', adminOnly, (req, res) => {
   res.json({ success:true, id, name, jobId });
 });
 
+// ── ADMIN: Download all past bar questions ───────────────────
+app.get('/api/admin/pastbar/download-all', adminOnly, (_req, res) => {
+  if (!KB.pastBar.length) return res.status(404).json({ error: 'No past bar questions in KB' });
+  const lines = [];
+  for (const p of KB.pastBar) {
+    lines.push('════════════════════════════════════════════════');
+    lines.push(`${p.name} — ${p.subject} — ${p.year || 'n/a'}`);
+    lines.push('════════════════════════════════════════════════');
+    lines.push('');
+    (p.questions || []).forEach((q, idx) => {
+      lines.push(`QUESTION ${idx + 1}`);
+      lines.push(`Type: ${q.type === 'situational' ? 'Situational' : 'Conceptual'}`);
+      lines.push('');
+      if (q.context) { lines.push('FACTS:'); lines.push(q.context); lines.push(''); }
+      lines.push('QUESTION:'); lines.push(q.q || ''); lines.push('');
+      lines.push('SUGGESTED ANSWER:'); lines.push(q.modelAnswer || ''); lines.push('');
+      if (q.keyPoints?.length) { lines.push('KEY POINTS:'); q.keyPoints.forEach(kp => lines.push(`• ${kp}`)); lines.push(''); }
+      lines.push('------------------------------------------------'); lines.push('');
+    });
+    lines.push('');
+  }
+  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+  res.setHeader('Content-Disposition', 'attachment; filename="barbuddy-all-questions.txt"');
+  res.send(lines.join('\n'));
+});
+
+// ── ADMIN: Download single past bar entry ────────────────────
+app.get('/api/admin/pastbar/:id/download', adminOnly, (req, res) => {
+  const entry = KB.pastBar.find(p => p.id === req.params.id);
+  if (!entry) return res.status(404).json({ error: 'Not found' });
+  const fmt = req.query.format || 'json';
+  const safeName = (entry.name || 'questions').replace(/[^a-zA-Z0-9_\-]/g, '_');
+  const year = entry.year || 'unknown';
+  const qs = entry.questions || [];
+  const e = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+
+  if (fmt === 'json') {
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeName}-${year}-questions.json"`);
+    return res.json({ name: entry.name, subject: entry.subject, year: entry.year, exportedAt: new Date().toISOString(),
+      questions: qs.map(q => ({ q: q.q, type: q.type, context: q.context||null, modelAnswer: q.modelAnswer||null, keyPoints: q.keyPoints||[], subject: q.subject||entry.subject })) });
+  }
+
+  if (fmt === 'txt') {
+    const lines = [];
+    lines.push('================================================');
+    lines.push(`${entry.name} — ${entry.subject} — ${entry.year || 'n/a'}`);
+    lines.push('BarBuddy Knowledge Base Export');
+    lines.push(`Exported: ${new Date().toLocaleString()}`);
+    lines.push(`Total Questions: ${qs.length}`);
+    lines.push('================================================'); lines.push('');
+    qs.forEach((q, idx) => {
+      lines.push(`QUESTION ${idx + 1}`);
+      lines.push(`Type: ${q.type === 'situational' ? 'Situational' : 'Conceptual'}`); lines.push('');
+      if (q.context) { lines.push('FACTS:'); lines.push(q.context); lines.push(''); }
+      lines.push('QUESTION:'); lines.push(q.q || ''); lines.push('');
+      lines.push('SUGGESTED ANSWER:'); lines.push(q.modelAnswer || ''); lines.push('');
+      if (q.keyPoints?.length) { lines.push('KEY POINTS:'); q.keyPoints.forEach(kp => lines.push(`• ${kp}`)); lines.push(''); }
+      lines.push('------------------------------------------------'); lines.push('');
+    });
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeName}-${year}-questions.txt"`);
+    return res.send(lines.join('\n'));
+  }
+
+  if (fmt === 'pdf') {
+    const qHtml = qs.map((q, idx) => `<div class="question">
+      <div class="qnum">Question ${idx + 1}</div>
+      <div class="qtype">Type: ${q.type === 'situational' ? 'Situational' : 'Conceptual'}</div>
+      ${q.context ? `<div class="section-label">FACTS:</div><div class="section-text">${e(q.context)}</div>` : ''}
+      <div class="section-label">QUESTION:</div><div class="section-text">${e(q.q||'')}</div>
+      <div class="section-label">SUGGESTED ANSWER:</div><div class="section-text">${e(q.modelAnswer||'')}</div>
+      ${q.keyPoints?.length ? `<div class="section-label">KEY POINTS:</div><ul class="kp-list">${q.keyPoints.map(kp=>`<li>${e(kp)}</li>`).join('')}</ul>` : ''}
+    </div>`).join('');
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    return res.send(`<!DOCTYPE html><html><head><meta charset="utf-8">
+<title>${e(entry.name)} — ${e(entry.subject)} — ${year}</title>
+<style>
+body{font-family:Georgia,serif;color:#111;max-width:800px;margin:0 auto;padding:30px;}
+h1{font-size:20px;color:#7a6128;border-bottom:2px solid #7a6128;padding-bottom:8px;margin-bottom:16px;}
+.meta{font-size:12px;color:#555;margin-bottom:20px;line-height:1.8;}
+.question{page-break-inside:avoid;margin-bottom:30px;padding-bottom:20px;border-bottom:1px solid #ccc;}
+.qnum{font-size:16px;font-weight:bold;color:#7a6128;margin-bottom:4px;}
+.qtype{font-size:11px;color:#888;margin-bottom:10px;}
+.section-label{font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:.08em;color:#7a6128;margin:12px 0 4px;}
+.section-text{font-size:13px;line-height:1.7;margin-bottom:8px;}
+.kp-list{margin:4px 0 0 18px;font-size:13px;line-height:1.7;}
+@media print{body{padding:0;}.question{page-break-inside:avoid;}}
+</style></head>
+<body>
+<h1>${e(entry.name)} — ${e(entry.subject)} — ${year}</h1>
+<div class="meta"><div><strong>Exported:</strong> ${new Date().toLocaleString()}</div><div><strong>Total Questions:</strong> ${qs.length}</div></div>
+${qHtml}
+<div style="margin-top:30px;padding-top:10px;border-top:1px solid #ccc;font-size:11px;color:#888;text-align:center;">Generated by BarBuddy — Philippine Bar Exam Companion</div>
+<script>window.onload=()=>window.print();</script>
+</body></html>`);
+  }
+
+  res.status(400).json({ error: 'format must be json, txt, or pdf' });
+});
+
 // ── ADMIN: Past Bar extraction status (legacy) ───────────────
 app.get('/api/admin/pastbar/:id/status', adminOnly, (req, res) => {
   const entry = KB.pastBar.find(p => p.id === req.params.id);
@@ -553,13 +654,148 @@ app.post('/api/mockbar/generate', async (req, res) => {
   }
 });
 
-// ── ESSAY EVALUATION ────────────────────────────────────────
+// ── Question format detection ────────────────────────────────
+function detectQuestionFormat(questionText) {
+  const q = questionText.toLowerCase();
+  if (q.includes('true or false') || q.includes('true/false') || q.startsWith('t/f') || q.includes('state whether')) return 'truefalse';
+  if (q.includes('which of the following') || q.includes('choose the correct') || q.includes('select the best') || /\ba\.\s|\bb\.\s|\bc\.\s/.test(q) || (q.includes('(a)') && q.includes('(b)'))) return 'mcq';
+  if (q.includes('enumerate') || q.includes('list the') || q.includes('what are the requisites') || q.includes('what are the elements') || q.includes('what are the requirements') || q.includes('give the') || q.includes('name the')) return 'enumeration';
+  if (q.includes('define ') || q.includes('what is meant by') || q.includes('distinguish between') || q.includes('differentiate') || q.includes('what do you understand by') || (q.startsWith('what is') && !q.includes('liable') && !q.includes('right') && !q.includes('remedy'))) return 'definition';
+  return 'essay';
+}
+
+const GRADE_SCALE = `Assign grade based on numericScore (passing score is 7.0/10):
+  Excellent:          8.5 and above
+  Good:               7.0 to 8.4  ← passing starts here
+  Satisfactory:       5.5 to 6.9
+  Needs Improvement:  4.0 to 5.4
+  Poor:               below 4.0`;
+
+// ── ESSAY EVALUATION (smart multi-format) ───────────────────
 app.post('/api/evaluate', async (req, res) => {
   if (!API_KEY) return res.status(500).json({ error:'API key not set' });
   const { question, answer, modelAnswer, keyPoints, subject } = req.body;
   const refCtx = KB.references.filter(r=>r.subject===subject||r.subject==='general').slice(0,1).map(r=>r.summary||'').join('');
-  try {
-    const raw = await callClaude([{ role:'user', content:`You are a Philippine Bar Exam examiner. Evaluate this student answer using the ALAC method (Answer, Legal Basis, Application, Conclusion) which is the standard format required in the Philippine Bar Exam.
+  const format = detectQuestionFormat(question);
+  let prompt, maxTok;
+
+  if (format === 'truefalse') {
+    maxTok = 600;
+    prompt = `You are a Philippine Bar Exam examiner. Evaluate this True or False answer.
+
+Question: ${question}
+${modelAnswer?`Correct Answer / Explanation: ${modelAnswer}`:''}
+Student Answer: ${answer}
+
+Score out of 10:
+  10/10 — Correct answer WITH a correct explanation of why it is true or false
+  7/10  — Correct answer with a partial or vague explanation
+  5/10  — Correct answer (True/False) but no explanation given
+  0/10  — Wrong answer regardless of explanation
+
+${GRADE_SCALE}
+
+Respond ONLY with valid JSON (no markdown):
+{
+  "score": "X/10", "numericScore": 0, "grade": "Excellent|Good|Satisfactory|Needs Improvement|Poor",
+  "isCorrect": true,
+  "overallFeedback": "Brief assessment of the student's answer",
+  "correctAnswer": "What the correct answer is and why — full explanation",
+  "modelAnswer": "The complete correct answer with full legal basis",
+  "format": "truefalse"
+}`;
+
+  } else if (format === 'mcq') {
+    maxTok = 700;
+    prompt = `You are a Philippine Bar Exam examiner. Evaluate this Multiple Choice answer.
+
+Question: ${question}
+${modelAnswer?`Correct Answer: ${modelAnswer}`:''}
+Student Answer: ${answer}
+
+Score out of 10:
+  10/10 — Correct choice WITH correct legal reasoning
+  7/10  — Correct choice but weak or incomplete reasoning
+  5/10  — Wrong choice but reasoning shows partial understanding of the applicable law
+  0/10  — Wrong choice with no reasoning or completely wrong reasoning
+
+${GRADE_SCALE}
+
+Respond ONLY with valid JSON (no markdown):
+{
+  "score": "X/10", "numericScore": 0, "grade": "Excellent|Good|Satisfactory|Needs Improvement|Poor",
+  "isCorrect": true,
+  "overallFeedback": "Brief assessment",
+  "whyCorrect": "Full explanation of why the correct answer is right, with legal basis",
+  "whyOthersWrong": "Brief note on why the other options are incorrect",
+  "modelAnswer": "The complete correct answer with legal reasoning",
+  "format": "mcq"
+}`;
+
+  } else if (format === 'enumeration') {
+    maxTok = 800;
+    const kpList = (keyPoints||[]).length ? keyPoints.join('\n') : (modelAnswer||'');
+    prompt = `You are a Philippine Bar Exam examiner. Evaluate this Enumeration answer.
+
+Question: ${question}
+${kpList?`Expected Points / Key Items:\n${kpList}`:''}
+Student Answer: ${answer}
+
+Count how many required points the student correctly stated.
+Award points proportionally — divide 10 by the number of required items to get points per item.
+Award full item credit if the student stated the substance correctly even if wording differs.
+Award half item credit if partially correct.
+
+${GRADE_SCALE}
+
+Respond ONLY with valid JSON (no markdown):
+{
+  "score": "X/10", "numericScore": 0, "grade": "Excellent|Good|Satisfactory|Needs Improvement|Poor",
+  "itemsRequired": 5,
+  "itemsCorrect": 3,
+  "itemsMissed": ["missed item 1", "missed item 2"],
+  "itemsWrong": ["incorrect item stated by student if any"],
+  "overallFeedback": "Brief assessment",
+  "modelAnswer": "Complete enumeration with all required items",
+  "format": "enumeration"
+}`;
+
+  } else if (format === 'definition') {
+    maxTok = 800;
+    prompt = `You are a Philippine Bar Exam examiner. Evaluate this Definition or Distinction answer.
+
+Question: ${question}
+${modelAnswer?`Model Answer: ${modelAnswer}`:''}
+${(keyPoints||[]).length?`Key Points: ${keyPoints.join(', ')}`:''}
+Student Answer: ${answer}
+
+Score out of 10 using these components:
+  Accuracy     (4 pts): Is the definition or distinction legally correct?
+  Completeness (3 pts): Are all essential elements or points of difference included?
+  Clarity      (3 pts): Is it stated clearly and precisely in legal language?
+
+For distinguish/differentiate questions, evaluate whether the student correctly identified the key points of difference between the two concepts.
+
+${GRADE_SCALE}
+
+Respond ONLY with valid JSON (no markdown):
+{
+  "score": "X/10", "numericScore": 0, "grade": "Excellent|Good|Satisfactory|Needs Improvement|Poor",
+  "breakdown": {
+    "accuracy":     { "score": 0.0, "max": 4, "feedback": "..." },
+    "completeness": { "score": 0.0, "max": 3, "feedback": "..." },
+    "clarity":      { "score": 0.0, "max": 3, "feedback": "..." }
+  },
+  "overallFeedback": "Brief assessment",
+  "keyMissed": ["key element or distinction the student missed"],
+  "modelAnswer": "Complete model definition or distinction",
+  "format": "definition"
+}`;
+
+  } else {
+    // essay / situational — full ALAC
+    maxTok = 2000;
+    prompt = `You are a Philippine Bar Exam examiner. Evaluate this student answer using the ALAC method (Answer, Legal Basis, Application, Conclusion) which is the standard format required in the Philippine Bar Exam.
 
 Question: ${question}
 ${modelAnswer?`Reference Answer: ${modelAnswer}`:''}
@@ -601,31 +837,31 @@ A — Application (4.0 pts): HIGHEST WEIGHT. How well the student applies the la
 
 C — Conclusion (1.5 pts): Clear restatement of the answer with finality. Shows the student can synthesize their analysis.
 
-Assign grade based on numericScore (passing score is 7.0/10):
-  Excellent:          8.5 and above
-  Good:               7.0 to 8.4  ← passing starts here
-  Satisfactory:       5.5 to 6.9
-  Needs Improvement:  4.0 to 5.4
-  Poor:               below 4.0
+${GRADE_SCALE}
 
 Respond ONLY with valid JSON (no markdown):
 {
-  "score": "X/10",
-  "numericScore": 7,
-  "grade": "Excellent|Good|Satisfactory|Needs Improvement|Poor",
+  "score": "X/10", "numericScore": 7, "grade": "Excellent|Good|Satisfactory|Needs Improvement|Poor",
   "alac": {
-    "answer": { "score": 1.2, "max": 1.5, "feedback": "What the student did well or missed for this component", "studentDid": "Quote or describe what the student wrote for the direct answer" },
-    "legalBasis": { "score": 2.5, "max": 3.0, "feedback": "...", "studentDid": "..." },
+    "answer":      { "score": 1.2, "max": 1.5, "feedback": "...", "studentDid": "..." },
+    "legalBasis":  { "score": 2.5, "max": 3.0, "feedback": "...", "studentDid": "..." },
     "application": { "score": 2.8, "max": 4.0, "feedback": "...", "studentDid": "..." },
-    "conclusion": { "score": 1.2, "max": 1.5, "feedback": "...", "studentDid": "..." }
+    "conclusion":  { "score": 1.2, "max": 1.5, "feedback": "...", "studentDid": "..." }
   },
   "overallFeedback": "2-3 sentence overall assessment",
   "strengths": ["..."],
   "improvements": ["..."],
   "keyMissed": ["specific law or case they should have cited"],
-  "modelAnswer": "ANSWER: [direct answer]\nLEGAL BASIS: [specific article/case]\nAPPLICATION: [how law applies to these facts]\nCONCLUSION: [restatement of answer]"
-}` }], 2000);
-    res.json(JSON.parse(raw.replace(/^```json\s*/i,'').replace(/```$/,'').trim()));
+  "modelAnswer": "ANSWER: [direct answer]\nLEGAL BASIS: [specific article/case]\nAPPLICATION: [how law applies to these facts]\nCONCLUSION: [restatement of answer]",
+  "format": "essay"
+}`;
+  }
+
+  try {
+    const raw = await callClaude([{ role:'user', content: prompt }], maxTok);
+    const result = JSON.parse(raw.replace(/^```json\s*/i,'').replace(/```$/,'').trim());
+    result.format = result.format || format; // ensure format tag is present
+    res.json(result);
   } catch(err) { res.status(500).json({ error:err.message }); }
 });
 

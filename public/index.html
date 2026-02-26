@@ -354,6 +354,9 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .kl-sub{font-size:10px;color:var(--muted);}
 .kl-del{font-size:11px;color:#e07080;cursor:pointer;padding:3px 7px;border-radius:5px;background:rgba(155,35,53,.1);border:none;transition:background .18s;}
 .kl-del:hover{background:rgba(155,35,53,.25);}
+.kl-dl{font-size:11px;color:var(--gold);cursor:pointer;padding:3px 7px;border-radius:5px;background:rgba(201,168,76,.1);border:1px solid rgba(201,168,76,.3);margin-right:4px;transition:background .18s;}
+.kl-dl:hover{background:rgba(201,168,76,.2);}
+.dl-picker{display:none;align-items:center;gap:6px;flex-wrap:wrap;padding:7px 10px 10px 40px;background:rgba(255,255,255,.03);border:1px solid var(--bdr2);border-top:none;border-radius:0 0 9px 9px;margin-top:-6px;margin-bottom:6px;}
 .admin-locked{text-align:center;padding:48px;color:var(--muted);}
 /* Gen progress panel */
 .gen-prog-panel{background:linear-gradient(135deg,#0a1000,#141800);border:1px solid rgba(255,140,66,.25);border-radius:14px;padding:18px;margin-top:14px;}
@@ -781,6 +784,7 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
         <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;">
           <button class="btn-og" onclick="retriggerGen()" style="font-size:11px;">↺ Re-generate All</button>
           <button class="btn-og" onclick="clearContent()" style="font-size:11px;border-color:rgba(155,35,53,.4);color:#e07080;">🗑 Clear Content Cache</button>
+          <button class="btn-og" onclick="downloadAllQuestions()" style="font-size:11px;border-color:rgba(201,168,76,.4);color:var(--gold);">⬇ Download All Questions (TXT)</button>
         </div>
         <div id="storageIndicator" style="margin-top:14px;padding:10px 13px;border-radius:10px;background:rgba(255,255,255,.04);border:1px solid var(--bdr2);font-size:12px;color:var(--muted);">
           Checking storage…
@@ -1239,6 +1243,77 @@ function pickMCQ(i){
   fb.innerHTML=(ok?'✅ <strong>Correct!</strong> ':'❌ <strong>Incorrect.</strong> ')+h(cur.explanation);
   document.getElementById('qnxt').style.display='block';updateDash();
 }
+// ── Eval format badge ──────────────────────────────────────
+function evalFormatBadge(format){
+  const map={
+    essay:       ['📝 ALAC Scoring',       '#ff8c42','rgba(255,140,66,.12)'],
+    truefalse:   ['✓/✗ T/F Scoring',       '#5b9bd5','rgba(91,155,213,.12)'],
+    mcq:         ['🔘 MCQ Scoring',         '#5b9bd5','rgba(91,155,213,.12)'],
+    enumeration: ['📋 Enumeration Scoring', '#14b4a0','rgba(20,180,160,.12)'],
+    definition:  ['📖 Definition Scoring',  '#c9a84c','rgba(201,168,76,.12)'],
+  };
+  const [label,color,bg]=map[format]||map.essay;
+  return `<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;background:${bg};color:${color};letter-spacing:.04em;margin-right:6px;">${label}</span>`;
+}
+// ── Dispatcher ─────────────────────────────────────────────
+function renderEvalCard(ev){
+  if(!ev) return '';
+  const fmt=ev.format||'essay';
+  if(fmt==='truefalse'||fmt==='mcq') return renderTFMCQCard(ev);
+  if(fmt==='enumeration') return renderEnumCard(ev);
+  if(fmt==='definition')  return renderDefCard(ev);
+  return renderAlacCard(ev);
+}
+// ── True/False & MCQ card ──────────────────────────────────
+function renderTFMCQCard(ev){
+  const gc=ev.grade==='Excellent'?'#14b4a0':ev.grade==='Good'?'#50d090':ev.grade==='Satisfactory'?'#c9a84c':ev.grade==='Needs Improvement'?'#e09050':'#e07080';
+  const ok=ev.isCorrect;
+  return `<div class="ai-fb-head">${evalFormatBadge(ev.format)}<span class="ai-fb-score">${h(ev.score||'?/10')}</span><span style="background:rgba(255,255,255,.08);border-radius:5px;padding:2px 7px;font-family:var(--fm);color:${gc};">${h(ev.grade||'')}</span></div>
+  <div class="ai-fb-content">
+    <div style="font-size:18px;font-weight:700;margin-bottom:12px;color:${ok?'#14b4a0':'#e07080'};">${ok?'✅ CORRECT':'❌ INCORRECT'}</div>
+    ${ev.whyCorrect?`<p style="margin-bottom:6px;"><strong>Why this is correct:</strong></p><p style="color:rgba(248,246,241,.85);line-height:1.7;margin-bottom:10px;">${h(ev.whyCorrect)}</p>`:''}
+    ${ev.whyOthersWrong?`<p style="margin-bottom:4px;"><strong>Why other options are wrong:</strong></p><p style="color:rgba(248,246,241,.7);font-size:13px;line-height:1.7;margin-bottom:10px;">${h(ev.whyOthersWrong)}</p>`:''}
+    ${ev.overallFeedback&&!ev.whyCorrect?`<p style="color:rgba(248,246,241,.85);line-height:1.7;">${h(ev.overallFeedback)}</p>`:''}
+    <details style="margin-top:12px;"><summary style="cursor:pointer;color:var(--gold);font-weight:600;font-size:13px;">📖 Correct Answer</summary>
+    <div style="margin-top:8px;padding:12px;background:rgba(255,255,255,.03);border-radius:9px;">${renderModelAnswer(ev.modelAnswer||ev.correctAnswer||'')}</div></details>
+  </div>`;
+}
+// ── Enumeration card ──────────────────────────────────────
+function renderEnumCard(ev){
+  const gc=ev.grade==='Excellent'?'#14b4a0':ev.grade==='Good'?'#50d090':ev.grade==='Satisfactory'?'#c9a84c':ev.grade==='Needs Improvement'?'#e09050':'#e07080';
+  return `<div class="ai-fb-head">${evalFormatBadge(ev.format)}<span class="ai-fb-score">${h(ev.score||'?/10')}</span><span style="background:rgba(255,255,255,.08);border-radius:5px;padding:2px 7px;font-family:var(--fm);color:${gc};">${h(ev.grade||'')}</span></div>
+  <div class="ai-fb-content">
+    <div style="font-size:16px;font-weight:700;margin-bottom:12px;color:${gc};">Items Correct: ${ev.itemsCorrect??'?'} / ${ev.itemsRequired??'?'}</div>
+    ${ev.itemsMissed?.length?`<p style="margin-bottom:6px;"><strong>❌ Items you missed:</strong></p><ul>${ev.itemsMissed.map(s=>`<li>${h(s)}</li>`).join('')}</ul>`:'<p style="color:#14b4a0;font-weight:600;">✅ All items covered!</p>'}
+    ${ev.itemsWrong?.length?`<p style="margin-top:8px;margin-bottom:4px;"><strong>⚠️ Incorrect items stated:</strong></p><ul>${ev.itemsWrong.map(s=>`<li>${h(s)}</li>`).join('')}</ul>`:''}
+    ${ev.overallFeedback?`<p style="margin-top:10px;color:rgba(248,246,241,.8);line-height:1.7;">${h(ev.overallFeedback)}</p>`:''}
+    <details style="margin-top:12px;"><summary style="cursor:pointer;color:var(--gold);font-weight:600;font-size:13px;">📖 Complete Answer</summary>
+    <div style="margin-top:8px;padding:12px;background:rgba(255,255,255,.03);border-radius:9px;">${renderModelAnswer(ev.modelAnswer||'')}</div></details>
+  </div>`;
+}
+// ── Definition / Distinction card ─────────────────────────
+function renderDefCard(ev){
+  const gc=ev.grade==='Excellent'?'#14b4a0':ev.grade==='Good'?'#50d090':ev.grade==='Satisfactory'?'#c9a84c':ev.grade==='Needs Improvement'?'#e09050':'#e07080';
+  const bd=ev.breakdown||{};
+  const cls=(s,max)=>s>=max*.8?'hi':s>=max*.5?'mid':'lo';
+  const defRows=[['Accuracy',bd.accuracy,4],['Completeness',bd.completeness,3],['Clarity',bd.clarity,3]].filter(([,c])=>c);
+  const tableRows=defRows.map(([label,c,max])=>`<tr>
+    <td style="color:var(--white);font-weight:600;">${label}</td>
+    <td><span class="alac-score ${cls(c.score??0,max)}">${c.score!=null?c.score:'—'}</span></td>
+    <td style="color:var(--muted);font-size:12px;white-space:nowrap;">/${max}</td>
+    <td style="color:rgba(248,246,241,.8);">${h(c.feedback||'')}</td>
+  </tr>`).join('');
+  return `<div class="ai-fb-head">${evalFormatBadge(ev.format)}<span class="ai-fb-score">${h(ev.score||'?/10')}</span><span style="background:rgba(255,255,255,.08);border-radius:5px;padding:2px 7px;font-family:var(--fm);color:${gc};">${h(ev.grade||'')}</span></div>
+  <div class="ai-fb-content">
+    <table class="alac-table">
+      <thead><tr><th>Component</th><th>Score</th><th>Max</th><th>Feedback</th></tr></thead>
+      <tbody>${tableRows}<tr class="alac-total-row"><td style="color:${gc};">Total</td><td style="color:${gc};">${h(ev.score||'?/10')}</td><td style="color:var(--muted);font-size:12px;">/10</td><td style="color:rgba(248,246,241,.6);font-size:12px;">${h(ev.overallFeedback||'')}</td></tr></tbody>
+    </table>
+    ${ev.keyMissed?.length?`<p style="margin-top:10px;"><strong>📚 Missed:</strong></p><ul>${ev.keyMissed.map(s=>`<li>${h(s)}</li>`).join('')}</ul>`:''}
+    <details style="margin-top:12px;"><summary style="cursor:pointer;color:var(--gold);font-weight:600;font-size:13px;">📖 Model Answer</summary>
+    <div style="margin-top:8px;padding:12px;background:rgba(255,255,255,.03);border-radius:9px;">${renderModelAnswer(ev.modelAnswer||'')}</div></details>
+  </div>`;
+}
 // ALAC color thresholds per component
 function alacScoreCls(score, key){
   if(key==='answer')      return score>=1.2?'hi':score>=0.7?'mid':'lo';
@@ -1278,7 +1353,7 @@ function renderAlacCard(ev){
     <td style="color:rgba(248,246,241,.8);">${h(c.feedback||'')}</td>
   </tr>`:''
   ).join('');
-  return `<div class="ai-fb-head">⚖️ <span class="ai-fb-score">${h(ev.score||'?/10')}</span><span style="background:rgba(255,255,255,.08);border-radius:5px;padding:2px 7px;font-family:var(--fm);color:${gc};">${h(ev.grade||'')}</span></div>
+  return `<div class="ai-fb-head">${evalFormatBadge('essay')}<span class="ai-fb-score">${h(ev.score||'?/10')}</span><span style="background:rgba(255,255,255,.08);border-radius:5px;padding:2px 7px;font-family:var(--fm);color:${gc};">${h(ev.grade||'')}</span></div>
   <div class="ai-fb-content">
     <table class="alac-table">
       <thead><tr><th>Component</th><th>Score</th><th>Max</th><th>Feedback</th></tr></thead>
@@ -1300,7 +1375,7 @@ async function submitEssay(){
   try{
     const r=await fetch('/api/evaluate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:cur.prompt||cur.q,answer:ans,modelAnswer:cur.modelAnswer,keyPoints:cur.keyPoints,subject:pool.subject})});
     const ev=await r.json();if(ev.error)throw new Error(ev.error);
-    fb.innerHTML=renderAlacCard(ev);
+    fb.innerHTML=renderEvalCard(ev);
     document.getElementById('essNext').style.display='block';totalQDone++;updateDash();
   }catch(err){fb.innerHTML=`<div class="ai-fb-head" style="color:#e07080;">⚠️ ${h(err.message)}</div>`;}
   btn.disabled=false;btn.textContent='🤖 Get AI Feedback';
@@ -1504,7 +1579,7 @@ async function endMockSession(){
         ${isSit?`<div class="essay-ctx" style="margin-bottom:8px;"><span class="facts-label">Facts</span>${h(q.context)}</div><span class="q-label">Question</span>`:''}
         <div style="font-size:13px;color:rgba(248,246,241,.85);margin-bottom:8px;line-height:1.6;">${h(qText)}</div>
         ${s.grade==='Not Answered'?'':`
-        <div class="ai-fb show" style="margin-top:8px;">${renderAlacCard(s)}</div>`}
+        <div class="ai-fb show" style="margin-top:8px;">${renderEvalCard(s)}</div>`}
         <details style="margin-top:8px;"><summary style="cursor:pointer;color:var(--muted);font-size:12px;font-weight:600;">Your answer</summary>
           <div style="margin-top:6px;padding:10px;background:rgba(255,255,255,.03);border-radius:8px;font-size:12px;line-height:1.7;color:rgba(248,246,241,.8);">${h(mockAnswers[i]||'(no answer)')}</div>
         </details>
@@ -1828,6 +1903,37 @@ function pollJob(jobId,sta,onDone){
     }catch(e){if(attempts>=38)clearInterval(iv);}
   },8000);
 }
+function toggleDownloadPicker(id){
+  document.querySelectorAll('.dl-picker').forEach(el=>{if(el.id!==`dl-picker-${id}`)el.style.display='none';});
+  const p=document.getElementById(`dl-picker-${id}`);
+  if(p) p.style.display=p.style.display==='flex'?'none':'flex';
+}
+async function downloadKBItem(id,format){
+  const r=await fetch(`/api/admin/pastbar/${id}/download?format=${format}`,{headers:{'x-admin-key':adminKey}});
+  if(!r.ok){alert('Download failed: '+(await r.text()));return;}
+  if(format==='pdf'){
+    // Open HTML page in new tab — it auto-prints
+    const blob=await r.blob();
+    const url=URL.createObjectURL(blob);
+    window.open(url,'_blank');
+    setTimeout(()=>URL.revokeObjectURL(url),60000);
+    return;
+  }
+  const blob=await r.blob();
+  const objUrl=URL.createObjectURL(blob);
+  const cd=r.headers.get('content-disposition')||'';
+  const fname=cd.match(/filename="?([^"]+)"?/)?.[1]||`questions-${id}.${format}`;
+  const a=document.createElement('a');a.href=objUrl;a.download=fname;a.click();
+  URL.revokeObjectURL(objUrl);
+}
+async function downloadAllQuestions(){
+  const r=await fetch('/api/admin/pastbar/download-all?format=txt',{headers:{'x-admin-key':adminKey}});
+  if(!r.ok){alert('Download failed: '+(await r.text()));return;}
+  const blob=await r.blob();
+  const objUrl=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=objUrl;a.download='barbuddy-all-questions.txt';a.click();
+  URL.revokeObjectURL(objUrl);
+}
 async function refreshAdminKB(){
   loadStorageInfo();
   const el=document.getElementById('adminKbList');if(!el)return;
@@ -1837,11 +1943,22 @@ async function refreshAdminKB(){
     ...(KB.pastBar||[]).map(p=>({...p,_cat:'pb'})),
   ];
   if(!items.length){el.innerHTML=`<div style="font-size:12px;color:var(--muted);">Knowledge base is empty.</div>`;return;}
-  el.innerHTML=items.map(i=>`<div class="kb-list-item">
-    <div style="font-size:15px;">${i.type==='syllabus'?'📋':i._cat==='pb'||i.qCount!==undefined?'📜':'📂'}</div>
-    <div style="flex:1;min-width:0;"><div class="kl-name">${h(i.name)}</div><div class="kl-sub">${i.subject||''} ${i.year?'· '+i.year:''} ${i.qCount!==undefined?'· '+i.qCount+' Qs':i.type?'· '+i.type:''}</div></div>
-    ${i.id!=='_syl'?`<button class="kl-del" onclick="deleteItem('${i.id}',this)">✕</button>`:`<button class="kl-del" onclick="deleteSyllabus(this)">✕</button>`}
-  </div>`).join('');
+  el.innerHTML=items.map(i=>{
+    const isPB=i._cat==='pb';
+    const item=`<div class="kb-list-item" style="${isPB?'border-radius:9px 9px 0 0;margin-bottom:0;':''}">
+      <div style="font-size:15px;">${i.type==='syllabus'?'📋':isPB?'📜':'📂'}</div>
+      <div style="flex:1;min-width:0;"><div class="kl-name">${h(i.name)}</div><div class="kl-sub">${i.subject||''} ${i.year?'· '+i.year:''} ${i.qCount!==undefined?'· '+i.qCount+' Qs':i.type?'· '+i.type:''}</div></div>
+      ${isPB?`<button class="kl-dl" onclick="toggleDownloadPicker('${i.id}')">⬇ Download</button>`:''}
+      ${i.id!=='_syl'?`<button class="kl-del" onclick="deleteItem('${i.id}',this)">✕</button>`:`<button class="kl-del" onclick="deleteSyllabus(this)">✕</button>`}
+    </div>`;
+    const picker=isPB?`<div class="dl-picker" id="dl-picker-${i.id}">
+      <span style="font-size:11px;color:var(--muted);">Download as:</span>
+      <button class="kl-dl" onclick="downloadKBItem('${i.id}','pdf')">📄 PDF</button>
+      <button class="kl-dl" onclick="downloadKBItem('${i.id}','json')">📋 JSON</button>
+      <button class="kl-dl" onclick="downloadKBItem('${i.id}','txt')">📝 TXT</button>
+    </div>`:'';
+    return item+picker;
+  }).join('');
 }
 async function loadStorageInfo(){
   const el=document.getElementById('storageIndicator');if(!el)return;
