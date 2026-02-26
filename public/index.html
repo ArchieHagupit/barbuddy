@@ -361,8 +361,9 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .tt-off{background:rgba(155,35,53,.15);border-color:rgba(155,35,53,.4);color:#e07080;}
 .dl-picker{display:none;align-items:center;gap:6px;flex-wrap:wrap;padding:7px 10px 10px 40px;background:rgba(255,255,255,.03);border:1px solid var(--bdr2);border-top:none;border-radius:0 0 9px 9px;margin-top:-6px;margin-bottom:6px;}
 /* Auth wall */
-#authWall{position:fixed;inset:0;background:var(--bg);z-index:9000;display:flex;align-items:center;justify-content:center;padding:20px;}
-.auth-card{background:var(--card);border:1px solid rgba(201,168,76,.25);border-radius:22px;width:100%;max-width:420px;padding:40px 36px;position:relative;box-shadow:0 32px 80px rgba(0,0,0,.7);}
+@keyframes authBgShift{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
+#authWall{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(8,12,24,.85);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);background-image:radial-gradient(ellipse at 20% 50%,rgba(120,40,40,.15) 0%,transparent 60%),radial-gradient(ellipse at 80% 20%,rgba(201,168,76,.08) 0%,transparent 50%);}
+.auth-card{background:rgba(16,22,42,.97);border:1px solid rgba(201,168,76,.25);border-radius:20px;width:100%;max-width:440px;padding:36px 32px;position:relative;box-shadow:0 32px 80px rgba(0,0,0,.6),0 0 0 1px rgba(201,168,76,.08),inset 0 1px 0 rgba(255,255,255,.06);}
 .auth-card::before{content:'';position:absolute;top:0;left:10%;right:10%;height:1px;background:linear-gradient(90deg,transparent,var(--gold),transparent);}
 .auth-logo{font-family:var(--fd);font-size:28px;font-weight:800;color:var(--gold-l);text-align:center;margin-bottom:4px;letter-spacing:.02em;}
 .auth-sub{font-size:13px;color:var(--muted);text-align:center;margin-bottom:28px;}
@@ -438,14 +439,15 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
   <div class="auth-card">
     <div class="auth-logo">⚖️ BarBuddy</div>
     <div class="auth-sub">Philippine Bar Exam AI Companion</div>
-    <div class="auth-tabs">
+    <div class="auth-tabs" id="authTabRow">
       <button class="auth-tab-btn active" onclick="switchAuthTab('login')">Log In</button>
       <button class="auth-tab-btn" onclick="switchAuthTab('register')">Register</button>
     </div>
     <!-- Login form -->
     <div id="authFormLogin">
       <div class="auth-field"><label>Email</label><input type="email" id="loginEmail" placeholder="you@email.com" autocomplete="email"></div>
-      <div class="auth-field"><label>Password</label><input type="password" id="loginPassword" placeholder="••••••••" autocomplete="current-password"></div>
+      <div class="auth-field"><label>Password</label><input type="password" id="loginPassword" placeholder="••••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()"></div>
+      <div style="text-align:right;margin-top:-8px;margin-bottom:14px;"><button onclick="showForgotPassword()" style="background:none;border:none;color:var(--gold-l);font-size:12px;cursor:pointer;text-decoration:underline;font-family:var(--fb);opacity:.8;" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=.8">Forgot password?</button></div>
       <div class="auth-err" id="loginErr"></div>
       <button class="auth-btn" id="loginBtn" onclick="doLogin()">Log In</button>
     </div>
@@ -456,6 +458,19 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
       <div class="auth-field"><label>Password</label><input type="password" id="regPassword" placeholder="••••••••" autocomplete="new-password"></div>
       <div class="auth-err" id="regErr"></div>
       <button class="auth-btn" id="regBtn" onclick="doRegister()">Create Account</button>
+    </div>
+    <!-- Forgot password form -->
+    <div id="authFormForgot" style="display:none;">
+      <div style="text-align:center;margin-bottom:20px;">
+        <div style="font-size:36px;margin-bottom:8px;">🔑</div>
+        <div style="font-family:var(--fd);font-size:20px;font-weight:700;color:var(--gold-l);margin-bottom:6px;">Reset Password</div>
+        <div style="font-size:13px;color:var(--muted);line-height:1.55;">Enter your email address. Your reset request will be sent to the administrator who will provide you with a new temporary password.</div>
+      </div>
+      <div class="auth-field"><label>Email Address</label><input type="email" id="forgotEmail" placeholder="your@email.com" onkeydown="if(event.key==='Enter')doForgotPassword()"></div>
+      <div id="forgotError" style="color:#e07080;font-size:12px;margin-bottom:10px;display:none;"></div>
+      <div id="forgotSuccess" style="display:none;background:rgba(20,180,160,.1);border:1px solid rgba(20,180,160,.3);border-radius:10px;padding:14px;margin-bottom:14px;font-size:13px;color:#14b4a0;line-height:1.6;">✅ Reset request submitted. The administrator has been notified and will contact you with a temporary password. Check back later or contact your instructor directly.</div>
+      <button class="auth-btn" id="forgotBtn" onclick="doForgotPassword()" style="margin-bottom:10px;">📨 Submit Reset Request</button>
+      <button onclick="showForgotPassword(false)" style="width:100%;background:none;border:none;color:var(--muted);font-size:13px;cursor:pointer;padding:8px;font-family:var(--fb);">← Back to Login</button>
     </div>
   </div>
 </div>
@@ -2290,6 +2305,9 @@ let sessionToken = null;
 function switchAuthTab(tab) {
   document.getElementById('authFormLogin').style.display    = tab === 'login'    ? '' : 'none';
   document.getElementById('authFormRegister').style.display = tab === 'register' ? '' : 'none';
+  document.getElementById('authFormForgot').style.display   = 'none';
+  const tabRow = document.getElementById('authTabRow');
+  if (tabRow) tabRow.style.display = 'flex';
   document.querySelectorAll('.auth-tab-btn').forEach((b,i) => b.classList.toggle('active', (i===0&&tab==='login')||(i===1&&tab==='register')));
 }
 
@@ -2379,6 +2397,71 @@ async function checkExistingSession() {
   } catch(e) { return false; }
 }
 
+function showForgotPassword(show = true) {
+  document.getElementById('authFormLogin').style.display    = show ? 'none' : '';
+  document.getElementById('authFormRegister').style.display = 'none';
+  document.getElementById('authFormForgot').style.display   = show ? '' : 'none';
+  const tabRow = document.getElementById('authTabRow');
+  if (tabRow) tabRow.style.display = show ? 'none' : 'flex';
+  if (!show) switchAuthTab('login');
+  document.getElementById('forgotError').style.display   = 'none';
+  document.getElementById('forgotSuccess').style.display = 'none';
+  document.getElementById('forgotEmail').value = '';
+}
+
+async function doForgotPassword() {
+  const email     = document.getElementById('forgotEmail').value.trim();
+  const errEl     = document.getElementById('forgotError');
+  const btn       = document.getElementById('forgotBtn');
+  const successEl = document.getElementById('forgotSuccess');
+  errEl.style.display = 'none';
+  if (!email) { errEl.textContent = 'Please enter your email address.'; errEl.style.display = 'block'; return; }
+  btn.disabled = true; btn.textContent = '⏳ Submitting…';
+  try {
+    await fetch('/api/auth/forgot-password', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ email }) });
+    successEl.style.display = 'block';
+    btn.style.display = 'none';
+  } catch(e) {
+    errEl.textContent = '⚠️ Something went wrong. Try again.';
+    errEl.style.display = 'block';
+    btn.disabled = false; btn.textContent = '📨 Submit Reset Request';
+  }
+}
+
+function timeAgo(isoString) {
+  const diff = Date.now() - new Date(isoString).getTime();
+  const s = Math.floor(diff / 1000);
+  if (s < 60)  return `${s} second${s===1?'':'s'} ago`;
+  const m = Math.floor(s / 60);
+  if (m < 60)  return `${m} minute${m===1?'':'s'} ago`;
+  const hr = Math.floor(m / 60);
+  if (hr < 24) return `${hr} hour${hr===1?'':'s'} ago`;
+  const d = Math.floor(hr / 24);
+  return `${d} day${d===1?'':'s'} ago`;
+}
+
+async function adminResetPassword(userId, requestId, inputId) {
+  const newPassword = document.getElementById(inputId)?.value.trim();
+  if (!newPassword || newPassword.length < 6) { alert('Password must be at least 6 characters.'); return; }
+  const r = await fetch('/api/admin/reset-password', {
+    method: 'POST',
+    headers: { 'Content-Type':'application/json', 'x-admin-key': window._adminKey || '' },
+    body: JSON.stringify({ userId, newPassword, requestId }),
+  });
+  const d = await r.json();
+  if (d.success) {
+    alert(`✅ Password updated. Tell the user their new password is: ${newPassword}`);
+    loadAdminUsers();
+  } else {
+    alert('Error: ' + (d.error || 'Unknown error'));
+  }
+}
+
+async function dismissResetRequest(requestId) {
+  await fetch(`/api/admin/reset-requests/${requestId}`, { method:'DELETE', headers:{'x-admin-key': window._adminKey || ''} });
+  loadAdminUsers();
+}
+
 // ══════════════════════════════════
 // SAVE MOCK BAR RESULTS
 // ══════════════════════════════════
@@ -2410,10 +2493,35 @@ async function loadAdminUsers() {
   const el = document.getElementById('adminUserList');
   if (!el) return;
   try {
-    const r = await fetch('/api/admin/users', { headers:{'x-admin-key': window._adminKey||''} });
-    const users = await r.json();
-    if (!users.length) { el.innerHTML = '<div style="font-size:12px;color:var(--muted);">No registered users yet.</div>'; return; }
-    el.innerHTML = users.map(u => {
+    // Fetch users and reset requests in parallel
+    const [rUsers, rReset] = await Promise.all([
+      fetch('/api/admin/users',         { headers:{'x-admin-key': window._adminKey||''} }),
+      fetch('/api/admin/reset-requests',{ headers:{'x-admin-key': window._adminKey||''} }),
+    ]);
+    const users   = await rUsers.json();
+    const resets  = await rReset.json();
+    const pending = resets.filter(r => r.status === 'pending');
+
+    // Password reset requests panel (only when there are pending ones)
+    let resetHtml = '';
+    if (pending.length) {
+      resetHtml = `
+        <div style="background:rgba(155,35,53,.08);border:1px solid rgba(155,35,53,.3);border-radius:12px;padding:14px 16px;margin-bottom:16px;">
+          <div style="font-weight:700;font-size:14px;color:#e07080;margin-bottom:10px;">🔑 Password Reset Requests <span style="background:rgba(155,35,53,.25);color:#e07080;border-radius:5px;padding:1px 7px;font-size:11px;">${pending.length}</span></div>
+          ${pending.map(req => `<div class="kb-list-item" style="flex-wrap:wrap;gap:8px;align-items:center;">
+            <div style="flex:1;min-width:140px;">
+              <div class="kl-name">${h(req.name)}</div>
+              <div class="kl-sub">${h(req.email)} &nbsp;·&nbsp; ${timeAgo(req.requestedAt)}</div>
+            </div>
+            <input type="password" id="newpw_${req.id}" class="form-input" placeholder="New password" style="width:160px;padding:7px 10px;font-size:12px;margin:0;">
+            <button onclick="adminResetPassword('${req.userId}','${req.id}','newpw_${req.id}')" class="kl-del" style="color:#14b4a0;background:rgba(20,180,160,.1);white-space:nowrap;">✓ Set Password</button>
+            <button onclick="dismissResetRequest('${req.id}')" class="kl-del" style="white-space:nowrap;">✕ Dismiss</button>
+          </div>`).join('')}
+        </div>`;
+    }
+
+    if (!users.length) { el.innerHTML = resetHtml + '<div style="font-size:12px;color:var(--muted);">No registered users yet.</div>'; return; }
+    el.innerHTML = resetHtml + users.map(u => {
       const avg = u.stats.totalAttempts ? (u.stats.totalScore / u.stats.totalAttempts).toFixed(2) : '—';
       return `<div class="ur-row">
         <div><div class="ur-name">${h(u.name)}</div><div class="ur-meta">${h(u.email)} &nbsp;·&nbsp; Joined ${u.createdAt.slice(0,10)} &nbsp;·&nbsp; ${u.stats.totalAttempts} attempt(s), avg ${avg}/10</div></div>

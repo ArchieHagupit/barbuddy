@@ -7,4 +7,5 @@ uploads/users.json
 uploads/sessions.json
 uploads/results.json
 uploads/settings.json
+uploads/reset_requests.json
 *.log

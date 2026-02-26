@@ -37,10 +37,11 @@ const UPLOADS_DIR  = process.env.PERSISTENT_STORAGE_PATH
 const KB_PATH           = path.join(UPLOADS_DIR, 'kb.json');
 const CONTENT_PATH      = path.join(UPLOADS_DIR, 'content.json');
 const TAB_SETTINGS_PATH = path.join(UPLOADS_DIR, 'tab_settings.json');
-const USERS_PATH        = path.join(UPLOADS_DIR, 'users.json');
-const SESSIONS_PATH     = path.join(UPLOADS_DIR, 'sessions.json');
-const RESULTS_PATH      = path.join(UPLOADS_DIR, 'results.json');
-const SETTINGS_PATH     = path.join(UPLOADS_DIR, 'settings.json');
+const USERS_PATH         = path.join(UPLOADS_DIR, 'users.json');
+const SESSIONS_PATH      = path.join(UPLOADS_DIR, 'sessions.json');
+const RESULTS_PATH       = path.join(UPLOADS_DIR, 'results.json');
+const SETTINGS_PATH      = path.join(UPLOADS_DIR, 'settings.json');
+const RESET_REQUESTS_PATH = path.join(UPLOADS_DIR, 'reset_requests.json');
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
 // Knowledge Base — syllabus + references + past bar
@@ -54,9 +55,10 @@ const KB = {
 const TAB_SETTINGS = { dashboard: true, learn: true, practice: true };
 
 // User auth state
-let USERS      = {};   // { [userId]: { id, name, email, passwordHash, role, active, createdAt, stats } }
-let SESSIONS   = {};   // { [token]: { userId, createdAt, expiresAt } }
-let RESULTS_DB = [];   // [{ id, userId, userName, score, total, subject, questions, completedAt }]
+let USERS          = {};   // { [userId]: { id, name, email, passwordHash, role, active, createdAt, stats } }
+let SESSIONS       = {};   // { [token]: { userId, createdAt, expiresAt } }
+let RESULTS_DB     = [];   // [{ id, userId, userName, score, total, subject, questions, completedAt }]
+let RESET_REQUESTS = [];   // [{ id, userId, name, email, requestedAt, status }]
 const SETTINGS = { registrationOpen: true, mockBarPublic: true };
 
 // Pre-generated content per topic
@@ -90,16 +92,18 @@ function loadData() {
 function saveKB()          { try { fs.writeFileSync(KB_PATH, JSON.stringify(KB)); } catch(e) { console.error('KB save:', e.message); } }
 function saveContent()     { try { fs.writeFileSync(CONTENT_PATH, JSON.stringify(CONTENT)); } catch(e) { console.error('Content save:', e.message); } }
 function saveTabSettings() { try { fs.writeFileSync(TAB_SETTINGS_PATH, JSON.stringify(TAB_SETTINGS)); } catch(e) { console.error('Tab settings save:', e.message); } }
-function saveUsers()       { try { fs.writeFileSync(USERS_PATH,    JSON.stringify(USERS));      } catch(e) { console.error('Users save:', e.message); } }
-function saveSessions()    { try { fs.writeFileSync(SESSIONS_PATH, JSON.stringify(SESSIONS));   } catch(e) { console.error('Sessions save:', e.message); } }
-function saveResults()     { try { fs.writeFileSync(RESULTS_PATH,  JSON.stringify(RESULTS_DB)); } catch(e) { console.error('Results save:', e.message); } }
-function saveSettings()    { try { fs.writeFileSync(SETTINGS_PATH, JSON.stringify(SETTINGS));   } catch(e) { console.error('Settings save:', e.message); } }
+function saveUsers()         { try { fs.writeFileSync(USERS_PATH,          JSON.stringify(USERS));          } catch(e) { console.error('Users save:', e.message); } }
+function saveSessions()      { try { fs.writeFileSync(SESSIONS_PATH,       JSON.stringify(SESSIONS));       } catch(e) { console.error('Sessions save:', e.message); } }
+function saveResults()       { try { fs.writeFileSync(RESULTS_PATH,        JSON.stringify(RESULTS_DB));     } catch(e) { console.error('Results save:', e.message); } }
+function saveSettings()      { try { fs.writeFileSync(SETTINGS_PATH,       JSON.stringify(SETTINGS));       } catch(e) { console.error('Settings save:', e.message); } }
+function saveResetRequests() { try { fs.writeFileSync(RESET_REQUESTS_PATH, JSON.stringify(RESET_REQUESTS)); } catch(e) { console.error('ResetReqs save:', e.message); } }
 
 function loadUserData() {
   try {
-    if (fs.existsSync(USERS_PATH))    USERS      = JSON.parse(fs.readFileSync(USERS_PATH, 'utf8'));
-    if (fs.existsSync(SESSIONS_PATH)) SESSIONS   = JSON.parse(fs.readFileSync(SESSIONS_PATH, 'utf8'));
-    if (fs.existsSync(RESULTS_PATH))  RESULTS_DB = JSON.parse(fs.readFileSync(RESULTS_PATH, 'utf8'));
+    if (fs.existsSync(USERS_PATH))          USERS          = JSON.parse(fs.readFileSync(USERS_PATH, 'utf8'));
+    if (fs.existsSync(SESSIONS_PATH))       SESSIONS       = JSON.parse(fs.readFileSync(SESSIONS_PATH, 'utf8'));
+    if (fs.existsSync(RESULTS_PATH))        RESULTS_DB     = JSON.parse(fs.readFileSync(RESULTS_PATH, 'utf8'));
+    if (fs.existsSync(RESET_REQUESTS_PATH)) RESET_REQUESTS = JSON.parse(fs.readFileSync(RESET_REQUESTS_PATH, 'utf8'));
     if (fs.existsSync(SETTINGS_PATH)) Object.assign(SETTINGS, JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8')));
     // Clean expired sessions on startup
     const now = Date.now();
@@ -190,6 +194,54 @@ app.post('/api/auth/logout', requireAuth, (req, res) => {
 app.get('/api/auth/me', requireAuth, (req, res) => {
   const u = req.user;
   res.json({ id: u.id, name: u.name, email: u.email, role: u.role });
+});
+
+// ── Password reset routes ─────────────────────────────────────
+app.post('/api/auth/forgot-password', (req, res) => {
+  const { email } = req.body || {};
+  if (!email) return res.status(400).json({ error: 'Email required' });
+  const user = Object.values(USERS).find(u => u.email === email.toLowerCase());
+  if (user) {
+    const existing = RESET_REQUESTS.find(r => r.email === user.email && r.status === 'pending');
+    if (!existing) {
+      RESET_REQUESTS.unshift({
+        id: 'reset_' + Date.now(),
+        userId: user.id,
+        name: user.name,
+        email: user.email,
+        requestedAt: new Date().toISOString(),
+        status: 'pending',
+      });
+      saveResetRequests();
+    }
+  }
+  res.json({ success: true }); // always success — don't reveal if email exists
+});
+
+app.get('/api/admin/reset-requests', adminOnly, (_req, res) => {
+  const sorted = [...RESET_REQUESTS].sort((a, b) => new Date(b.requestedAt) - new Date(a.requestedAt));
+  res.json(sorted);
+});
+
+app.post('/api/admin/reset-password', adminOnly, (req, res) => {
+  const { userId, newPassword, requestId } = req.body || {};
+  if (!userId || !newPassword) return res.status(400).json({ error: 'userId and newPassword required' });
+  const user = USERS[userId];
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  user.passwordHash = hashPassword(newPassword);
+  saveUsers();
+  if (requestId) {
+    const req_ = RESET_REQUESTS.find(r => r.id === requestId);
+    if (req_) { req_.status = 'resolved'; req_.resolvedAt = new Date().toISOString(); }
+    saveResetRequests();
+  }
+  res.json({ success: true });
+});
+
+app.delete('/api/admin/reset-requests/:id', adminOnly, (req, res) => {
+  const item = RESET_REQUESTS.find(r => r.id === req.params.id);
+  if (item) { item.status = 'dismissed'; saveResetRequests(); }
+  res.json({ ok: true });
 });
 
 // ── Settings routes ───────────────────────────────────────────
