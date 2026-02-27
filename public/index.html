@@ -835,24 +835,8 @@ select.form-input{cursor:pointer;}
       </div>
     </div>
 
-    <!-- QUESTION SOURCES -->
-    <div class="mb-setup-card">
-      <div class="mb-section-label">Question Sources</div>
-      <div class="mb-source-row">
-        <input type="checkbox" class="mb-source-check" id="mbSrcPastBar" checked onchange="updateMockBarPreview()">
-        <label class="mb-source-label" for="mbSrcPastBar">📜 Past Bar Questions</label>
-        <span class="mb-source-count" id="mbCountPastBar">0 available</span>
-      </div>
-      <div class="mb-source-row">
-        <input type="checkbox" class="mb-source-check" id="mbSrcPreGen" checked onchange="updateMockBarPreview()">
-        <label class="mb-source-label" for="mbSrcPreGen">📚 Pre-generated Topics</label>
-        <span class="mb-source-count" id="mbCountPreGen">0 available</span>
-      </div>
-      <div class="mb-source-row">
-        <input type="checkbox" class="mb-source-check" id="mbSrcAI" onchange="updateMockBarPreview()">
-        <label class="mb-source-label" for="mbSrcAI">🤖 AI Fill <span style="font-size:11px;color:var(--muted);">(if pool insufficient)</span></label>
-      </div>
-    </div>
+    <!-- QUESTION SOURCES — dynamic, populated by initMockBarSetup() -->
+    <div id="mbSourcesList"></div>
 
     <!-- SUBJECT FILTER -->
     <div class="mb-setup-card" id="mbSubjectFilterCard">
@@ -901,8 +885,8 @@ select.form-input{cursor:pointer;}
       <div id="mockStartError" style="display:none;margin-top:10px;padding:10px 14px;background:rgba(224,112,128,.12);border:1px solid rgba(224,112,128,.35);border-radius:10px;color:#e07080;font-size:13px;"></div>
     </div>
 
-    <!-- Past bar status card -->
-    <div class="card fade" style="margin-top:14px;">
+    <!-- Past bar status card (hidden when subject-specific, since sources card shows the files) -->
+    <div class="card fade" id="mbPastBarCard" style="margin-top:14px;">
       <div class="card-h"><div class="card-title">📜 Past Bar Materials</div><button class="btn-og" style="font-size:11px;" onclick="navToAdmin()">+ Upload Past Bar</button></div>
       <div class="card-b" id="pb-list"><div style="font-size:13px;color:var(--muted);text-align:center;padding:14px 0;">No past bar materials uploaded.</div></div>
     </div>
@@ -1724,21 +1708,18 @@ function stSetMbDiff(diff, btn) {
 
 // ── SOURCE PICKER ────────────────────────────────────────────
 // Builds the sources section HTML and initialises window.mockSources
+// subj = null/'all' → show all uploaded materials; specific key → filter to that subject only
 function renderSourcesSection(subj) {
   window.mockSources = {};
+  const isAll = !subj || subj === 'all';
+  const subjPastBar = isAll
+    ? (KB.pastBar || [])
+    : (KB.pastBar || []).filter(pb => pb.subject === subj);
 
-  const subjPastBar   = (KB.pastBar||[]).filter(pb => pb.subject === subj);
-  const subjContent   = CACHE[subj] || {};
-  const preGenTopics  = Object.keys(subjContent).filter(t => subjContent[t]?.essay?.questions?.length);
-  const preGenCount   = preGenTopics.reduce((a,t) => a + (subjContent[t].essay.questions.length), 0);
-
-  // Populate state
+  // Populate state — uploaded files only, no pregen/AI
   subjPastBar.forEach(pb => {
     window.mockSources[pb.id] = { type:'pastbar', id:pb.id, name:pb.name, subject:pb.subject, year:pb.year, count:pb.qCount||0, selected:true };
   });
-  if (preGenTopics.length > 0) {
-    window.mockSources['pregen'] = { type:'pregen', id:'pregen', name:'Pre-Generated Topic Questions', subject:subj, count:preGenCount, topics:preGenTopics, selected:true };
-  }
 
   const makeItem = (id, icon, name, meta, checked) =>
     `<label class="source-item${checked?' source-checked':''}" id="src-item-${id}" onclick="toggleSource('${id}')">
@@ -1755,28 +1736,20 @@ function renderSourcesSection(subj) {
     <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">Select which uploaded materials to draw questions from.</div>`;
 
   if (subjPastBar.length > 0) {
-    html += `<div class="sources-group-label">Past Bar &amp; Exam Materials</div>`;
+    html += `<div class="sources-group-label">Uploaded Exam Materials</div>`;
     subjPastBar.forEach(pb => {
       const meta = `${h(pb.subject)}${pb.year?' · '+pb.year:''} · <strong>${pb.qCount||0} questions</strong>`;
       html += makeItem(pb.id, '📜', pb.name, meta, true);
     });
-  }
-
-  if (preGenTopics.length > 0) {
-    html += `<div class="sources-group-label"${subjPastBar.length?' style="margin-top:12px;"':''}>Pre-Generated Content</div>`;
-    html += makeItem('pregen', '📚', 'Pre-Generated Topic Questions', `${preGenTopics.length} topics · <strong>${preGenCount} questions</strong>`, true);
-  }
-
-  if (subjPastBar.length === 0 && preGenTopics.length === 0) {
+  } else {
     html += `<div style="text-align:center;padding:24px 12px;color:var(--muted);font-size:13px;line-height:1.7;">
       <div style="font-size:32px;margin-bottom:10px;">📂</div>
-      No materials uploaded for this subject yet.<br>
+      No materials uploaded${isAll ? '' : ' for this subject'} yet.<br>
       Go to <button class="source-ctrl-btn" onclick="navToAdmin()" style="vertical-align:middle;">⚙️ Admin</button> to upload past bar questions or reference materials.
     </div>`;
   }
 
-  const totalItems = subjPastBar.length + (preGenTopics.length > 0 ? 1 : 0);
-  if (totalItems > 1) {
+  if (subjPastBar.length > 1) {
     html += `<div style="display:flex;gap:8px;margin-top:12px;">
       <button class="source-ctrl-btn" onclick="selectAllSources(true)">✓ Select All</button>
       <button class="source-ctrl-btn" onclick="selectAllSources(false)">✗ Deselect All</button>
@@ -1823,27 +1796,30 @@ function updateMockPreview() {
   } else if (avail === 0) {
     text = '⚠️ Selected sources have 0 questions available.';
   } else if (avail < want) {
-    text = `⚠️ Only ${avail} question${avail!==1?'s':''} available — will generate ${avail}.`;
+    text = `⚠️ Only ${avail} question${avail!==1?'s':''} available — will draw ${avail}.`;
   } else {
     text = `✓ ${avail} questions available from ${sel.length} source${sel.length!==1?'s':''} · Will draw ${want}`;
   }
-  const prev = document.getElementById('mockbar-preview');
+  // Update whichever preview element exists (subject-page or all-subjects mockbar page)
+  const prev = document.getElementById('mockbar-preview') || document.getElementById('mbPreview');
   if (prev) prev.textContent = text;
-  const btn = document.getElementById('stStartMockBtn');
+  // Update whichever start button exists
+  const btn = document.getElementById('stStartMockBtn') || document.getElementById('startMockBtn');
   if (btn) { const off = sel.length === 0 || avail === 0; btn.disabled = off; btn.style.opacity = off ? '0.4' : '1'; }
 }
 
 async function startSubjectMockBar(subj) {
   const btn = document.getElementById('stStartMockBtn');
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Preparing…'; }
-  const sel          = Object.values(window.mockSources || {}).filter(s => s.selected);
-  const pastBarIds   = sel.filter(s => s.type === 'pastbar').map(s => s.id);
-  const includePreGen = sel.some(s => s.type === 'pregen');
+  const sel          = Object.values(window.mockSources || {}).filter(s => s.selected && s.type === 'pastbar');
+  const pastBarIds   = sel.map(s => s.id);
+  const totalAvail   = sel.reduce((a,s) => a + (s.count||0), 0);
+  const actualCount  = totalAvail > 0 ? Math.min(mbCount, totalAvail) : mbCount;
   try {
     const r = await fetch('/api/mockbar/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ subjects: [subj], count: mbCount, pastBarIds, includePreGen, aiGenerate: false, difficulty: mbDifficulty, timeMins: mbTimeMins || 0 }),
+      body: JSON.stringify({ subjects: [subj], count: actualCount, pastBarIds, includePreGen: false, aiGenerate: false, difficulty: mbDifficulty, timeMins: mbTimeMins || 0 }),
     });
     const d = await r.json();
     if (d.error) throw new Error(d.error);
@@ -2607,10 +2583,6 @@ function initMockBarSetup(preselectedSubj) {
   document.getElementById('mbCustomCount').style.display = 'none';
   document.querySelectorAll('[data-min]').forEach(b => b.classList.toggle('active', parseInt(b.dataset.min)===0));
   document.querySelectorAll('[data-diff]').forEach(b => b.classList.toggle('active', b.dataset.diff==='balanced'));
-  // Source checkboxes
-  document.getElementById('mbSrcPastBar').checked = true;
-  document.getElementById('mbSrcPreGen').checked  = true;
-  document.getElementById('mbSrcAI').checked      = false;
   // Subject filter
   const subjectCard = document.getElementById('mbSubjectFilterCard');
   if (preselectedSubj && preselectedSubj !== 'all') {
@@ -2636,9 +2608,15 @@ function initMockBarSetup(preselectedSubj) {
     document.getElementById('mbSetupHeader').innerHTML = `
       <div style="font-size:28px;margin-bottom:8px;">⏱🏛</div>
       <h2 style="font-family:var(--fd);font-size:28px;font-weight:700;color:var(--gold-l);margin-bottom:8px;">Mock <em>Bar Examination</em></h2>
-      <p style="font-size:13px;color:var(--muted);line-height:1.65;max-width:640px;">Simulate the Philippine Bar Exam. Questions drawn from your uploaded past bar materials and pre-generated question bank.</p>`;
+      <p style="font-size:13px;color:var(--muted);line-height:1.65;max-width:640px;">Simulate the Philippine Bar Exam. Questions drawn exclusively from your uploaded past bar and exam materials.</p>`;
   }
-  updateMockBarPreview();
+  // Inject dynamic sources section
+  const sourcesList = document.getElementById('mbSourcesList');
+  if (sourcesList) sourcesList.innerHTML = renderSourcesSection(preselectedSubj || null);
+  // Hide the bottom Past Bar card when a specific subject is shown (sources section shows the files)
+  const pbCard = document.getElementById('mbPastBarCard');
+  if (pbCard) pbCard.style.display = (preselectedSubj && preselectedSubj !== 'all') ? 'none' : '';
+  updateMockPreview();
   // Show config panel
   if (cfg) { cfg.style.display=''; }
   document.getElementById('mockSession').classList.remove('on');
@@ -2651,7 +2629,7 @@ function setMbCount(n, btn) {
   const custom = document.getElementById('mbCustomCount');
   if (n === 0) { custom.style.display='block'; mbCount = parseInt(custom.value)||10; }
   else { custom.style.display='none'; mbCount = n; }
-  updateMockBarPreview();
+  updateMockPreview();
 }
 function setMbTime(mins, btn) {
   document.querySelectorAll('[data-min]').forEach(b => b.classList.remove('active'));
@@ -2712,88 +2690,44 @@ function getMbTopics() {
   return Array.from(document.querySelectorAll('.mb-topic-chk:checked')).map(c => c.value);
 }
 
-function updateMockBarPreview() {
-  const el = document.getElementById('mbPreview');
-  if (!el) return;
-  const subjects = getMbSubjects();
-  const usePastBar = document.getElementById('mbSrcPastBar')?.checked;
-  const usePreGen  = document.getElementById('mbSrcPreGen')?.checked;
-  const useAI      = document.getElementById('mbSrcAI')?.checked;
-  const topics     = getMbTopics();
-  // Count available
-  let pbCount = 0;
-  if (usePastBar) {
-    KB.pastBar?.forEach(pb => {
-      const match = subjects.includes('all') || subjects.includes(pb.subject);
-      if (match) pbCount += pb.qCount || 0;
-    });
-  }
-  let pgCount = 0;
-  if (usePreGen) {
-    const targetSubjs = subjects.includes('all') ? Object.keys(CACHE) : subjects;
-    targetSubjs.forEach(subj => {
-      Object.entries(CACHE[subj]||{}).forEach(([topicName, data]) => {
-        if (topics.length > 0 && !topics.includes(topicName)) return;
-        pgCount += data.essay?.questions?.length || 0;
-      });
-    });
-  }
-  const pool = pbCount + pgCount;
-  const custom = parseInt(document.getElementById('mbCustomCount')?.value)||0;
-  const actualCount = document.querySelector('#mbCountRow .mb-preset-btn[data-count="0"]')?.classList.contains('active') ? custom||10 : mbCount;
-
-  // Update source count badges
-  const pbBadge = document.getElementById('mbCountPastBar');
-  const pgBadge = document.getElementById('mbCountPreGen');
-  if (pbBadge) pbBadge.textContent = pbCount + ' available';
-  if (pgBadge) pgBadge.textContent = pgCount + ' available';
-
-  let preview = `Will draw from: ${pbCount} past bar Q${pbCount!==1?'s':''}, ${pgCount} pre-gen Q${pgCount!==1?'s':''}`;
-  if (useAI) preview += ', AI fill: on';
-  else {
-    if (pool < actualCount) preview += `. ⚠️ Only ${pool} Q${pool!==1?'s':''} available — count will be clamped`;
-  }
-  preview += `.`;
-  el.textContent = preview;
-}
+// Kept as alias for legacy callers; delegates to the unified updateMockPreview()
+function updateMockBarPreview() { updateMockPreview(); }
 
 async function startMockBar(){
   const customInput = document.getElementById('mbCustomCount');
   const isCustom = document.querySelector('#mbCountRow .mb-preset-btn[data-count="0"]')?.classList.contains('active');
   const count = isCustom ? (parseInt(customInput?.value)||10) : mbCount;
   const timeMin = mbTimeMins;
-  const subjects = getMbSubjects();
-  const topics   = getMbTopics();
-  const sources = {
-    pastBar:    document.getElementById('mbSrcPastBar')?.checked !== false,
-    preGen:     document.getElementById('mbSrcPreGen')?.checked  !== false,
-    aiGenerate: document.getElementById('mbSrcAI')?.checked      === true,
-  };
-  console.log('Starting mock bar:', {count, subjects, topics, sources, mbDifficulty});
+  // Determine subject scope: forced subject (custom/single) or multi-subject selection
+  const forcedSubj = document.getElementById('mbSubjectFilterCard')?.dataset.forcedSubj;
+  const subjects = forcedSubj ? [forcedSubj] : getMbSubjects();
+  // Use only selected uploaded-file sources — no pregen, no AI
+  const sel = Object.values(window.mockSources || {}).filter(s => s.selected && s.type === 'pastbar');
+  const pastBarIds = sel.map(s => s.id);
+  const totalAvail = sel.reduce((a,s) => a + (s.count||0), 0);
+  const actualCount = totalAvail > 0 ? Math.min(count, totalAvail) : count;
+  if (pastBarIds.length === 0) {
+    const errEl = document.getElementById('mockStartError');
+    errEl.textContent = '⚠️ No sources selected. Please select at least one uploaded material.';
+    errEl.style.display = 'block';
+    return;
+  }
+  console.log('Starting mock bar:', {actualCount, subjects, pastBarIds, mbDifficulty});
   mockSubjectsUsed = subjects; mockSessionDate = new Date(); mockScores = []; window.mockStartTime = Date.now();
   const btn = document.getElementById('startMockBtn');
   btn.disabled=true; btn.textContent='⏳ Building question set…';
   document.getElementById('mockStartError').style.display='none';
   document.getElementById('mbWarnBanner').style.display='none';
   try{
-    const r = await fetch('/api/mockbar/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({subjects,count,sources,topics,difficulty:mbDifficulty})});
+    const r = await fetch('/api/mockbar/generate',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({subjects, count:actualCount, pastBarIds, includePreGen:false, aiGenerate:false, difficulty:mbDifficulty})});
     const data = await r.json(); if(data.error) throw new Error(data.error);
-    // Show warning if pool was too small
     if (data.warning) {
       const wb = document.getElementById('mbWarnBanner');
       if (wb) { wb.textContent = data.warning; wb.style.display='block'; }
     }
-    console.log('Questions received:',data.questions?.length,'requested:',count);
-    mockQs=data.questions; mockIdx=0; mockAnswers=Array(mockQs.length).fill('');
-    document.getElementById('mockConfig').style.display='none';
-    document.getElementById('mockResults').style.display='none';
-    document.getElementById('mockSession').classList.add('on');
-    document.getElementById('ms-of').textContent=`of ${mockQs.length}`;
-    document.getElementById('qMarkers').innerHTML=mockQs.map((_,i)=>`<div class="q-marker" id="qm${i}" onclick="jumpMock(${i})">${i+1}</div>`).join('');
-    if(timeMin>0){mockLeft=timeMin*60;document.getElementById('ms-timer').style.display='flex';runTimer();}
-    else document.getElementById('ms-timer').style.display='none';
-    renderMockQ();
-    mockSessions++; updateDash();
+    console.log('Questions received:',data.questions?.length,'requested:',actualCount);
+    startMockSession(data.questions, timeMin);
   }catch(err){
     const errEl=document.getElementById('mockStartError');
     errEl.textContent='⚠️ '+err.message; errEl.style.display='block';

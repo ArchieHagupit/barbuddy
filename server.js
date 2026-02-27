@@ -1139,16 +1139,16 @@ Output ONLY a valid JSON array. Start with [ and end with ]. No markdown, no pre
 // ── MOCK BAR CORE LOGIC ──────────────────────────────────────
 async function generateMockBar(subjects, count, options = {}) {
   const {
-    sources      = { pastBar: true, preGen: true, aiGenerate: true },
+    sources      = { pastBar: true, preGen: false, aiGenerate: false },
     pastBarIds   = [],       // specific past bar file IDs to include; empty = all matching subjects
-    includePreGen = null,    // explicit boolean override; null = use sources.preGen
+    includePreGen = false,   // explicit boolean override; false = never use pregen
     topics       = [],       // filter preGen pool to these topic names (when non-empty)
     difficulty   = 'balanced',
   } = options;
 
   const usePastBar  = sources.pastBar !== false;
-  const usePreGen   = includePreGen !== null ? includePreGen : sources.preGen !== false;
-  const useAI       = sources.aiGenerate !== false;
+  const usePreGen   = includePreGen === true && sources.preGen === true;
+  const useAI       = sources.aiGenerate === true;
 
   let warning = null;
 
