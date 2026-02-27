@@ -52,7 +52,32 @@ const KB = {
 };
 
 // Tab visibility settings (admin-controlled)
-const TAB_SETTINGS = { dashboard: true, learn: true, practice: true };
+const DEFAULT_TAB_SETTINGS = {
+  overview: true,
+  subjects: {
+    civil:      { learn: true, quiz: true, mockbar: true },
+    criminal:   { learn: true, quiz: true, mockbar: true },
+    political:  { learn: true, quiz: true, mockbar: true },
+    labor:      { learn: true, quiz: true, mockbar: true },
+    commercial: { learn: true, quiz: true, mockbar: true },
+    taxation:   { learn: true, quiz: true, mockbar: true },
+    remedial:   { learn: true, quiz: true, mockbar: true },
+    ethics:     { learn: true, quiz: true, mockbar: true },
+    custom:     { mockbar: true },
+  },
+};
+function deepMerge(defaults, overrides) {
+  const result = JSON.parse(JSON.stringify(defaults));
+  for (const key of Object.keys(overrides)) {
+    if (overrides[key] !== null && typeof overrides[key] === 'object' && !Array.isArray(overrides[key])) {
+      if (result[key] !== null && typeof result[key] === 'object') {
+        result[key] = deepMerge(result[key], overrides[key]);
+      } else { result[key] = overrides[key]; }
+    } else { result[key] = overrides[key]; }
+  }
+  return result;
+}
+let TAB_SETTINGS = JSON.parse(JSON.stringify(DEFAULT_TAB_SETTINGS));
 
 // User auth state
 let USERS          = {};   // { [userId]: { id, name, email, passwordHash, role, active, createdAt, stats } }
@@ -83,10 +108,13 @@ function loadData() {
   try {
     if (fs.existsSync(KB_PATH))           Object.assign(KB, JSON.parse(fs.readFileSync(KB_PATH, 'utf8')));
     if (fs.existsSync(CONTENT_PATH))      CONTENT = JSON.parse(fs.readFileSync(CONTENT_PATH, 'utf8'));
-    if (fs.existsSync(TAB_SETTINGS_PATH)) Object.assign(TAB_SETTINGS, JSON.parse(fs.readFileSync(TAB_SETTINGS_PATH, 'utf8')));
+    if (fs.existsSync(TAB_SETTINGS_PATH)) {
+      const saved = JSON.parse(fs.readFileSync(TAB_SETTINGS_PATH, 'utf8'));
+      TAB_SETTINGS = deepMerge(JSON.parse(JSON.stringify(DEFAULT_TAB_SETTINGS)), saved);
+    }
     const n = Object.values(CONTENT).reduce((a,s) => a+Object.keys(s).length, 0);
     console.log(`KB loaded: syllabus=${!!KB.syllabus}, refs=${KB.references.length}, pastBar=${KB.pastBar.length}, content=${n} topics`);
-    console.log(`Tab settings: dashboard=${TAB_SETTINGS.dashboard}, learn=${TAB_SETTINGS.learn}, practice=${TAB_SETTINGS.practice}`);
+    console.log(`Tab settings loaded (overview=${TAB_SETTINGS.overview})`);
   } catch(e) { console.error('Load error:', e.message); }
 }
 function saveKB()          { try { fs.writeFileSync(KB_PATH, JSON.stringify(KB)); } catch(e) { console.error('KB save:', e.message); } }
@@ -359,12 +387,11 @@ app.get('/api/health', (req, res) => {
 app.get('/api/tab-settings', (_req, res) => res.json({ ...TAB_SETTINGS }));
 
 app.post('/api/admin/tab-settings', adminOnly, (req, res) => {
-  const { dashboard, learn, practice } = req.body;
-  if (typeof dashboard === 'boolean') TAB_SETTINGS.dashboard = dashboard;
-  if (typeof learn     === 'boolean') TAB_SETTINGS.learn     = learn;
-  if (typeof practice  === 'boolean') TAB_SETTINGS.practice  = practice;
+  const incoming = req.body;
+  if (!incoming || typeof incoming !== 'object') return res.status(400).json({ error: 'Invalid settings object' });
+  TAB_SETTINGS = deepMerge(JSON.parse(JSON.stringify(DEFAULT_TAB_SETTINGS)), incoming);
   saveTabSettings();
-  res.json({ success: true, settings: { ...TAB_SETTINGS } });
+  res.json({ success: true, settings: TAB_SETTINGS });
 });
 
 // ── GET KB state (public — browser caches) ─────────────────
@@ -378,6 +405,9 @@ app.get('/api/kb', (req, res) => {
     pastBar:        KB.pastBar.map(p  => ({ id:p.id, name:p.name, subject:p.subject, year:p.year, qCount:p.questions?.length||0, uploadedAt:p.uploadedAt })),
     contentTopics:  n,
     genState:       { running:GEN.running, done:GEN.done, total:GEN.total, current:GEN.current, finishedAt:GEN.finishedAt },
+    customRefs:     KB.references.filter(r => r.subject === 'custom').length,
+    customPastBar:  KB.pastBar.filter(p => p.subject === 'custom').length,
+    customQuestions:KB.pastBar.filter(p => p.subject === 'custom').reduce((a,p) => a + (p.questions?.length||0), 0),
   });
 });
 
@@ -715,43 +745,17 @@ IMPORTANT for essay classification:
   CONTENT[subjKey][topicName] = { lesson:parsed.lesson, mcq:parsed.mcq, essay:parsed.essay, generatedAt:new Date().toISOString() };
 }
 
-// ── MAIN CHAT PROXY ─────────────────────────────────────────
-app.post('/api/chat', async (req, res) => {
-  if (!API_KEY) return res.status(500).json({ error:{ message:'ANTHROPIC_API_KEY not set.' } });
-  const { messages, max_tokens=2000, system, subject, topicName, mode } = req.body;
-  if (!messages?.length) return res.status(400).json({ error:{ message:'messages required' } });
-
-  let kbCtx = '';
-  if (mode !== 'chat') {
-    if (KB.syllabus && subject) {
-      const subj = KB.syllabus.topics.find(s => s.key===subject);
-      if (subj) {
-        kbCtx += `\n\n[Syllabus] Subject: ${subj.name} | Topics: ${subj.topics?.map(t=>t.name).join(', ')}`;
-        if (topicName) { const tp=subj.topics?.find(t=>t.name===topicName); if(tp?.subtopics?.length) kbCtx+=`\nSubtopics: ${tp.subtopics.join(', ')}`; }
-      }
-    }
-    const refs = subject ? KB.references.filter(r=>r.subject===subject||r.subject==='general') : KB.references.slice(0,2);
-    if (refs.length) kbCtx += `\n\n[References]\n${refs.slice(0,2).map(r=>`--- ${r.name} ---\n${r.summary||r.text.slice(0,500)}`).join('\n\n')}`;
-    if (mode==='essay'||mode==='mockbar') {
-      const pbs = subject ? KB.pastBar.filter(p=>p.subject===subject||p.subject==='general') : KB.pastBar;
-      if (pbs.length) kbCtx += `\n\n[Past bar style]\n${pbs[0]?.questions?.[0]?.q?.slice(0,200)||''}`;
-    }
-  }
-
+// ── ON-DEMAND CONTENT GENERATION (lesson/quiz for uncached topics) ──
+app.post('/api/generate-content', async (req, res) => {
+  if (!API_KEY) return res.status(500).json({ error: 'API key not configured' });
+  const { messages, max_tokens = 4096 } = req.body;
+  if (!messages || !Array.isArray(messages)) return res.status(400).json({ error: 'messages array required' });
   try {
-    const body = { model:'claude-sonnet-4-20250514', max_tokens, messages };
-    const finalSystem = STRICT_SYSTEM_PROMPT + '\n\n' + (system||'') + kbCtx;
-    if (finalSystem) body.system = finalSystem;
-    const r = await fetch('https://api.anthropic.com/v1/messages', {
-      method:'POST',
-      headers:{ 'Content-Type':'application/json', 'x-api-key':API_KEY, 'anthropic-version':'2023-06-01' },
-      body:JSON.stringify(body),
-    });
-    const data = await r.json();
-    if (r.status === 529 || r.status === 429 || data?.error?.type === 'overloaded_error')
-      return res.json({ overloaded: true });
-    res.status(r.status).json(data);
-  } catch(err) { res.status(500).json({ error:{ message:'Proxy: '+err.message } }); }
+    const text = await callClaude(messages, max_tokens);
+    res.json({ content: text });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // ── AI QUESTION GENERATION (helper for mock bar) ────────────
@@ -800,51 +804,76 @@ Respond ONLY with valid JSON — an array of exactly ${needed} objects:
 }
 
 // ── MOCK BAR CORE LOGIC ──────────────────────────────────────
-async function generateMockBar(subjects, count) {
+async function generateMockBar(subjects, count, options = {}) {
+  const {
+    sources      = { pastBar: true, preGen: true, aiGenerate: true },
+    topics       = [],       // filter preGen pool to these topic names (when non-empty)
+    difficulty   = 'balanced',
+  } = options;
+
+  let warning = null;
+
   // STEP 1: Build real past bar pool
   let realPool = [];
-  KB.pastBar.forEach(pb => {
-    const match = !subjects || subjects.includes('all') || subjects.includes(pb.subject);
-    if (match) {
-      (pb.questions || []).forEach(q => {
-        realPool.push({
-          q: q.q,
-          context: q.context || '',
-          modelAnswer: q.modelAnswer || '',
-          keyPoints: q.keyPoints || [],
-          subject: pb.subject,
-          source: pb.name,
-          year: pb.year,
-          isReal: true,
-          type: q.type || 'situational',
+  if (sources.pastBar !== false) {
+    KB.pastBar.forEach(pb => {
+      const match = !subjects || subjects.includes('all') || subjects.includes(pb.subject);
+      if (match) {
+        (pb.questions || []).forEach(q => {
+          realPool.push({
+            q: q.q,
+            context: q.context || '',
+            modelAnswer: q.modelAnswer || '',
+            keyPoints: q.keyPoints || [],
+            subject: pb.subject,
+            source: pb.name,
+            year: pb.year,
+            isReal: true,
+            type: q.type || 'situational',
+          });
         });
-      });
-    }
-  });
-  realPool = shuffle(realPool);
+      }
+    });
+    realPool = shuffle(realPool);
+  }
   console.log(`[mockbar] realPool size: ${realPool.length}`);
 
   // STEP 2: Build pre-gen pool
   let preGenPool = [];
-  const targetSubjs = (!subjects || subjects.includes('all')) ? Object.keys(CONTENT) : subjects;
-  targetSubjs.forEach(subj => {
-    Object.entries(CONTENT[subj] || {}).forEach(([, data]) => {
-      (data.essay?.questions || []).forEach(q => {
-        preGenPool.push({
-          q: q.prompt || q.q,
-          context: q.context || '',
-          modelAnswer: q.modelAnswer || '',
-          keyPoints: q.keyPoints || [],
-          subject: subj,
-          source: 'Pre-generated',
-          isReal: false,
-          type: q.type || 'situational',
+  if (sources.preGen !== false) {
+    const targetSubjs = (!subjects || subjects.includes('all')) ? Object.keys(CONTENT) : subjects;
+    targetSubjs.forEach(subj => {
+      Object.entries(CONTENT[subj] || {}).forEach(([topicName, data]) => {
+        // Filter by topic names if provided
+        if (topics.length > 0 && !topics.includes(topicName)) return;
+        (data.essay?.questions || []).forEach(q => {
+          preGenPool.push({
+            q: q.prompt || q.q,
+            context: q.context || '',
+            modelAnswer: q.modelAnswer || '',
+            keyPoints: q.keyPoints || [],
+            subject: subj,
+            source: 'Pre-generated',
+            isReal: false,
+            type: q.type || 'situational',
+          });
         });
       });
     });
-  });
-  preGenPool = shuffle(preGenPool);
+    preGenPool = shuffle(preGenPool);
+  }
   console.log(`[mockbar] preGenPool size: ${preGenPool.length}`);
+
+  // Apply difficulty preference
+  if (difficulty === 'situational') {
+    const sit = preGenPool.filter(q => q.type === 'situational');
+    const rest = preGenPool.filter(q => q.type !== 'situational');
+    preGenPool = [...sit, ...rest];
+  } else if (difficulty === 'conceptual') {
+    const con = preGenPool.filter(q => q.type !== 'situational');
+    const rest = preGenPool.filter(q => q.type === 'situational');
+    preGenPool = [...con, ...rest];
+  }
 
   // STEP 3: Fill chosen — real first, then pre-gen
   const chosen = [];
@@ -861,17 +890,25 @@ async function generateMockBar(subjects, count) {
   }
   console.log(`[mockbar] after pregen: ${chosen.length}`);
 
-  // STEP 4: Fill remaining gap with AI
+  // STEP 4: Fill remaining gap with AI (or clamp if AI disabled)
   const gap = count - chosen.length;
   console.log(`[mockbar] gap to fill with AI: ${gap}`);
 
   if (gap > 0) {
-    try {
-      const aiQuestions = await generateAIQuestions(gap, subjects, KB.syllabus, KB.references);
-      console.log(`[mockbar] AI generated: ${aiQuestions.length}`);
-      chosen.push(...aiQuestions);
-    } catch(e) {
-      console.error('[mockbar] AI generation failed:', e.message);
+    if (sources.aiGenerate === false) {
+      // Clamp to available pool size
+      const available = chosen.length;
+      warning = `⚠️ Only ${available} question${available===1?'':'s'} available in pool. Starting with ${available} question${available===1?'':'s'}.`;
+      count = available;
+      console.warn(`[mockbar] AI disabled, clamping to ${available}`);
+    } else {
+      try {
+        const aiQuestions = await generateAIQuestions(gap, subjects, KB.syllabus, KB.references);
+        console.log(`[mockbar] AI generated: ${aiQuestions.length}`);
+        chosen.push(...aiQuestions);
+      } catch(e) {
+        console.error('[mockbar] AI generation failed:', e.message);
+      }
     }
   }
 
@@ -879,7 +916,7 @@ async function generateMockBar(subjects, count) {
   const final = chosen.slice(0, count);
   console.log(`[mockbar] FINAL COUNT: ${final.length} / requested: ${count}`);
 
-  if (final.length !== count) {
+  if (final.length !== count && sources.aiGenerate !== false) {
     console.warn(`[mockbar] WARNING: Could not reach requested count. Had ${realPool.length} real + ${preGenPool.length} pregen, needed ${count}`);
   }
 
@@ -889,6 +926,7 @@ async function generateMockBar(subjects, count) {
     questions: final,
     total: final.length,
     requested: count,
+    warning,
     fromPastBar: final.filter(q => q.isReal).length,
     fromPreGen: final.filter(q => !q.isReal && q.source === 'Pre-generated').length,
     aiGenerated: final.filter(q => !q.isReal && q.source !== 'Pre-generated').length,
@@ -898,10 +936,10 @@ async function generateMockBar(subjects, count) {
 // ── MOCK BAR GENERATOR ──────────────────────────────────────
 app.post('/api/mockbar/generate', async (req, res) => {
   if (!API_KEY) return res.status(500).json({ error:'API key not set' });
-  const { subjects, count=20 } = req.body;
+  const { subjects, count=20, sources, topics, difficulty } = req.body;
   console.log(`[mockbar] requested: ${count} questions, subjects: ${JSON.stringify(subjects)}`);
   try {
-    const result = await generateMockBar(subjects, count);
+    const result = await generateMockBar(subjects, count, { sources, topics, difficulty });
     res.json(result);
   } catch(err) {
     console.error('[mockbar] error:', err.message);
