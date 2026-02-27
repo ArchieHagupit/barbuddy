@@ -1498,14 +1498,17 @@ function navToCustom() {
   currentSubject = 'custom'; currentMode = 'mockbar';
   clearSidebarActive();
   document.getElementById('sb-subj-custom')?.classList.add('active');
-  showPage('custom');
   updateBreadcrumb('custom', 'mockbar');
-  // Show empty state or mock setup depending on custom material availability
-  const hasCustom = (KB.customRefs > 0) || (KB.customPastBar > 0);
-  document.getElementById('customEmptyState').style.display = hasCustom ? 'none' : 'block';
-  const setup = document.getElementById('customMockSetup');
-  setup.style.display = hasCustom ? 'block' : 'none';
-  if (hasCustom) initMockBarSetup('custom');
+  const hasCustom = (KB.customRefs > 0) || (KB.customPastBar > 0) || (KB.customQuestions > 0);
+  if (hasCustom) {
+    // Use the real mock bar page so initMockBarSetup targets the correct DOM elements
+    showPage('mockbar');
+    initMockBarSetup('custom');
+  } else {
+    showPage('custom');
+    document.getElementById('customEmptyState').style.display = 'block';
+    document.getElementById('customMockSetup').style.display = 'none';
+  }
 }
 
 function navToSubject(subj, mode) {
