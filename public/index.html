@@ -107,17 +107,19 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .mb-warn-banner{background:rgba(240,160,64,.08);border:1px solid rgba(240,160,64,.3);border-radius:10px;padding:11px 14px;font-size:12px;color:#f0a040;margin-bottom:12px;display:none;}
 /* Source picker */
 .sources-group-label{font-size:10px;font-weight:800;letter-spacing:.1em;color:rgba(248,246,241,.35);text-transform:uppercase;margin:14px 0 6px;}
-.source-item{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:12px;border:1px solid rgba(248,246,241,.08);background:rgba(255,255,255,.03);cursor:pointer;transition:all .18s;margin-bottom:6px;user-select:none;}
-.source-item:hover{background:rgba(255,255,255,.06);border-color:rgba(248,246,241,.15);}
-.source-item.source-checked{background:rgba(201,168,76,.08);border-color:rgba(201,168,76,.3);}
-.source-check-icon{font-size:18px;color:rgba(248,246,241,.4);flex-shrink:0;width:22px;line-height:1;}
+.source-item{display:flex;align-items:center;gap:12px;padding:14px 16px;border-radius:12px;border:1.5px solid rgba(248,246,241,.08);background:rgba(255,255,255,.03);cursor:pointer;transition:background .18s,border-color .18s,transform .15s,opacity .18s;margin-bottom:8px;user-select:none;-webkit-user-select:none;}
+.source-item:hover{background:rgba(255,255,255,.07);border-color:rgba(248,246,241,.18);transform:translateX(2px);}
+.source-item.source-checked{background:rgba(201,168,76,.1);border-color:rgba(201,168,76,.4);box-shadow:0 0 0 1px rgba(201,168,76,.1);}
+.source-item.source-checked:hover{background:rgba(201,168,76,.14);border-color:rgba(201,168,76,.55);}
+.source-check-icon{font-size:20px;color:rgba(248,246,241,.25);flex-shrink:0;width:24px;line-height:1;pointer-events:none;transition:color .15s;}
 .source-item.source-checked .source-check-icon{color:var(--gold);}
-.source-item-info{flex:1;min-width:0;}
-.source-item-name{font-size:13px;font-weight:600;color:rgba(248,246,241,.88);margin-bottom:3px;}
+.source-item-info{flex:1;min-width:0;pointer-events:none;}
+.source-item-name{font-size:13px;font-weight:600;color:rgba(248,246,241,.75);margin-bottom:3px;pointer-events:none;transition:color .15s;}
 .source-item.source-checked .source-item-name{color:var(--gold-l);}
-.source-item-meta{font-size:11px;color:var(--muted);font-family:var(--fm);}
-.source-ctrl-btn{padding:5px 12px;font-size:11px;font-weight:600;border-radius:7px;border:1px solid rgba(248,246,241,.12);background:rgba(255,255,255,.04);color:rgba(248,246,241,.5);cursor:pointer;font-family:var(--fb);transition:all .15s;}
-.source-ctrl-btn:hover{background:rgba(255,255,255,.09);color:rgba(248,246,241,.8);}
+.source-item-meta{font-size:11px;color:rgba(248,246,241,.4);font-family:var(--fm);pointer-events:none;}
+.source-item.source-checked .source-item-meta{color:rgba(201,168,76,.7);}
+.source-ctrl-btn{padding:6px 14px;font-size:11px;font-weight:700;border-radius:8px;border:1px solid rgba(248,246,241,.1);background:rgba(255,255,255,.04);color:rgba(248,246,241,.45);cursor:pointer;font-family:var(--fb);transition:all .15s;user-select:none;}
+.source-ctrl-btn:hover{background:rgba(255,255,255,.09);color:rgba(248,246,241,.8);border-color:rgba(248,246,241,.18);}
 /* Overview grid */
 .overview-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;}
 @media(max-width:1100px){.overview-grid{grid-template-columns:repeat(2,1fr);}}
@@ -1722,14 +1724,13 @@ function renderSourcesSection(subj) {
   });
 
   const makeItem = (id, icon, name, meta, checked) =>
-    `<label class="source-item${checked?' source-checked':''}" id="src-item-${id}" onclick="toggleSource('${id}')">
-      <input type="checkbox" id="src-${id}"${checked?' checked':''} style="display:none;">
-      <div class="source-check-icon">${checked?'☑':'☐'}</div>
-      <div class="source-item-info">
+    `<div class="source-item${checked?' source-checked':''}" id="source-item-${id}" onclick="toggleSource('${id}',event)" style="cursor:pointer;">
+      <div class="source-check-icon" style="pointer-events:none;">${checked?'☑':'☐'}</div>
+      <div class="source-item-info" style="pointer-events:none;">
         <div class="source-item-name">${icon} ${h(name)}</div>
         <div class="source-item-meta">${meta}</div>
       </div>
-    </label>`;
+    </div>`;
 
   let html = `<div class="mb-setup-card">
     <div class="mb-section-label">Question Sources</div>
@@ -1760,17 +1761,89 @@ function renderSourcesSection(subj) {
   return html;
 }
 
-function toggleSource(id) {
+function toggleSource(id, event) {
+  if (event) event.stopPropagation();
   if (!window.mockSources?.[id]) return;
   window.mockSources[id].selected = !window.mockSources[id].selected;
-  updateSourcesDisplay();
+  // Update just this item's visual state
+  const itemEl = document.getElementById('source-item-' + id);
+  if (itemEl) {
+    const isSelected = window.mockSources[id].selected;
+    const icon = itemEl.querySelector('.source-check-icon');
+    if (isSelected) {
+      itemEl.classList.add('source-checked');
+      if (icon) icon.textContent = '☑';
+    } else {
+      itemEl.classList.remove('source-checked');
+      if (icon) icon.textContent = '☐';
+    }
+    // Brief flash to confirm click registered
+    itemEl.style.transition = 'none';
+    itemEl.style.opacity = '0.55';
+    requestAnimationFrame(() => {
+      itemEl.style.transition = 'background .18s,border-color .18s,transform .15s,opacity .18s';
+      itemEl.style.opacity = '1';
+    });
+  }
+  enforceMinOneSource();
   updateMockPreview();
+}
+
+function enforceMinOneSource() {
+  const sources = Object.values(window.mockSources || {});
+  if (sources.filter(s => s.selected).length === 0) {
+    // Auto-reselect the last source in the list
+    const last = sources[sources.length - 1];
+    if (last) {
+      last.selected = true;
+      const itemEl = document.getElementById('source-item-' + last.id);
+      if (itemEl) {
+        itemEl.classList.add('source-checked');
+        const icon = itemEl.querySelector('.source-check-icon');
+        if (icon) icon.textContent = '☑';
+      }
+      showSourceWarning('At least one source must remain selected.');
+    }
+  }
+}
+
+function showSourceWarning(msg) {
+  let warn = document.getElementById('source-min-warning');
+  if (!warn) {
+    warn = document.createElement('div');
+    warn.id = 'source-min-warning';
+    warn.style.cssText = 'font-size:12px;color:var(--og);padding:6px 10px;background:rgba(232,144,74,.1);border:1px solid rgba(232,144,74,.25);border-radius:8px;margin-top:8px;display:flex;align-items:center;gap:6px;';
+    const srcSection = document.getElementById('mbSourcesList') || document.querySelector('.mb-setup-card');
+    if (srcSection) srcSection.appendChild(warn);
+  }
+  warn.innerHTML = '⚠️ ' + msg;
+  warn.style.display = 'flex';
+  clearTimeout(warn._t);
+  warn._t = setTimeout(() => { if (warn) warn.style.display = 'none'; }, 2500);
 }
 
 function selectAllSources(val) {
   if (!window.mockSources) return;
-  Object.keys(window.mockSources).forEach(id => { window.mockSources[id].selected = val; });
-  updateSourcesDisplay();
+  const keys = Object.keys(window.mockSources);
+  if (!val && keys.length === 1) {
+    showSourceWarning('Cannot deselect — at least one source must remain selected.');
+    return;
+  }
+  keys.forEach((id, idx) => {
+    // When deselecting all, keep the first source selected
+    const newVal = val ? true : (idx === 0 ? true : false);
+    window.mockSources[id].selected = newVal;
+    const itemEl = document.getElementById('source-item-' + id);
+    if (itemEl) {
+      const icon = itemEl.querySelector('.source-check-icon');
+      if (newVal) { itemEl.classList.add('source-checked'); if (icon) icon.textContent = '☑'; }
+      else { itemEl.classList.remove('source-checked'); if (icon) icon.textContent = '☐'; }
+    }
+  });
+  if (!val && keys.length > 1) {
+    const kept = window.mockSources[keys[0]];
+    showSourceWarning('"' + (kept?.name?.slice(0,30) || '') + (kept?.name?.length > 30 ? '…' : '') + '" kept — at least one required.');
+  }
   updateMockPreview();
 }
 
@@ -1778,7 +1851,7 @@ function updateSourcesDisplay() {
   if (!window.mockSources) return;
   Object.keys(window.mockSources).forEach(id => {
     const src  = window.mockSources[id];
-    const item = document.getElementById('src-item-' + id);
+    const item = document.getElementById('source-item-' + id);
     const icon = item?.querySelector('.source-check-icon');
     if (!item) return;
     item.classList.toggle('source-checked', src.selected);
