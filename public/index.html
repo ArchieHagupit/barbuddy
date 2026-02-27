@@ -1008,12 +1008,14 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
           <div>
             <label class="form-label">Subject</label>
-            <select class="form-select" id="mn-subject">
+            <select class="form-select" id="mn-subject" onchange="onMnSubjectChange(this.value)">
               <option value="general">All subjects</option>
               <option value="civil">Civil Law</option><option value="criminal">Criminal Law</option>
               <option value="political">Political Law</option><option value="labor">Labor Law</option>
               <option value="commercial">Commercial Law</option><option value="taxation">Taxation</option>
               <option value="remedial">Remedial Law</option><option value="ethics">Legal Ethics</option>
+              <option disabled>──────────────────</option>
+              <option value="custom">📁 Custom Subject</option>
             </select>
           </div>
           <div><label class="form-label">Year</label><input class="form-input" id="mn-year" placeholder="e.g. 2023"></div>
@@ -1778,6 +1780,13 @@ function refreshSidebarDots() {
       countEl.textContent = qCount + 'q';
     } else if (countEl) { countEl.remove(); }
   });
+  // Custom subject count badge
+  const customQCount = (KB.pastBar||[]).filter(p=>p.subject==='custom').reduce((a,p)=>a+(p.qCount||0),0);
+  const customCountEl = document.getElementById('sbCustomCount');
+  if (customCountEl) {
+    customCountEl.textContent = customQCount > 0 ? customQCount + 'q' : '';
+    customCountEl.style.display = customQCount > 0 ? '' : 'none';
+  }
 }
 
 // ══════════════════════════════════
@@ -2673,6 +2682,14 @@ function addManualQ(){
   document.getElementById('mn-status').innerHTML='';
   updateManualPreview();
 }
+function onMnSubjectChange(val) {
+  const inp = document.getElementById('mn-name');
+  if (!inp) return;
+  inp.placeholder = val === 'custom'
+    ? 'e.g. Midterm Exam — Special Topic (Manual)'
+    : 'e.g. 2023 Bar — Civil Law (Manual)';
+}
+
 async function saveManualBatch(){
   if(!manualBatch.length){document.getElementById('mn-status').innerHTML='<div style="color:#e07080;font-size:12px;padding:4px 0;">⚠️ Add at least one question first.</div>';return;}
   const name=document.getElementById('mn-name').value.trim();
@@ -2697,8 +2714,14 @@ async function saveManualBatch(){
 function renderPastBarList(){
   const el=document.getElementById('pb-list');if(!el)return;
   if(!KB.pastBar?.length){el.innerHTML=`<div style="font-size:13px;color:var(--muted);text-align:center;padding:12px 0;">No past bar materials uploaded yet.</div>`;return;}
-  el.innerHTML=KB.pastBar.map(pb=>{const sub=SUBJS.find(s=>s.key===pb.subject)||{cls:'sg-gen',name:pb.subject};
-    return `<div class="r-item" style="cursor:default;"><div class="r-ic">📜</div><div class="r-info"><div class="r-title">${h(pb.name)}</div><div class="r-sub">${pb.year} · ${pb.qCount} questions extracted</div></div><span class="sbg ${sub.cls}">${sub.name}</span></div>`;
+  el.innerHTML=KB.pastBar.map(pb=>{
+    const isCustom = pb.subject === 'custom';
+    const sub = isCustom ? {cls:'sg-gen',name:'Custom Subject'} : (SUBJS.find(s=>s.key===pb.subject)||{cls:'sg-gen',name:pb.subject});
+    const icon = isCustom ? '📁' : '📜';
+    const badge = isCustom
+      ? `<span class="sbg" style="background:rgba(136,153,170,.15);color:#8899aa;border:1px solid rgba(136,153,170,.3);">📁 Custom</span>`
+      : `<span class="sbg ${sub.cls}">${h(sub.name)}</span>`;
+    return `<div class="r-item" style="cursor:default;"><div class="r-ic">${icon}</div><div class="r-info"><div class="r-title">${h(pb.name)}</div><div class="r-sub">${pb.year} · ${pb.qCount} question${pb.qCount===1?'':'s'}</div></div>${badge}</div>`;
   }).join('');
 }
 
