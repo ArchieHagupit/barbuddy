@@ -431,6 +431,40 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .ai-fb-head{font-size:12px;font-weight:700;color:var(--gold);text-transform:uppercase;letter-spacing:.06em;margin-bottom:9px;display:flex;align-items:center;gap:7px;flex-wrap:wrap;}
 .ai-fb-score{background:rgba(201,168,76,.15);border-radius:5px;padding:2px 7px;font-family:var(--fm);}
 .ai-fb-content{font-size:14px;line-height:1.75;color:rgba(248,246,241,.85);}
+/* SCORECARD — type-aware evaluation display */
+.scorecard{background:var(--card);border:1px solid var(--bdr2);border-radius:16px;overflow:hidden;margin-top:16px;}
+.scorecard-header{padding:18px 20px 14px;border-bottom:1px solid var(--bdr);}
+.scorecard-score-row{display:flex;align-items:baseline;gap:10px;margin-bottom:8px;}
+.scorecard-score{font-family:var(--fd);font-size:52px;font-weight:900;line-height:1;}
+.scorecard-denom{font-family:var(--fd);font-size:20px;color:var(--muted);}
+.scorecard-verdict{margin-left:auto;font-size:13px;font-weight:800;padding:4px 12px;border-radius:20px;font-family:var(--fd);}
+.verdict-pass{background:rgba(20,180,160,.15);border:1px solid rgba(20,180,160,.3);color:#14b4a0;}
+.verdict-fail{background:rgba(224,80,96,.12);border:1px solid rgba(224,80,96,.25);color:#e05060;}
+.scorecard-meta-row{display:flex;align-items:center;gap:10px;}
+.scorecard-grade{font-size:13px;font-weight:700;color:var(--muted);}
+.scorecard-type-badge{font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;font-family:var(--fd);}
+.scorecard-breakdown{padding:14px 20px;border-bottom:1px solid var(--bdr);}
+.breakdown-title{font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:10px;}
+.enum-stats{display:flex;gap:12px;margin-bottom:12px;}
+.enum-stat{text-align:center;flex:1;background:rgba(255,255,255,.04);border-radius:10px;padding:12px;}
+.enum-stat-val{font-family:var(--fd);font-size:26px;font-weight:800;color:var(--white);}
+.enum-stat-label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;}
+.enum-found{font-size:12px;color:#14b4a0;padding:5px 10px;background:rgba(20,180,160,.08);border-radius:8px;margin-bottom:6px;}
+.enum-missed{font-size:12px;color:#e05060;padding:5px 10px;background:rgba(224,80,96,.08);border-radius:8px;}
+.tf-result{display:flex;align-items:center;gap:14px;padding:14px;border-radius:12px;}
+.tf-correct{background:rgba(20,180,160,.1);border:1px solid rgba(20,180,160,.25);}
+.tf-wrong{background:rgba(224,80,96,.1);border:1px solid rgba(224,80,96,.25);}
+.tf-icon{font-size:26px;}
+.tf-verdict{font-family:var(--fd);font-size:15px;font-weight:800;margin-bottom:3px;}
+.tf-detail{font-size:12px;color:var(--muted);}
+.scorecard-feedback{padding:14px 20px;}
+.feedback-overall{font-size:14px;color:var(--white);line-height:1.7;margin-bottom:12px;}
+.feedback-group{margin-bottom:10px;}
+.feedback-group-label{font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:6px;}
+.feedback-item{font-size:13px;line-height:1.6;padding:7px 11px;border-radius:8px;margin-bottom:4px;}
+.feedback-strength{background:rgba(20,180,160,.08);color:rgba(248,246,241,.85);border-left:3px solid #14b4a0;}
+.feedback-improve{background:rgba(232,144,74,.08);color:rgba(248,246,241,.85);border-left:3px solid var(--og);}
+.feedback-model{background:rgba(201,168,76,.08);color:rgba(248,246,241,.85);border-left:3px solid var(--gold);font-style:italic;}
 /* QUIZ RESULTS */
 .quiz-results{text-align:center;padding:18px 0;}
 .qr-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:18px 0;}
@@ -2443,11 +2477,13 @@ function pickMCQ(i){
 // ── Eval format badge ──────────────────────────────────────
 function evalFormatBadge(format){
   const map={
-    essay:       ['📝 ALAC Scoring',       '#ff8c42','rgba(255,140,66,.12)'],
-    truefalse:   ['✓/✗ T/F Scoring',       '#5b9bd5','rgba(91,155,213,.12)'],
-    mcq:         ['🔘 MCQ Scoring',         '#5b9bd5','rgba(91,155,213,.12)'],
-    enumeration: ['📋 Enumeration Scoring', '#14b4a0','rgba(20,180,160,.12)'],
-    definition:  ['📖 Definition Scoring',  '#c9a84c','rgba(201,168,76,.12)'],
+    essay:        ['📝 ALAC Scoring',        '#ff8c42','rgba(255,140,66,.12)'],
+    situational:  ['📝 ALAC Scoring',        '#ff8c42','rgba(255,140,66,.12)'],
+    truefalse:    ['✓/✗ T/F Scoring',        '#5b9bd5','rgba(91,155,213,.12)'],
+    mcq:          ['🔘 MCQ Scoring',          '#5b9bd5','rgba(91,155,213,.12)'],
+    enumeration:  ['📋 Enumeration Scoring',  '#14b4a0','rgba(20,180,160,.12)'],
+    definition:   ['📖 Definition Scoring',   '#c9a84c','rgba(201,168,76,.12)'],
+    conceptual:   ['💡 Conceptual Scoring',   '#c9a84c','rgba(201,168,76,.12)'],
   };
   const [label,color,bg]=map[format]||map.essay;
   return `<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;background:${bg};color:${color};letter-spacing:.04em;margin-right:6px;">${label}</span>`;
@@ -2455,11 +2491,11 @@ function evalFormatBadge(format){
 // ── Dispatcher ─────────────────────────────────────────────
 function renderEvalCard(ev){
   if(!ev) return '';
-  const fmt=ev.format||'essay';
+  const fmt=ev.format||ev.questionType||'essay';
   if(fmt==='truefalse'||fmt==='mcq') return renderTFMCQCard(ev);
   if(fmt==='enumeration') return renderEnumCard(ev);
-  if(fmt==='definition')  return renderDefCard(ev);
-  return renderAlacCard(ev);
+  if(fmt==='definition'||fmt==='conceptual') return renderDefCard(ev);
+  return renderAlacCard(ev); // situational, essay, default
 }
 // ── True/False & MCQ card ──────────────────────────────────
 function renderTFMCQCard(ev){
@@ -2550,7 +2586,7 @@ function renderAlacCard(ev){
     <td style="color:rgba(248,246,241,.8);">${h(c.feedback||'')}</td>
   </tr>`:''
   ).join('');
-  return `<div class="ai-fb-head">${evalFormatBadge('essay')}<span class="ai-fb-score">${h(ev.score||'?/10')}</span><span style="background:rgba(255,255,255,.08);border-radius:5px;padding:2px 7px;font-family:var(--fm);color:${gc};">${h(ev.grade||'')}</span></div>
+  return `<div class="ai-fb-head">${evalFormatBadge(ev.format||ev.questionType||'essay')}<span class="ai-fb-score">${h(ev.score||'?/10')}</span><span style="background:rgba(255,255,255,.08);border-radius:5px;padding:2px 7px;font-family:var(--fm);color:${gc};">${h(ev.grade||'')}</span></div>
   <div class="ai-fb-content">
     <table class="alac-table">
       <thead><tr><th>Component</th><th>Score</th><th>Max</th><th>Feedback</th></tr></thead>
@@ -2570,7 +2606,7 @@ async function submitEssay(){
   const fb=document.getElementById('aiFB');fb.className='ai-fb show';
   fb.innerHTML=`<div class="ai-fb-head"><div class="spin" style="width:16px;height:16px;border-width:2px;"></div> Evaluating…</div>`;
   try{
-    const r=await fetch('/api/evaluate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:cur.prompt||cur.q,answer:ans,modelAnswer:cur.modelAnswer,keyPoints:cur.keyPoints,subject:pool.subject})});
+    const r=await fetch('/api/evaluate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:cur.prompt||cur.q,answer:ans,context:cur.context||'',modelAnswer:cur.modelAnswer,keyPoints:cur.keyPoints,subject:pool.subject})});
     const ev=await r.json();if(ev.error)throw new Error(ev.error);
     fb.innerHTML=renderEvalCard(ev);
     document.getElementById('essNext').style.display='block';totalQDone++;updateDash();
@@ -2886,7 +2922,7 @@ async function endMockSession(){
     const q=mockQs[i],ans=mockAnswers[i]||'';
     if(!ans.trim()){scores.push({score:'0/10',numericScore:0,grade:'Not Answered',overallFeedback:'No answer provided.',keyMissed:[]});continue;}
     try{
-      const r=await fetch('/api/evaluate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q.prompt||q.q,answer:ans,modelAnswer:q.modelAnswer,keyPoints:q.keyPoints,subject:q.subject})});
+      const r=await fetch('/api/evaluate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q.prompt||q.q,answer:ans,context:q.context||'',modelAnswer:q.modelAnswer,keyPoints:q.keyPoints,subject:q.subject})});
       scores.push(await r.json());
     }catch(e){scores.push({score:'?/10',numericScore:0,grade:'Error',overallFeedback:e.message,keyMissed:[]});}
   }

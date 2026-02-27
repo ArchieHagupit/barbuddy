@@ -1292,15 +1292,47 @@ app.post('/api/mockbar/generate', async (req, res) => {
 });
 
 // ── Question format detection ────────────────────────────────
-function detectQuestionFormat(questionText) {
-  const q = questionText.toLowerCase();
-  if (q.includes('true or false') || q.includes('true/false') || q.startsWith('t/f') || q.includes('state whether')) return 'truefalse';
-  if (q.includes('which of the following') || q.includes('choose the correct') || q.includes('select the best') || /\ba\.\s|\bb\.\s|\bc\.\s/.test(q) || (q.includes('(a)') && q.includes('(b)'))) return 'mcq';
-  if (q.includes('enumerate') || q.includes('list the') || q.includes('what are the requisites') || q.includes('what are the elements') || q.includes('what are the requirements') || q.includes('give the') || q.includes('name the')) return 'enumeration';
-  if (q.includes('define ') || q.includes('what is meant by') || q.includes('distinguish between') || q.includes('differentiate') || q.includes('what do you understand by') || (q.startsWith('what is') && !q.includes('liable') && !q.includes('right') && !q.includes('remedy'))) return 'definition';
-  return 'essay';
-}
+// Improved question type detector — returns:
+//   'situational' → has fact pattern → ALAC scoring
+//   'definition'  → "define X", "distinguish X from Y" → Accuracy/Completeness/Clarity
+//   'conceptual'  → "explain X", "what is the purpose of X" → same A/C/C scoring
+//   'enumeration' → "enumerate", "what are the requisites" → proportional item scoring
+//   'truefalse'   → T/F statement → correct/incorrect + explanation
+//   'mcq'         → multiple choice → correct choice + reasoning
+function detectQuestionType(questionText, context, modelAnswer) {
+  const q   = (questionText  || '').toLowerCase().trim();
+  const ctx = (context       || '').toLowerCase().trim();
+  const ans = (modelAnswer   || '').toLowerCase();
 
+  // ── Explicit format signals (highest priority) ──
+  if (/true or false|true\/false|\bt\/f\b|state whether/i.test(q)) return 'truefalse';
+  if (/which of the following|choose the correct|select the best|\ba\.\s|\bb\.\s|\bc\.\s|\ba\)\s|\bb\)\s|\bc\)\s/.test(q) || (q.includes('(a)') && q.includes('(b)'))) return 'mcq';
+
+  // ── Enumeration signals ──
+  if (/enumerate|(list|state|name|give) (the |at least |all )?(requisites|elements|requirements|grounds|instances|cases|kinds|classifications|stages|characteristics|effects|exceptions|limitations)|what are the (requisites|elements|requirements|grounds|instances|cases|kinds|classifications|stages|characteristics|effects|exceptions|limitations)/.test(q)) return 'enumeration';
+
+  // ── Situational — context (fact pattern) is the strongest signal ──
+  const hasFacts = ctx.length > 80;
+  const hasCaseParties = /filed|sued|plaintiff|defendant|petitioner|respondent|labor arbiter|nlrc|\brtc\b|\bca\b|supreme court/i.test(ctx);
+  if (hasFacts || hasCaseParties) return 'situational';
+
+  // ── Definition signals ──
+  if (/^define\b|^what is (a |an |the |meant by |understood by )|^what do you (mean|understand) by|^distinguish (between|and)|^differentiate (between)?|^what do you understand by/i.test(q)) return 'definition';
+
+  // ── Conceptual / Explanatory signals ──
+  if (/^explain (the |a |an )?(concept|doctrine|principle|rule|theory|basis|rationale|purpose|significance|nature|scope)|^describe (the |a |an )?|^what is the (purpose|effect|nature|significance|rationale|basis|scope) of|^when (is|are|does|can|may) (a|an|the) /i.test(q)) return 'conceptual';
+
+  // Broad "what is / what are" without fact-pattern markers → treat as definition
+  if (/^(what is|what are)\b/.test(q) && !/(liable|remedy|obligation of|consequence|entitled|right of)/.test(q)) return 'definition';
+
+  // ── Model answer signals (fallback) ──
+  const ansWords = ans.split(/\s+/).filter(w => w.length > 0).length;
+  const hasALAC  = /(answer:|legal basis:|application:|conclusion:)/i.test(ans);
+  if (hasALAC && ansWords > 100) return 'situational';
+  if (ansWords > 0 && ansWords < 60) return 'definition';
+
+  return 'situational'; // default for long-form essay questions
+}
 const GRADE_SCALE = `Assign grade based on numericScore (passing score is 7.0/10):
   Excellent:          8.5 and above
   Good:               7.0 to 8.4  ← passing starts here
@@ -1311,9 +1343,14 @@ const GRADE_SCALE = `Assign grade based on numericScore (passing score is 7.0/10
 // ── ESSAY EVALUATION (smart multi-format) ───────────────────
 app.post('/api/evaluate', async (req, res) => {
   if (!API_KEY) return res.status(500).json({ error:'API key not set' });
-  const { question, answer, modelAnswer, keyPoints, subject } = req.body;
+  const { question, answer, modelAnswer, keyPoints, subject, context, forceType } = req.body;
   const refCtx = KB.references.filter(r=>r.subject===subject).slice(0,1).map(r=>r.summary||'').join('');
-  const format = detectQuestionFormat(question);
+  const qtype  = forceType || detectQuestionType(question, context, modelAnswer);
+  // Map new type names to existing handler keys
+  const format = qtype === 'situational' ? 'essay'
+               : qtype === 'conceptual'  ? 'definition'
+               : qtype;
+  console.log(`[evaluate] type=${qtype} q="${(question||'').slice(0,60)}"`);
   let prompt, maxTok;
 
   if (format === 'truefalse') {
@@ -1499,7 +1536,8 @@ Respond ONLY with valid JSON (no markdown):
     if (!result) {
       return res.status(422).json({ error:'Evaluation failed — could not parse scoring response. Please try submitting your answer again.' });
     }
-    result.format = result.format || format; // ensure format tag is present
+    result.format       = qtype;  // always use detected type (overrides AI-reported format)
+    result.questionType = qtype;
     res.json(result);
   } catch(err) { res.status(500).json({ error:err.message }); }
 });
