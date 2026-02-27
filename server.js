@@ -15,6 +15,8 @@ const PORT      = process.env.PORT || 3000;
 const API_KEY   = process.env.ANTHROPIC_API_KEY;
 const ADMIN_KEY = process.env.ADMIN_KEY || 'barbuddy-admin-2025';
 
+const VALID_SUBJECTS = ['civil','criminal','political','labor','commercial','taxation','remedial','ethics','custom'];
+
 // Every Claude call is restricted to uploaded materials only
 const STRICT_SYSTEM_PROMPT = `You are a content extraction and organization assistant for a Philippine Bar Exam review platform. Your ONLY role is to read the uploaded reference materials provided and organize their content into structured study materials.
 
@@ -419,7 +421,13 @@ app.get('/api/content/:subject/:topic', (req, res) => {
 });
 
 // ── GET full content dump (browser caches on load) ──────────
-app.get('/api/content', (req, res) => res.json(CONTENT));
+app.get('/api/content', (req, res) => {
+  const { subject } = req.query;
+  if (subject && VALID_SUBJECTS.includes(subject) && CONTENT[subject]) {
+    return res.json({ [subject]: CONTENT[subject] });
+  }
+  res.json(CONTENT);
+});
 
 // ── SSE: live generation progress ──────────────────────────
 app.get('/api/gen/progress', (req, res) => {
@@ -448,7 +456,9 @@ app.post('/api/admin/syllabus', adminOnly, (req, res) => {
     KB.syllabus = { name:name||'Bar Exam Syllabus', rawText:content.slice(0,60000), topics:subjects, uploadedAt:new Date().toISOString() };
     saveKB();
     const totalTopics = subjects.reduce((a,s) => a+(s.topics?.length||0), 0);
-    res.json({ success:true, subjects:subjects.length, totalTopics });
+    const breakdown = subjects.map(s => ({ key:s.key, name:s.name, topicCount:s.topics?.length||0 }));
+    const unknownTopics = subjects.filter(s => !VALID_SUBJECTS.includes(s.key)).map(s => s.name);
+    res.json({ success:true, subjects:subjects.length, totalTopics, breakdown, unknownTopics });
     triggerPreGeneration();   // fire-and-forget
   } catch(err) { res.status(500).json({ error:err.message }); }
 });
@@ -642,19 +652,33 @@ app.post('/api/admin/generate', adminOnly, (req, res) => {
 async function triggerPreGeneration() {
   if (GEN.running || !KB.syllabus) return;
   const queue = [];
-  KB.syllabus.topics.forEach(subj =>
-    (subj.topics||[]).forEach(t => queue.push({ subjKey:subj.key, subjName:subj.name, topicName:t.name, subtopics:t.subtopics||[] }))
-  );
+  KB.syllabus.topics.forEach(subj => {
+    if (!VALID_SUBJECTS.includes(subj.key)) {
+      console.warn(`triggerPreGeneration: skipping unknown subject key "${subj.key}"`);
+      return;
+    }
+    (subj.topics||[]).forEach(t => {
+      const topicSubj = t.subject || subj.key;
+      if (topicSubj !== subj.key) {
+        console.warn(`Skipping topic "${t.name}" — tagged to "${topicSubj}" but found under "${subj.key}"`);
+        return;
+      }
+      queue.push({ subjKey:subj.key, subjName:subj.name, topicName:t.name, subtopics:t.subtopics||[] });
+    });
+  });
   if (!queue.length) return;
   await runGenQueue(queue);
 }
 
 async function triggerPreGenerationForSubject(subjKey) {
   if (GEN.running || !KB.syllabus) return;
+  if (!VALID_SUBJECTS.includes(subjKey)) return;
   const subj = KB.syllabus.topics.find(s => s.key === subjKey);
   if (!subj) return;
   delete CONTENT[subjKey];
-  const queue = (subj.topics||[]).map(t => ({ subjKey, subjName:subj.name, topicName:t.name, subtopics:t.subtopics||[] }));
+  const queue = (subj.topics||[])
+    .filter(t => (t.subject || subjKey) === subjKey)
+    .map(t => ({ subjKey, subjName:subj.name, topicName:t.name, subtopics:t.subtopics||[] }));
   await runGenQueue(queue);
 }
 
@@ -676,8 +700,8 @@ async function runGenQueue(queue) {
 }
 
 async function generateTopicContent(subjKey, topicName, subtopics) {
-  // a) Skip entirely if no reference materials exist for this subject
-  const refs = KB.references.filter(r => r.subject===subjKey || r.subject==='general');
+  // a) Skip entirely if no reference materials exist for this exact subject
+  const refs = KB.references.filter(r => r.subject===subjKey);
   if (!refs.length) {
     if (!CONTENT[subjKey]) CONTENT[subjKey] = {};
     CONTENT[subjKey][topicName] = {
@@ -968,7 +992,7 @@ const GRADE_SCALE = `Assign grade based on numericScore (passing score is 7.0/10
 app.post('/api/evaluate', async (req, res) => {
   if (!API_KEY) return res.status(500).json({ error:'API key not set' });
   const { question, answer, modelAnswer, keyPoints, subject } = req.body;
-  const refCtx = KB.references.filter(r=>r.subject===subject||r.subject==='general').slice(0,1).map(r=>r.summary||'').join('');
+  const refCtx = KB.references.filter(r=>r.subject===subject).slice(0,1).map(r=>r.summary||'').join('');
   const format = detectQuestionFormat(question);
   let prompt, maxTok;
 
@@ -1249,7 +1273,7 @@ function parseSyllabusText(content) {
         const indent = rawLine.search(/\S/);
         if (name.length >= 3 && name.length <= 200) {
           if (indent <= 3 || subjectMap[currentKey].topics.length === 0) {
-            subjectMap[currentKey].topics.push({ name, subtopics:[] });
+            subjectMap[currentKey].topics.push({ name, subject: currentKey, subtopics:[] });
             lastTopicIdx = subjectMap[currentKey].topics.length - 1;
           } else if (lastTopicIdx >= 0) {
             subjectMap[currentKey].topics[lastTopicIdx].subtopics.push(name);

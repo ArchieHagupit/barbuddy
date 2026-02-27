@@ -29,18 +29,26 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .sb-overview-btn{display:flex;align-items:center;gap:9px;padding:10px 16px;margin:2px 8px;border-radius:10px;cursor:pointer;font-family:var(--fd);font-size:14px;font-weight:600;color:rgba(248,246,241,.75);border:none;background:transparent;text-align:left;transition:all .2s;width:calc(100% - 16px);}
 .sb-overview-btn:hover{background:rgba(255,255,255,.06);color:rgba(248,246,241,1);}
 .sb-overview-btn.active{background:rgba(201,168,76,.1);color:var(--gold);border-left:3px solid var(--gold);padding-left:13px;}
-.sb-subject{display:flex;align-items:center;gap:9px;padding:10px 14px;margin:2px 8px;border-radius:10px;cursor:pointer;font-family:var(--fd);font-size:13px;font-weight:600;color:rgba(248,246,241,.75);border:none;border-left:3px solid transparent;background:transparent;text-align:left;transition:all .2s;width:calc(100% - 16px);}
+/* Sidebar subject items — single-click, no expand/collapse */
+.sb-subject{display:flex;align-items:center;gap:9px;padding:9px 14px;margin:1px 8px;border-radius:10px;cursor:pointer;font-family:var(--fd);font-size:13px;font-weight:600;color:rgba(248,246,241,.75);border:none;border-left:3px solid transparent;background:transparent;text-align:left;transition:all .2s;width:calc(100% - 16px);}
 .sb-subject:hover{background:rgba(255,255,255,.06);color:rgba(248,246,241,1);}
-.sb-subject.active{background:rgba(255,255,255,.06);color:rgba(248,246,241,1);}
-.sb-arrow{font-size:9px;opacity:.5;transition:transform .2s;flex-shrink:0;}
-.sb-arrow.open{transform:rotate(90deg);}
-.sb-sub-items{margin:2px 8px 4px 28px;display:none;}
-.sb-sub-items.open{display:block;}
-.sb-sub-item{display:flex;align-items:center;gap:8px;padding:7px 12px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:500;color:rgba(248,246,241,.6);transition:all .18s;margin:1px 0;border:none;background:transparent;text-align:left;width:100%;}
-.sb-sub-item:hover{background:rgba(255,255,255,.05);color:rgba(248,246,241,.9);}
-.sb-sub-item.active{background:rgba(201,168,76,.12);color:var(--gold-l);font-weight:700;}
-.sb-sub-item.disabled-tab{opacity:.4;pointer-events:none;text-decoration:line-through;}
+.sb-subject.active{background:rgba(201,168,76,.08);color:var(--gold-l);border-left-color:var(--gold)!important;}
+/* Material dot + question count */
+.sb-subj-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;transition:opacity .2s;}
+.sb-subj-qcount{font-size:10px;font-family:var(--fm);color:var(--muted);margin-left:auto;flex-shrink:0;}
 .sb-lock-icon{font-size:10px;margin-left:auto;opacity:.5;flex-shrink:0;}
+/* Subject page internal tabs */
+.subject-page-header{display:flex;align-items:center;gap:14px;margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid rgba(248,246,241,.08);}
+.subject-color-bar{width:5px;height:48px;border-radius:3px;flex-shrink:0;}
+.subject-page-title{font-family:var(--fd);font-size:24px;font-weight:800;color:var(--gold-l);margin:0 0 4px;}
+.subject-page-meta{font-size:12px;color:var(--muted);}
+.subject-tab-bar{display:flex;gap:4px;border-bottom:2px solid rgba(248,246,241,.08);margin-bottom:24px;padding-bottom:0;}
+.subject-tab{padding:10px 20px;font-family:var(--fd);font-size:14px;font-weight:600;color:rgba(248,246,241,.45);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .2s;border-radius:8px 8px 0 0;display:flex;align-items:center;gap:7px;background:none;border-left:none;border-right:none;border-top:none;}
+.subject-tab:hover{color:rgba(248,246,241,.75);background:rgba(255,255,255,.04);}
+.subject-tab.active{color:var(--gold-l);border-bottom-color:var(--gold);background:rgba(201,168,76,.06);}
+.subject-tab.tab-disabled{opacity:.3;pointer-events:none;text-decoration:line-through;}
+/* General ref warning */
+.general-ref-warning{background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.2);border-radius:8px;padding:8px 12px;font-size:11px;color:rgba(201,168,76,.8);margin-top:6px;display:none;}
 /* legacy s-btn kept for JS compat, hidden */
 .s-btn{display:none;}.s-div{display:none;}
 /* Topbar breadcrumb */
@@ -658,72 +666,19 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 </div>
 </div>
 
-<!-- ═══ LEARN ═══ -->
-<div class="page" id="page-learn">
-<div class="split-layout">
-  <aside class="panel-l">
-    <div class="pl-head">
-      <h3>📖 Syllabus</h3>
-      <input class="sp-search" type="text" placeholder="Search topics…" oninput="filterTopics(this.value)" id="topicSearch">
-      <div class="prog-mini">
-        <div class="prog-row"><span class="prog-lbl">Completion</span><span class="prog-pct" id="learn-pct">0%</span></div>
-        <div class="prog-track"><div class="prog-fill" id="learn-fill" style="width:0%"></div></div>
-      </div>
-    </div>
-    <div class="tree" id="syllabusTree">
-      <div style="padding:20px 12px;text-align:center;color:var(--muted);font-size:12px;line-height:1.6;"><div style="font-size:28px;margin-bottom:8px;opacity:.4;">📋</div>Upload Bar Syllabus in Admin.</div>
-    </div>
-    <div class="up-btn" onclick="navToAdmin()">⚙️ Manage Knowledge Base</div>
-  </aside>
-  <div class="panel-r">
-    <div class="pr-top" id="lpTopbar" style="display:none;">
-      <div class="pr-bc" id="lpBC"></div>
-      <div style="display:flex;gap:7px;">
-        <button class="btn-og" style="font-size:11px;" onclick="markDone()">✓ Mark Done</button>
-        <button class="btn-og" style="font-size:11px;" onclick="goToPractice()">Take Quiz →</button>
-      </div>
-    </div>
-    <div class="pr-content" id="lpContent">
-      <div class="welcome-st"><div class="big-ic">📖</div><h3>Welcome to Learn</h3><p>Upload your Bar Syllabus in Admin — all topics are pre-generated instantly. Click any topic to load it from cache.</p><button class="btn-gold" onclick="nav('admin',document.getElementById('tab-admin'))">⚙️ Upload Materials</button></div>
-    </div>
-    <div id="lpFooter" style="display:none;" class="pr-foot">
-      <div style="font-size:12px;color:var(--muted);font-family:var(--fm);" id="lpPgInfo">Page 1 of 1</div>
-      <div style="display:flex;gap:8px;">
-        <button class="btn-ghost" id="lpPrev" onclick="chgPage(-1)">← Prev</button>
-        <button class="btn-gold" id="lpNext" onclick="chgPage(1)">Next →</button>
-      </div>
-    </div>
-  </div>
+<!-- ═══ SUBJECT PAGE (shared template for all 9 subjects) ═══ -->
+<div class="page" id="page-subject">
+<div class="pg-inner">
+  <div id="subject-page-header-area"></div>
+  <div id="subject-tab-bar" class="subject-tab-bar"></div>
+  <div id="subject-tab-content"></div>
 </div>
 </div>
 
-<!-- ═══ PRACTICE ═══ -->
-<div class="page" id="page-practice">
-<div class="split-layout">
-  <aside class="panel-l">
-    <div class="pl-head">
-      <h3>✍️ Practice</h3>
-      <div class="q-type-tabs">
-        <div class="qtt on" id="qmode-mcq" onclick="setQMode('mcq')"><span class="qtt-ic">🔘</span>MCQ</div>
-        <div class="qtt" id="qmode-essay" onclick="setQMode('essay')"><span class="qtt-ic">✍️</span>Essay</div>
-      </div>
-    </div>
-    <div class="qn-list" id="quizList">
-      <div style="padding:16px 12px;text-align:center;color:var(--muted);font-size:12px;line-height:1.6;"><div style="font-size:22px;margin-bottom:6px;opacity:.4;">✍️</div>Upload syllabus to pre-generate quizzes.</div>
-    </div>
-  </aside>
-  <div style="display:flex;flex-direction:column;overflow:hidden;">
-    <div id="qmHead" style="display:none;padding:13px 24px;align-items:center;gap:10px;background:var(--ink2);border-bottom:1px solid var(--bdr2);">
-      <div style="font-family:var(--fd);font-size:19px;font-weight:700;color:var(--gold-l);flex:1;" id="qmTitle">Quiz</div>
-      <div style="font-size:11px;color:var(--muted);font-family:var(--fm);" id="qmMeta"></div>
-      <button class="btn-og" style="font-size:11px;" onclick="resetQuiz()">↺ Restart</button>
-    </div>
-    <div class="qm-body" id="qmBody">
-      <div class="welcome-st"><div class="big-ic">✍️</div><h3>Practice Makes Perfect</h3><p>All quizzes are pre-generated when you upload the syllabus. Select a topic's MCQ or essay set from the left panel.</p><button class="btn-gold" onclick="nav('admin',document.getElementById('tab-admin'))">⚙️ Upload Syllabus</button></div>
-    </div>
-  </div>
-</div>
-</div>
+<!-- ═══ LEARN / PRACTICE — now rendered inside page-subject tabs ═══ -->
+<!-- These wrappers kept for legacy nav() fallback; content lives in renderLearnTab/renderQuizTab -->
+<div class="page" id="page-learn"></div>
+<div class="page" id="page-practice"></div>
 
 <!-- ═══ MOCK BAR ═══ -->
 <div class="page" id="page-mockbar">
@@ -952,6 +907,7 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
           <button class="btn-og" onclick="document.getElementById('syl-file').click()">📄 Upload File</button>
         </div>
         <div id="syl-status"></div>
+        <div id="syl-breakdown" style="display:none;margin-bottom:12px;"></div>
         <button class="btn-gold" onclick="uploadSyllabus()" style="width:100%;justify-content:center;">📋 Save &amp; Pre-generate</button>
       </div>
       <!-- REFERENCES -->
@@ -961,15 +917,16 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
         <label class="form-label">Name</label>
         <input class="form-input" id="ref-name" placeholder="e.g. Civil Code Reviewer">
         <label class="form-label">Subject</label>
-        <select class="form-select" id="ref-subject">
-          <option value="general">General (all subjects)</option>
+        <select class="form-select" id="ref-subject" onchange="showRefGeneralWarning(this.value)">
           <option value="civil">Civil Law</option><option value="criminal">Criminal Law</option>
           <option value="political">Political Law</option><option value="labor">Labor Law</option>
           <option value="commercial">Commercial Law</option><option value="taxation">Taxation</option>
           <option value="remedial">Remedial Law</option><option value="ethics">Legal Ethics</option>
           <option disabled>──────────────</option>
+          <option value="general">🌐 General (all subjects — use sparingly)</option>
           <option value="custom">📁 Custom Subject (non-bar topics)</option>
         </select>
+        <div id="refGeneralWarning" class="general-ref-warning">⚠️ General materials appear in ALL subject contexts. Tag to a specific subject for better isolation.</div>
         <label class="form-label">Type</label>
         <select class="form-select" id="ref-type">
           <option value="reviewer">Reviewer book</option><option value="codal">Codal / statutes</option>
@@ -993,15 +950,16 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
           <div>
             <label class="form-label">Subject</label>
-            <select class="form-select" id="pb-subject">
-              <option value="general">All subjects</option>
+            <select class="form-select" id="pb-subject" onchange="showPbGeneralWarning(this.value)">
               <option value="civil">Civil Law</option><option value="criminal">Criminal Law</option>
               <option value="political">Political Law</option><option value="labor">Labor Law</option>
               <option value="commercial">Commercial Law</option><option value="taxation">Taxation</option>
               <option value="remedial">Remedial Law</option><option value="ethics">Legal Ethics</option>
               <option disabled>──────────────</option>
+              <option value="general">🌐 General (all subjects — use sparingly)</option>
               <option value="custom">📁 Custom Subject (non-bar topics)</option>
             </select>
+            <div id="pbGeneralWarning" class="general-ref-warning">⚠️ General materials appear in ALL subject contexts. Tag to a specific subject for better isolation.</div>
           </div>
           <div><label class="form-label">Year</label><input class="form-input" id="pb-year" placeholder="e.g. 2023"></div>
         </div>
@@ -1221,18 +1179,18 @@ function getCached(subj, topic) {
   return CACHE[subj]?.[topic] || null;
 }
 
-async function syncCacheFromServer() {
+async function syncCacheFromServer(subject) {
   try {
-    const r = await fetch('/api/content');
+    const url = subject ? `/api/content?subject=${encodeURIComponent(subject)}` : '/api/content';
+    const r = await fetch(url);
     const serverContent = await r.json();
-    // Merge server content into local cache
     let merged = 0;
     Object.entries(serverContent).forEach(([subj, topics]) => {
       Object.entries(topics).forEach(([topic, data]) => {
         if (!getCached(subj, topic)) { saveCacheItem(subj, topic, data); merged++; }
       });
     });
-    if (merged > 0) { console.log('Synced', merged, 'topics from server'); buildQuizPool(); renderSyllabusTree(); }
+    if (merged > 0) { console.log('Synced', merged, 'topics from server'); buildQuizPool(subject||null); if (!subject) renderSyllabusTree(); }
   } catch(e) { console.warn('Sync:', e.message); }
 }
 
@@ -1248,6 +1206,7 @@ async function loadKB() {
     buildQuizPool();
     updateDash();
     renderPastBarList();
+    refreshSidebarDots();
     // Sync any server content not in local cache
     if (KB.contentTopics > 0) syncCacheFromServer();
   } catch(e) { console.warn('KB load:', e.message); }
@@ -1395,22 +1354,241 @@ function navToSubject(subj, mode) {
     initMockBarSetup(null);
     return;
   }
-  // Check if this mode is disabled for this subject
+  if (subj === 'custom') { navToCustom(); return; }
+
+  // Determine which mode to default to (pick first enabled)
   const ts = window.TAB_SETTINGS;
-  if (ts && subj !== 'custom' && ts.subjects?.[subj]?.[mode] === false) {
-    showLockedMessage(subj, mode);
-    return;
+  const modesInOrder = ['learn','quiz','mockbar'];
+  let targetMode = mode || 'learn';
+  if (ts?.subjects?.[subj]?.[targetMode] === false) {
+    targetMode = modesInOrder.find(m => ts.subjects?.[subj]?.[m] !== false) || 'learn';
   }
-  currentSubject = subj; currentMode = mode;
+
+  currentSubject = subj; currentMode = targetMode;
   clearSidebarActive();
-  // Expand subject in sidebar
-  toggleSbSubject(subj, true);
   document.getElementById('sb-subj-' + subj)?.classList.add('active');
-  document.getElementById('sb-sub-' + subj + '-' + mode)?.classList.add('active');
+  updateBreadcrumb(subj, targetMode);
+  showPage('subject');
+  renderSubjectHeader(subj);
+  renderSubjectTabs(subj, targetMode);
+  switchSubjectTab(subj, targetMode);
+}
+
+function renderSubjectHeader(subj) {
+  const s = SUBJS.find(x => x.key === subj);
+  if (!s) return;
+  const refs   = (KB.references||[]).filter(r=>r.subject===subj).length;
+  const pbSets = (KB.pastBar||[]).filter(p=>p.subject===subj).length;
+  const pbQs   = (KB.pastBar||[]).filter(p=>p.subject===subj).reduce((a,p)=>a+(p.qCount||0),0);
+  const cached = Object.keys(CACHE[subj]||{}).length;
+  const topicCount = (KB.syllabusTopics||[]).find(st=>st.key===subj)?.topics?.length || 0;
+  const metaParts = [];
+  if (refs) metaParts.push(`${refs} reference${refs!==1?'s':''}`);
+  if (pbSets) metaParts.push(`${pbSets} past bar set${pbSets!==1?'s':''}`);
+  if (pbQs) metaParts.push(`${pbQs} questions`);
+  if (topicCount) metaParts.push(`${topicCount} topics`);
+  if (cached) metaParts.push(`${cached} cached`);
+  document.getElementById('subject-page-header-area').innerHTML = `
+    <div class="subject-page-header">
+      <div class="subject-color-bar" style="background:${s.color};"></div>
+      <div>
+        <h2 class="subject-page-title">${h(s.name)}</h2>
+        <div class="subject-page-meta">${metaParts.length ? metaParts.join(' · ') : 'No materials uploaded yet'}</div>
+      </div>
+    </div>`;
+}
+
+function renderSubjectTabs(subj, activeMode) {
+  const ts = window.TAB_SETTINGS?.subjects?.[subj] || {};
+  const tabs = [
+    { mode:'learn',   icon:'📖', label:'Learn'   },
+    { mode:'quiz',    icon:'✏️',  label:'Quiz'    },
+    { mode:'mockbar', icon:'⏱',  label:'Mock Bar' },
+  ];
+  const bar = document.getElementById('subject-tab-bar');
+  if (!bar) return;
+  bar.innerHTML = tabs.map(t => {
+    const enabled = ts[t.mode] !== false;
+    const isActive = t.mode === activeMode;
+    return `<button id="stab-${t.mode}"
+      class="subject-tab${isActive?' active':''}${!enabled?' tab-disabled':''}"
+      onclick="switchSubjectTab('${subj}','${t.mode}')"
+      ${!enabled?'disabled':''}>
+      ${t.icon} ${t.label}${!enabled?' 🔒':''}
+    </button>`;
+  }).join('');
+}
+
+function switchSubjectTab(subj, mode) {
+  // If disabled, auto-pick first enabled
+  const ts = window.TAB_SETTINGS?.subjects?.[subj] || {};
+  if (ts[mode] === false) {
+    const first = ['learn','quiz','mockbar'].find(m => ts[m] !== false);
+    if (first) { switchSubjectTab(subj, first); return; }
+  }
+  currentMode = mode;
+  document.querySelectorAll('.subject-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('stab-' + mode)?.classList.add('active');
   updateBreadcrumb(subj, mode);
-  if (mode === 'learn')    loadLearnForSubject(subj);
-  if (mode === 'quiz')     loadQuizForSubject(subj);
-  if (mode === 'mockbar')  loadMockBarForSubject(subj);
+  const content = document.getElementById('subject-tab-content');
+  if (!content) return;
+  if (mode === 'learn')    renderLearnTab(subj, content);
+  if (mode === 'quiz')     renderQuizTab(subj, content);
+  if (mode === 'mockbar')  renderMockBarTab(subj, content);
+}
+
+function renderLearnTab(subj, container) {
+  container.innerHTML = `
+    <div class="split-layout">
+      <aside class="panel-l">
+        <div class="pl-head">
+          <h3>📖 Topics</h3>
+          <input class="sp-search" type="text" placeholder="Search topics…" oninput="filterTopics(this.value)" id="topicSearch">
+        </div>
+        <div class="tree" id="syllabusTree"></div>
+        <div class="up-btn" onclick="navToAdmin()">⚙️ Manage KB</div>
+      </aside>
+      <div class="panel-r">
+        <div class="pr-top" id="lpTopbar" style="display:none;">
+          <div class="pr-bc" id="lpBC"></div>
+          <div style="display:flex;gap:7px;">
+            <button class="btn-og" style="font-size:11px;" onclick="markDone()">✓ Mark Done</button>
+            <button class="btn-og" style="font-size:11px;" onclick="switchSubjectTab(currentSubject,'quiz')">Take Quiz →</button>
+          </div>
+        </div>
+        <div class="pr-content" id="lpContent">
+          <div class="welcome-st"><div class="big-ic">📖</div><h3>${h(SUBJS.find(s=>s.key===subj)?.name||subj)}</h3><p>Click a topic on the left to view its lesson content.</p></div>
+        </div>
+        <div id="lpFooter" style="display:none;" class="pr-foot">
+          <div style="font-size:12px;color:var(--muted);font-family:var(--fm);" id="lpPgInfo">Page 1 of 1</div>
+          <div style="display:flex;gap:8px;">
+            <button class="btn-ghost" id="lpPrev" onclick="chgPage(-1)">← Prev</button>
+            <button class="btn-gold" id="lpNext" onclick="chgPage(1)">Next →</button>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  renderSyllabusTree('', subj);
+}
+
+function renderQuizTab(subj, container) {
+  curSubj = subj;
+  container.innerHTML = `
+    <div class="split-layout">
+      <aside class="panel-l">
+        <div class="pl-head">
+          <h3>✍️ Practice</h3>
+          <div class="q-type-tabs">
+            <div class="qtt on" id="qmode-mcq" onclick="setQMode('mcq')"><span class="qtt-ic">🔘</span>MCQ</div>
+            <div class="qtt" id="qmode-essay" onclick="setQMode('essay')"><span class="qtt-ic">✍️</span>Essay</div>
+          </div>
+        </div>
+        <div class="qn-list" id="quizList"></div>
+      </aside>
+      <div style="display:flex;flex-direction:column;overflow:hidden;">
+        <div id="qmHead" style="display:none;padding:13px 24px;align-items:center;gap:10px;background:var(--ink2);border-bottom:1px solid var(--bdr2);">
+          <div style="font-family:var(--fd);font-size:19px;font-weight:700;color:var(--gold-l);flex:1;" id="qmTitle">Quiz</div>
+          <div style="font-size:11px;color:var(--muted);font-family:var(--fm);" id="qmMeta"></div>
+          <button class="btn-og" style="font-size:11px;" onclick="resetQuiz()">↺ Restart</button>
+        </div>
+        <div class="qm-body" id="qmBody">
+          <div class="welcome-st"><div class="big-ic">✍️</div><h3>${h(SUBJS.find(s=>s.key===subj)?.name||subj)}</h3><p>Select a topic from the left panel to practice.</p></div>
+        </div>
+      </div>
+    </div>`;
+  buildQuizPool(subj);
+}
+
+function renderMockBarTab(subj, container) {
+  const s = SUBJS.find(x => x.key === subj);
+  const pbQs = (KB.pastBar||[]).filter(p=>p.subject===subj).reduce((a,p)=>a+(p.qCount||0),0);
+  const cached = Object.keys(CACHE[subj]||{}).length;
+  const presets = [[5,'5'],[10,'10'],[20,'20']];
+  const timeOpts = [[0,'No limit'],[30,'30 min'],[60,'1 hr'],[120,'2 hr'],[180,'3 hr']];
+  const diffOpts = [['balanced','⚖️ Balanced'],['situational','📋 Situational'],['conceptual','💡 Conceptual']];
+  container.innerHTML = `
+    <div style="max-width:580px;">
+      <div class="mb-setup-card">
+        <div class="mb-section-label">Number of Questions</div>
+        <div class="mb-btn-row" id="stMbCountRow">
+          ${presets.map(([n,l])=>`<button class="mb-preset-btn${mbCount===n?' active':''}" onclick="stSetMbCount(${n},this)">${l}</button>`).join('')}
+          <input type="number" id="stMbCustomCount" min="1" max="100" placeholder="Custom"
+            value="${![5,10,20].includes(mbCount)?mbCount:''}"
+            style="width:64px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:7px 10px;color:var(--white);font-size:13px;font-family:var(--fb);"
+            oninput="stSetMbCount(parseInt(this.value)||20)">
+        </div>
+      </div>
+      <div class="mb-setup-card">
+        <div class="mb-section-label">Time Limit</div>
+        <div class="mb-btn-row" id="stMbTimeRow">
+          ${timeOpts.map(([m,l])=>`<button class="mb-preset-btn${mbTimeMins===m?' active':''}" onclick="stSetMbTime(${m},this)">${l}</button>`).join('')}
+        </div>
+      </div>
+      <div class="mb-setup-card">
+        <div class="mb-section-label">Question Sources</div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <label class="mb-source-row"><input type="checkbox" id="stMbSrcPastBar" checked> <span class="mb-source-label">📜 Past Bar Questions</span> <span class="mb-source-count">${pbQs} available</span></label>
+          <label class="mb-source-row"><input type="checkbox" id="stMbSrcPreGen" checked> <span class="mb-source-label">🤖 Pre-Generated</span> <span class="mb-source-count">${cached} topics cached</span></label>
+          <label class="mb-source-row"><input type="checkbox" id="stMbSrcAI" checked> <span class="mb-source-label">✨ AI Fill</span> <span class="mb-source-count">fills remaining slots</span></label>
+        </div>
+      </div>
+      <div class="mb-setup-card">
+        <div class="mb-section-label">Difficulty Preference</div>
+        <div class="mb-btn-row" id="stMbDiffRow">
+          ${diffOpts.map(([d,l])=>`<button class="mb-preset-btn${mbDifficulty===d?' active':''}" onclick="stSetMbDiff('${d}',this)">${l}</button>`).join('')}
+        </div>
+      </div>
+      <div class="mb-preview" id="stMbPreview">📊 ${pbQs} past bar + ${cached} pre-gen topics available</div>
+      <div id="stMbWarnBanner" class="mb-warn-banner" style="display:none;"></div>
+      <button class="btn-gold" id="stStartMockBtn" onclick="startSubjectMockBar('${subj}')"
+        style="width:100%;justify-content:center;font-size:15px;padding:14px;margin-top:8px;">
+        ⚡ Start ${h(s?.name||subj)} Mock Bar
+      </button>
+    </div>`;
+}
+
+function stSetMbCount(n, btn) {
+  mbCount = n || 20;
+  document.querySelectorAll('#stMbCountRow .mb-preset-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+}
+function stSetMbTime(mins, btn) {
+  mbTimeMins = mins;
+  document.querySelectorAll('#stMbTimeRow .mb-preset-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+}
+function stSetMbDiff(diff, btn) {
+  mbDifficulty = diff;
+  document.querySelectorAll('#stMbDiffRow .mb-preset-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+}
+
+async function startSubjectMockBar(subj) {
+  const btn = document.getElementById('stStartMockBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Generating…'; }
+  const sources = {
+    pastBar:     (document.getElementById('stMbSrcPastBar')?.checked) !== false,
+    preGen:      (document.getElementById('stMbSrcPreGen')?.checked) !== false,
+    aiGenerate:  (document.getElementById('stMbSrcAI')?.checked) !== false,
+  };
+  try {
+    const r = await fetch('/api/mockbar/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ subjects: [subj], count: mbCount, sources, difficulty: mbDifficulty, timeMins: mbTimeMins || 0 }),
+    });
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    if (d.warning) {
+      const warn = document.getElementById('stMbWarnBanner');
+      if (warn) { warn.textContent = '⚠️ ' + d.warning; warn.style.display = ''; }
+    }
+    startMockSession(d.questions, mbTimeMins);
+  } catch(e) {
+    const s = SUBJS.find(x=>x.key===subj)?.name || subj;
+    if (btn) { btn.disabled = false; btn.textContent = '⚡ Start ' + s + ' Mock Bar'; }
+    alert('Error: ' + e.message);
+  }
 }
 
 function showLockedMessage(subj, mode) {
@@ -1425,48 +1603,21 @@ function showLockedMessage(subj, mode) {
     </div>`;
 }
 
-function toggleSbSubject(subj, forceOpen) {
-  const arrowEl = document.querySelector('#sb-subj-' + subj + ' .sb-arrow');
-  const subItems = document.getElementById('sb-subs-' + subj);
-  if (!subItems) return;
-  const isOpen = subItems.classList.contains('open');
-  if (!forceOpen) {
-    // Collapse all others first
-    document.querySelectorAll('.sb-sub-items.open').forEach(el => {
-      if (el.id !== 'sb-subs-' + subj) {
-        el.classList.remove('open');
-        const othKey = el.id.replace('sb-subs-','');
-        const othArrow = document.querySelector('#sb-subj-' + othKey + ' .sb-arrow');
-        if (othArrow) othArrow.classList.remove('open');
-      }
-    });
-  }
-  if (forceOpen || !isOpen) {
-    subItems.classList.add('open');
-    if (arrowEl) arrowEl.classList.add('open');
-  } else {
-    subItems.classList.remove('open');
-    if (arrowEl) arrowEl.classList.remove('open');
-  }
-}
+// Sidebar no longer uses expand/collapse — subjects are single-click items.
+// Kept as no-op for any legacy call sites.
+function toggleSbSubject(subj, forceOpen) { /* no-op — sidebar uses direct navToSubject */ }
 
 function loadLearnForSubject(subj) {
-  showPage('learn');
-  // Filter syllabus tree to show only this subject
-  renderSyllabusTree('', subj);
+  // Delegate to subject page learn tab
+  navToSubject(subj, 'learn');
 }
 
 function loadQuizForSubject(subj) {
-  showPage('practice');
-  curSubj = subj;
-  buildQuizPool(subj);
-  // Reset quiz panel to initial state
-  document.getElementById('qmBody').innerHTML = `<div class="welcome-st"><div class="big-ic">✏️</div><h3>${h(SUBJS.find(s=>s.key===subj)?.name||subj)}</h3><p>Select a topic from the left panel to start practicing.</p></div>`;
+  navToSubject(subj, 'quiz');
 }
 
 function loadMockBarForSubject(subj) {
-  showPage('mockbar');
-  initMockBarSetup(subj);
+  navToSubject(subj, 'mockbar');
 }
 
 // Legacy nav() — bridged to new system for backward compat (used inside admin HTML)
@@ -1486,23 +1637,32 @@ function nav(id, btn) {
 function renderSidebar() {
   const list = document.getElementById('sbSubjectList');
   if (!list) return;
-  const ts = window.TAB_SETTINGS;
   list.innerHTML = SUBJS.map(s => {
-    const modes = ['learn','quiz','mockbar'];
-    const subItems = modes.map(m => {
-      const label = m === 'learn' ? '📖 Learn' : m === 'quiz' ? '✏️ Quiz' : '⏱ Mock Bar';
-      const isDisabled = ts?.subjects?.[s.key]?.[m] === false;
-      const adminShow = adminKey ? (isDisabled ? ' class="sb-sub-item disabled-tab"' : ' class="sb-sub-item"') : (isDisabled ? ' class="sb-sub-item" style="display:none;"' : ' class="sb-sub-item"');
-      return `<button${adminShow} id="sb-sub-${s.key}-${m}" onclick="navToSubject('${s.key}','${m}')">${label}</button>`;
-    }).join('');
-    return `
-      <button class="sb-subject" id="sb-subj-${s.key}" style="border-left-color:${s.color};" onclick="toggleSbSubject('${s.key}')">
-        <span class="sb-arrow">▶</span>
-        <span>${h(s.name)}</span>
-        <span class="sb-lock-icon" style="display:none;">🔒</span>
-      </button>
-      <div class="sb-sub-items" id="sb-subs-${s.key}">${subItems}</div>`;
+    const hasMaterials = (KB.references||[]).some(r=>r.subject===s.key) || (KB.pastBar||[]).some(p=>p.subject===s.key);
+    const qCount = (KB.pastBar||[]).filter(p=>p.subject===s.key).reduce((a,p)=>a+(p.qCount||0),0);
+    return `<button class="sb-subject" id="sb-subj-${s.key}" style="border-left-color:${s.color};" onclick="navToSubject('${s.key}')">
+      <span class="sb-subj-dot" style="background:${hasMaterials?s.color:'rgba(248,246,241,.2)'};"></span>
+      <span style="flex:1;">${h(s.name)}</span>
+      ${qCount>0?`<span class="sb-subj-qcount">${qCount}q</span>`:''}
+      <span class="sb-lock-icon" style="display:none;">🔒</span>
+    </button>`;
   }).join('');
+}
+
+function refreshSidebarDots() {
+  SUBJS.forEach(s => {
+    const el = document.getElementById('sb-subj-' + s.key);
+    if (!el) return;
+    const hasMaterials = (KB.references||[]).some(r=>r.subject===s.key) || (KB.pastBar||[]).some(p=>p.subject===s.key);
+    const dot = el.querySelector('.sb-subj-dot');
+    if (dot) dot.style.background = hasMaterials ? s.color : 'rgba(248,246,241,.2)';
+    const qCount = (KB.pastBar||[]).filter(p=>p.subject===s.key).reduce((a,p)=>a+(p.qCount||0),0);
+    let countEl = el.querySelector('.sb-subj-qcount');
+    if (qCount > 0) {
+      if (!countEl) { countEl = document.createElement('span'); countEl.className='sb-subj-qcount'; el.insertBefore(countEl, el.querySelector('.sb-lock-icon')); }
+      countEl.textContent = qCount + 'q';
+    } else if (countEl) { countEl.remove(); }
+  });
 }
 
 // ══════════════════════════════════
@@ -1539,6 +1699,7 @@ document.querySelectorAll('.overlay').forEach(o=>o.addEventListener('click',e=>{
 // ══════════════════════════════════
 function renderSyllabusTree(filter='', subjFilter=null) {
   const tree = document.getElementById('syllabusTree');
+  if (!tree) return;  // element only exists while Learn tab is active
   if (!KB.hasSyllabus && !KB.syllabusTopics?.length) {
     tree.innerHTML=`<div style="padding:20px 12px;text-align:center;color:var(--muted);font-size:12px;line-height:1.6;"><div style="font-size:28px;margin-bottom:8px;opacity:.4;">📋</div>Upload Bar Syllabus in Admin.</div>`;
     return;
@@ -1551,7 +1712,7 @@ function renderSyllabusTree(filter='', subjFilter=null) {
     const items = (subj.topics||[]).filter(t=>!fl||t.name.toLowerCase().includes(fl));
     if (!items.length) return;
     tAll+=items.length;
-    const hasRef = KB.references?.some(r=>r.subject===subj.key||r.subject==='general');
+    const hasRef = KB.references?.some(r=>r.subject===subj.key);
     html+=`<div>
       <div class="subj-hdr open" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">
         <span class="chev">▶</span><span class="subj-label">${h(sub.name)}</span>
@@ -1574,8 +1735,8 @@ function renderSyllabusTree(filter='', subjFilter=null) {
   });
   tree.innerHTML=html||`<div style="padding:18px;text-align:center;color:var(--muted);font-size:12px;">No topics match.</div>`;
   const pct=tAll?Math.round(tDone/tAll*100):0;
-  document.getElementById('learn-pct').textContent=pct+'%';
-  document.getElementById('learn-fill').style.width=pct+'%';
+  const pctEl=document.getElementById('learn-pct');if(pctEl)pctEl.textContent=pct+'%';
+  const fillEl=document.getElementById('learn-fill');if(fillEl)fillEl.style.width=pct+'%';
 }
 function filterTopics(v){renderSyllabusTree(v, currentSubject);}
 
@@ -1588,33 +1749,60 @@ async function clickTopic(subjKey, topicName) {
   if(el) el.classList.add('active');
   curSubj=subjKey; curTopic=topicName; curPage=0;
   const sub=SUBJS.find(s=>s.key===subjKey)||{name:subjKey,cls:'sg-gen'};
-  document.getElementById('lpBC').innerHTML=`<span class="sbg ${sub.cls}">${h(sub.name)}</span> &nbsp;›&nbsp; <strong>${h(topicName)}</strong>`;
-  document.getElementById('lpTopbar').style.display='flex';
+  const lpBC=document.getElementById('lpBC');if(lpBC)lpBC.innerHTML=`<span class="sbg ${sub.cls}">${h(sub.name)}</span> &nbsp;›&nbsp; <strong>${h(topicName)}</strong>`;
+  const lpTB=document.getElementById('lpTopbar');if(lpTB)lpTB.style.display='flex';
 
   // 1) Check browser cache first
   let data = getCached(subjKey, topicName);
   if (data) { renderLesson(data, topicName, subjKey, 'cache'); return; }
 
   // 2) Try server
-  document.getElementById('lpContent').innerHTML=`<div class="gen-state"><div class="spin"></div><div style="font-size:14px;color:var(--gold-l);">Loading from server…</div></div>`;
-  document.getElementById('lpFooter').style.display='none';
+  const _lpc=document.getElementById('lpContent'),_lpf=document.getElementById('lpFooter');
+  if(_lpc)_lpc.innerHTML=`<div class="gen-state"><div class="spin"></div><div style="font-size:14px;color:var(--gold-l);">Loading from server…</div></div>`;
+  if(_lpf)_lpf.style.display='none';
   try {
     const r = await fetch(`/api/content/${subjKey}/${encodeURIComponent(topicName)}`);
     const d = await r.json();
-    if (d.found) { saveCacheItem(subjKey, topicName, d); renderLesson(d, topicName, subjKey, 'server'); return; }
+    if (d.found) {
+      if (d.status === 'no_materials') { renderNoMaterials(subjKey, topicName); return; }
+      saveCacheItem(subjKey, topicName, d); renderLesson(d, topicName, subjKey, 'server'); return;
+    }
   } catch(e){}
 
-  // 3) On-demand generation (fallback if pre-gen hasn't reached this yet)
+  // 3) Check if subject has no references at all — skip AI gen, show no_materials
+  const hasRefs = (KB.references||[]).some(r => r.subject === subjKey);
+  if (!hasRefs) { renderNoMaterials(subjKey, topicName); return; }
+
+  // 4) On-demand generation (fallback if pre-gen hasn't reached this yet)
   await genOnDemand(subjKey, topicName);
 }
 
+function renderNoMaterials(subjKey, topicName) {
+  const subjInfo = SUBJS.find(s => s.key === subjKey);
+  const lpContent = document.getElementById('lpContent');
+  if (!lpContent) return;
+  lpContent.innerHTML = `
+    <div style="text-align:center;padding:40px 20px;">
+      <div style="font-size:40px;margin-bottom:12px;">📂</div>
+      <div style="font-family:var(--fd);font-size:18px;font-weight:700;color:var(--gold-l);margin-bottom:8px;">No Materials for This Subject</div>
+      <div style="font-size:13px;color:var(--muted);line-height:1.7;max-width:300px;margin:0 auto 20px;">
+        Upload reference materials tagged to <strong>${h(subjInfo?.name||subjKey)}</strong> in the Admin panel to generate lesson content for "${h(topicName)}".
+      </div>
+      <button class="btn-gold" onclick="navToAdmin()" style="font-size:12px;">⚙️ Go to Admin</button>
+    </div>`;
+  const lpFooter=document.getElementById('lpFooter');if(lpFooter)lpFooter.style.display='none';
+}
+
 function renderLesson(data, topicName, subjKey, source) {
+  if (data?.status === 'no_materials') { renderNoMaterials(subjKey, topicName); return; }
+  const lpContent = document.getElementById('lpContent');
+  if (!lpContent) return; // tab no longer active (async race)
   const pages = data.lesson?.pages;
-  if (!pages?.length) { document.getElementById('lpContent').innerHTML=`<div style="padding:30px;text-align:center;color:#e07080;">⚠️ No lesson content found. Try regenerating.</div>`; return; }
+  if (!pages?.length) { lpContent.innerHTML=`<div style="padding:30px;text-align:center;color:#e07080;">⚠️ No lesson content found. Try regenerating.</div>`; return; }
   const page = pages[curPage], total=pages.length;
   const sub=SUBJS.find(s=>s.key===subjKey)||{cls:'sg-gen',name:subjKey};
-  const hasRef=KB.references?.some(r=>r.subject===subjKey||r.subject==='general');
-  document.getElementById('lpContent').innerHTML=`<div class="lc">
+  const hasRef=KB.references?.some(r=>r.subject===subjKey);
+  lpContent.innerHTML=`<div class="lc">
     ${hasRef?`<div class="kb-ref-note">📚 Grounded in uploaded reference materials. ${source==='cache'?'Loaded from browser cache.':'Loaded from server.'}</div>`:''}
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
       <span class="sbg ${sub.cls}">${h(sub.name)}</span><span class="tag tg-l">Lesson</span>
@@ -1630,12 +1818,12 @@ function renderLesson(data, topicName, subjKey, source) {
     <h3>${h(page.title)}</h3>
     ${page.content}
   </div>`;
-  document.getElementById('lpPgInfo').textContent=`Page ${curPage+1} of ${total}`;
-  document.getElementById('lpPrev').disabled=curPage===0;
-  document.getElementById('lpFooter').style.display='flex';
+  const pgInfo=document.getElementById('lpPgInfo');if(pgInfo)pgInfo.textContent=`Page ${curPage+1} of ${total}`;
+  const prev=document.getElementById('lpPrev');if(prev)prev.disabled=curPage===0;
+  const footer=document.getElementById('lpFooter');if(footer)footer.style.display='flex';
   const nxt=document.getElementById('lpNext');
-  if (curPage<total-1){nxt.textContent='Next →';nxt.onclick=()=>chgPage(1);}
-  else{nxt.textContent='Done ✓';nxt.onclick=()=>{markDone();goToPractice();};}
+  if (nxt){if(curPage<total-1){nxt.textContent='Next →';nxt.onclick=()=>chgPage(1);}
+  else{nxt.textContent='Done ✓';nxt.onclick=()=>{markDone();goToPractice();};}}
   // Track visit
   const existing=VISITED.findIndex(v=>v.subjKey===subjKey&&v.topicName===topicName);
   if(existing>=0)VISITED.splice(existing,1);
@@ -1657,8 +1845,10 @@ async function callAPI({ messages, max_tokens = 4096 }) {
 }
 
 async function genOnDemand(subjKey, topicName) {
-  document.getElementById('lpContent').innerHTML=`<div class="gen-state"><div class="spin"></div><div style="font-size:14px;color:var(--gold-l);">Generating "${h(topicName)}"…</div><div style="font-size:12px;color:var(--muted);text-align:center;max-width:280px;">Pre-generation hasn't reached this topic yet. Generating now and caching for next time.</div></div>`;
-  document.getElementById('lpFooter').style.display='none';
+  const lpContent=()=>document.getElementById('lpContent');
+  const lpFooter=()=>document.getElementById('lpFooter');
+  if(lpContent())lpContent().innerHTML=`<div class="gen-state"><div class="spin"></div><div style="font-size:14px;color:var(--gold-l);">Generating "${h(topicName)}"…</div><div style="font-size:12px;color:var(--muted);text-align:center;max-width:280px;">Pre-generation hasn't reached this topic yet. Generating now and caching for next time.</div></div>`;
+  if(lpFooter())lpFooter().style.display='none';
   const prompt=`Generate a complete Philippine Bar Exam study package for: "${topicName}" (${subjKey} law)
 
 Respond ONLY with valid JSON (no markdown):
@@ -1675,7 +1865,7 @@ Respond ONLY with valid JSON (no markdown):
     renderSyllabusTree(document.getElementById('topicSearch')?.value||'');
     renderLesson(data,topicName,subjKey,'generated');
   }catch(err){
-    document.getElementById('lpContent').innerHTML=`<div style="padding:36px;text-align:center;color:#e07080;"><div style="font-size:36px;margin-bottom:10px;">⚠️</div><p style="margin-bottom:14px;">${h(err.message)}</p><button class="btn-gold" onclick="genOnDemand('${subjKey}','${h(topicName)}')">Retry</button></div>`;
+    if(lpContent())lpContent().innerHTML=`<div style="padding:36px;text-align:center;color:#e07080;"><div style="font-size:36px;margin-bottom:10px;">⚠️</div><p style="margin-bottom:14px;">${h(err.message)}</p><button class="btn-gold" onclick="genOnDemand('${subjKey}','${h(topicName)}')">Retry</button></div>`;
   }
 }
 
@@ -1685,9 +1875,18 @@ function chgPage(d){
 }
 function markDone(){document.querySelector('.topic-item.active')?.classList.add('done');}
 function goToPractice(){
-  nav('practice',document.getElementById('tab-practice'));
-  const qi=quizPool.findIndex(q=>q.type===qMode&&q.subject===curSubj&&q.topic===curTopic);
-  if(qi>=0)openQuizItem(qi);else renderQuizList();
+  if (currentSubject) {
+    switchSubjectTab(currentSubject, 'quiz');
+    // After tab renders, jump to matching quiz item
+    setTimeout(() => {
+      const qi=quizPool.findIndex(q=>q.type===qMode&&q.subject===curSubj&&q.topic===curTopic);
+      if(qi>=0)openQuizItem(qi);else renderQuizList();
+    }, 50);
+  } else {
+    nav('practice', null);
+    const qi=quizPool.findIndex(q=>q.type===qMode&&q.subject===curSubj&&q.topic===curTopic);
+    if(qi>=0)openQuizItem(qi);else renderQuizList();
+  }
 }
 
 // ══════════════════════════════════
@@ -1706,21 +1905,23 @@ function buildQuizPool(subjFilter) {
   updateDash();
 }
 
-function setQMode(m){qMode=m;['mcq','essay'].forEach(x=>document.getElementById('qmode-'+x).classList.toggle('on',x===m));renderQuizList();}
+function setQMode(m){qMode=m;['mcq','essay'].forEach(x=>{const el=document.getElementById('qmode-'+x);if(el)el.classList.toggle('on',x===m);});renderQuizList();}
 function renderQuizList(){
   const list=document.getElementById('quizList');
+  if(!list) return;  // element only exists while Quiz tab is active
   const items=quizPool.filter(q=>q.type===qMode);
   if(!items.length){list.innerHTML=`<div style="padding:16px 12px;text-align:center;color:var(--muted);font-size:12px;line-height:1.6;">No ${qMode} quizzes cached yet.</div>`;return;}
   list.innerHTML=items.map((q,i)=>{const sub=SUBJS.find(s=>s.key===q.subject)||{cls:'sg-gen',name:q.subject};
     return `<div class="qn-item${activeQuiz===i?' active':''}" onclick="openQuizItem(${i})"><div class="qn-icon">${qMode==='mcq'?'🔘':'✍️'}</div><div class="qn-info"><div class="qn-title">${h(q.topic)}</div><div class="qn-sub"><span class="sbg ${sub.cls}" style="font-size:9px;">${sub.name}</span> ${q.data.questions?.length||0} Qs</div></div></div>`;
   }).join('');
 }
-function openQuizItem(i){activeQuiz=i;qIdx=0;qScore=0;renderQuizList();const qh=document.getElementById('qmHead');qh.style.display='flex';document.getElementById('qmTitle').textContent=quizPool[i]?.topic||'Quiz';document.getElementById('qmMeta').textContent=`${quizPool[i]?.data?.questions?.length||0} questions`;renderQuizQ();}
+function openQuizItem(i){activeQuiz=i;qIdx=0;qScore=0;renderQuizList();const qh=document.getElementById('qmHead');if(qh)qh.style.display='flex';const qt=document.getElementById('qmTitle');if(qt)qt.textContent=quizPool[i]?.topic||'Quiz';const qm=document.getElementById('qmMeta');if(qm)qm.textContent=`${quizPool[i]?.data?.questions?.length||0} questions`;renderQuizQ();}
 function resetQuiz(){if(activeQuiz!==null){qIdx=0;qScore=0;renderQuizQ();}}
 
 function renderQuizQ(){
   const pool=quizPool[activeQuiz];if(!pool)return;
   const qs=pool.data.questions,body=document.getElementById('qmBody');
+  if(!body)return;
   if(qIdx>=qs.length){showQuizResults();return;}
   const cur=qs[qIdx],sub=SUBJS.find(s=>s.key===pool.subject)||{cls:'sg-gen',name:pool.subject};
   if(pool.type==='mcq'){
@@ -1898,7 +2099,8 @@ async function submitEssay(){
 function nextQ(){qIdx++;renderQuizQ();}
 function showQuizResults(){
   const pct=qIdx>0?Math.round(qScore/qIdx*100):0;
-  document.getElementById('qmBody').innerHTML=`<div class="quiz-results">
+  const body=document.getElementById('qmBody');if(!body)return;
+  body.innerHTML=`<div class="quiz-results">
     <div style="font-size:48px;margin-bottom:12px;">${pct>=70?'⚖️':pct>=50?'📖':'💪'}</div>
     <div style="font-family:var(--fd);font-size:26px;font-weight:700;color:var(--gold-l);margin-bottom:5px;">${pct>=70?'Excellent!':pct>=50?'Good Effort!':'Keep Reviewing!'}</div>
     <div class="qr-stats">
@@ -1926,7 +2128,7 @@ function updateDash(){
   if(VISITED.length){
     document.getElementById('recent-list').innerHTML=VISITED.slice(0,6).map(v=>{
       const sub=SUBJS.find(s=>s.key===v.subjKey)||{cls:'sg-gen',name:v.subjKey};
-      return `<div class="r-item" onclick="nav('learn',document.getElementById('tab-learn'));clickTopic('${v.subjKey}','${h(v.topicName)}')">
+      return `<div class="r-item" onclick="navToSubject('${v.subjKey}','learn');setTimeout(()=>clickTopic('${v.subjKey}','${h(v.topicName)}'),50);">
         <div class="r-ic">📖</div>
         <div class="r-info"><div class="r-title">${h(v.topicName)}</div><div class="r-sub">${sub.name}</div></div>
         <span class="sbg ${sub.cls}">${sub.name}</span><span class="tag tg-l">Lesson</span>
@@ -2165,6 +2367,25 @@ async function startMockBar(){
     errEl.textContent='⚠️ '+err.message; errEl.style.display='block';
   }
   btn.disabled=false; btn.textContent='🚀 Begin Mock Bar';
+}
+
+// Shared session launcher — used by both startMockBar and startSubjectMockBar
+function startMockSession(questions, timeMin) {
+  if (!questions?.length) { alert('No questions available. Upload reference materials for this subject in Admin.'); return; }
+  mockQs = questions; mockIdx = 0; mockAnswers = Array(mockQs.length).fill('');
+  mockScores = []; mockSubjectsUsed = []; mockSessionDate = new Date().toISOString();
+  // Navigate to the mock bar page to show the session UI
+  showPage('mockbar');
+  clearSidebarActive();
+  document.getElementById('mockConfig').style.display = 'none';
+  document.getElementById('mockResults').style.display = 'none';
+  document.getElementById('mockSession').classList.add('on');
+  document.getElementById('ms-of').textContent = `of ${mockQs.length}`;
+  document.getElementById('qMarkers').innerHTML = mockQs.map((_,i) => `<div class="q-marker" id="qm${i}" onclick="jumpMock(${i})">${i+1}</div>`).join('');
+  if (timeMin > 0) { mockLeft = timeMin * 60; document.getElementById('ms-timer').style.display = 'flex'; runTimer(); }
+  else document.getElementById('ms-timer').style.display = 'none';
+  renderMockQ();
+  mockSessions++; updateDash();
 }
 
 function runTimer(){
@@ -2493,49 +2714,50 @@ async function applyTabSettings() {
     const settings = await r.json();
     window.TAB_SETTINGS = settings;
     const isAdmin = !!adminKey;
-    // Apply to sidebar sub-items per subject/mode
+    // Update sidebar subject rows — dim if all modes disabled, show lock icon
     SUBJS.forEach(s => {
-      ['learn','quiz','mockbar'].forEach(mode => {
-        const el = document.getElementById(`sb-sub-${s.key}-${mode}`);
-        if (!el) return;
-        const enabled = settings.subjects?.[s.key]?.[mode] !== false;
-        if (isAdmin) {
-          el.style.opacity = enabled ? '' : '0.4';
-          el.style.textDecoration = enabled ? '' : 'line-through';
-        } else {
-          el.style.display = enabled ? '' : 'none';
-        }
-      });
-      // Dim subject header if all modes disabled
       const subjEl = document.getElementById(`sb-subj-${s.key}`);
-      if (subjEl) {
-        const allModes = ['learn','quiz','mockbar'];
-        const allDisabled = allModes.every(m => settings.subjects?.[s.key]?.[m] === false);
-        const anyDisabled = allModes.some(m => settings.subjects?.[s.key]?.[m] === false);
+      if (!subjEl) return;
+      const allModes = ['learn','quiz','mockbar'];
+      const allDisabled = allModes.every(m => settings.subjects?.[s.key]?.[m] === false);
+      const anyDisabled = allModes.some(m => settings.subjects?.[s.key]?.[m] === false);
+      if (!isAdmin && allDisabled) {
+        subjEl.style.display = 'none';
+      } else {
+        subjEl.style.display = '';
         subjEl.style.opacity = allDisabled ? '0.35' : '';
-        const lockEl = subjEl.querySelector('.sb-lock-icon');
-        if (lockEl) lockEl.style.display = allDisabled ? '' : 'none';
-        // Partial label
-        let partialEl = subjEl.querySelector('.sb-partial-label');
-        if (anyDisabled && !allDisabled) {
-          if (!partialEl) {
-            partialEl = document.createElement('span');
-            partialEl.className = 'sb-partial-label';
-            partialEl.style.cssText = 'font-size:9px;opacity:.5;margin-left:4px;color:var(--muted);flex-shrink:0;';
-            partialEl.textContent = '(partial)';
-            subjEl.appendChild(partialEl);
-          }
-        } else if (partialEl) {
-          partialEl.remove();
+      }
+      const lockEl = subjEl.querySelector('.sb-lock-icon');
+      if (lockEl) lockEl.style.display = allDisabled ? '' : 'none';
+      // Partial label
+      let partialEl = subjEl.querySelector('.sb-partial-label');
+      if (anyDisabled && !allDisabled && isAdmin) {
+        if (!partialEl) {
+          partialEl = document.createElement('span');
+          partialEl.className = 'sb-partial-label';
+          partialEl.style.cssText = 'font-size:9px;opacity:.5;margin-left:4px;color:var(--muted);flex-shrink:0;';
+          partialEl.textContent = '(partial)';
+          subjEl.appendChild(partialEl);
         }
+      } else if (partialEl) {
+        partialEl.remove();
       }
     });
-    // Custom subject mockbar
-    const customSubItem = document.getElementById('sb-subj-custom');
-    if (customSubItem) {
+    // Custom subject
+    const customEl = document.getElementById('sb-subj-custom');
+    if (customEl) {
       const cEnabled = settings.subjects?.custom?.mockbar !== false;
-      customSubItem.style.opacity = cEnabled ? '' : (isAdmin ? '0.35' : '');
-      if (!isAdmin) customSubItem.style.display = cEnabled ? '' : 'none';
+      if (!isAdmin && !cEnabled) customEl.style.display = 'none';
+      else { customEl.style.display = ''; customEl.style.opacity = cEnabled ? '' : '0.35'; }
+    }
+    // If currently on subject page, refresh its tab bar to reflect new permissions
+    if (currentSubject && document.querySelector('#page-subject.on')) {
+      renderSubjectTabs(currentSubject, currentMode || 'learn');
+      // If current tab just got disabled, auto-switch
+      if (settings.subjects?.[currentSubject]?.[currentMode] === false) {
+        const first = ['learn','quiz','mockbar'].find(m => settings.subjects?.[currentSubject]?.[m] !== false);
+        if (first) switchSubjectTab(currentSubject, first);
+      }
     }
     updateAccessControlBadge();
   } catch(e) { console.warn('Tab settings load failed:', e.message); }
@@ -2803,11 +3025,29 @@ async function uploadSyllabus(){
     const r=await adminPost('/api/admin/syllabus',{name,content},'syl-status');
     if(r.error)throw new Error(r.error);
     document.getElementById('syl-status').innerHTML=`<div style="color:var(--teal);font-size:13px;padding:8px;">✅ Saved! ${r.subjects} subjects, ${r.totalTopics} topics. Pre-generating content now…</div>`;
+    // Per-subject breakdown
+    const bdEl=document.getElementById('syl-breakdown');
+    if(bdEl && r.breakdown?.length){
+      const clr={civil:'#4a9eff',criminal:'#e07080',political:'#50d090',labor:'#f0a040',commercial:'#a070e0',taxation:'#40c0b0',remedial:'#e0c050',ethics:'#c0a080',custom:'#8899aa'};
+      const rows=r.breakdown.map(s=>`<div style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12px;"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${clr[s.key]||'#888'};flex-shrink:0;"></span><span style="flex:1;color:rgba(248,246,241,.8);">${h(s.name)}</span><span style="color:var(--muted);font-family:var(--fm);">${s.topicCount} topics</span></div>`).join('');
+      const unknownHtml=r.unknownTopics?.length?`<div style="margin-top:8px;padding:8px;background:rgba(155,35,53,.1);border-radius:6px;font-size:11px;color:#e07080;">⚠️ ${r.unknownTopics.length} unrecognized subject(s) skipped: ${r.unknownTopics.map(h).join(', ')}</div>`:'';
+      bdEl.innerHTML=`<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:12px 14px;"><div style="font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;margin-bottom:8px;">Subjects Parsed</div>${rows}${unknownHtml}</div>`;
+      bdEl.style.display='';
+    }
     document.getElementById('adminGenPanel').style.display='block';
     document.getElementById('adminGenDone').style.display='none';
-    await loadKB();updateSyllabusStatus();renderSyllabusTree();
+    await loadKB();updateSyllabusStatus();renderSyllabusTree();refreshSidebarDots();
   }catch(e){document.getElementById('syl-status').innerHTML=`<div style="color:#e07080;font-size:13px;padding:8px;">⚠️ ${h(e.message)}</div>`;}
 }
+function showRefGeneralWarning(val) {
+  const el = document.getElementById('refGeneralWarning');
+  if (el) el.style.display = val === 'general' ? '' : 'none';
+}
+function showPbGeneralWarning(val) {
+  const el = document.getElementById('pbGeneralWarning');
+  if (el) el.style.display = val === 'general' ? '' : 'none';
+}
+
 async function uploadReference(){
   const name=document.getElementById('ref-name').value.trim(),content=document.getElementById('ref-content').value.trim();
   const subject=document.getElementById('ref-subject').value,type=document.getElementById('ref-type').value;
@@ -2857,7 +3097,7 @@ async function uploadPastBar(){
       }else{
         sta.innerHTML=`<div style="color:var(--teal);font-size:13px;padding:8px;">✅ "${h(d.name)}" — ${result.questionsExtracted} questions extracted.</div>`;
       }
-      loadKB();refreshAdminKB();renderPastBarList();
+      loadKB();refreshAdminKB();renderPastBarList();refreshSidebarDots();
     });
   }catch(e){sta.innerHTML=`<div style="color:#e07080;font-size:13px;padding:8px;">⚠️ ${h(e.message)}</div>`;}
 }
