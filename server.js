@@ -1571,8 +1571,13 @@ function detectSubjectKeyFromName(name) {
   return null;
 }
 
-// ── Hierarchical regex syllabus parser (no AI, handles outline format) ─
-// Handles: -----Subject----- dividers, I. sections, A. topics, 1. subtopics, a. sub-subtopics
+// ── Hierarchical regex syllabus parser (stack-based, no AI) ─────────────
+// Classification rules:
+//   Roman numeral lines  → type:'section'  (non-clickable header, always)
+//   Letter/Number WITH children → type:'group'  (non-clickable, post-processed)
+//   Letter/Number WITHOUT children → type:'topic' (clickable)
+//   Lowercase letter lines → type:'topic'  (always leaf/clickable)
+//   Bullet lines → type:'topic'  (always leaf/clickable)
 function parseSyllabusText(text) {
   const SUBJECT_MAP = {
     civil:'Civil Law', criminal:'Criminal Law', political:'Political Law',
@@ -1594,105 +1599,123 @@ function parseSyllabusText(text) {
     return null;
   }
 
+  const ROMAN  = /^(I{1,3}V?|VI{0,3}|IX|XI{0,3}|[IVX]{1,5})\.\s+(.+)$/;
+  const LETTER = /^([A-Z])\.\s+(.+)$/;
+  const NUMBER = /^(\d+)\.\s+(.+)$/;
+  const LOWER  = /^([a-z])\.\s+(.+)$/;
+  const BULLET = /^[-•*\u2022]\s+(.+)$/;
+
+  function parseSubjectBlock(rawLines, subjKey) {
+    const roots = [];
+    const stack = []; // { node, level }
+
+    for (const rawLine of rawLines) {
+      const line = rawLine.trim();
+      if (!line) continue;
+
+      let name = null, level = -1, forceTopic = false;
+
+      const rm = line.match(ROMAN);
+      const lm = !rm && line.match(LETTER);
+      const nm = !rm && !lm && line.match(NUMBER);
+      const lo = !rm && !lm && !nm && line.match(LOWER);
+      const bl = !rm && !lm && !nm && !lo && line.match(BULLET);
+
+      if      (rm) { name = rm[2].trim();  level = 0; }
+      else if (lm) { name = lm[2].trim();  level = 1; }
+      else if (nm) { name = nm[2].trim();  level = 2; }
+      else if (lo) { name = lo[2].trim();  level = 3; forceTopic = true; }
+      else if (bl) { name = bl[1].trim();  level = 4; forceTopic = true; }
+      else {
+        const indent = rawLine.search(/\S/);
+        if (indent >= 4 && line.length > 2 && line.length < 250) {
+          name = line; level = 5; forceTopic = true;
+        }
+      }
+
+      if (!name || name.length < 2 || name.length > 250) continue;
+
+      const node = {
+        name,
+        type: level === 0 ? 'section' : 'topic',
+        isHeader: level === 0,
+        subject: subjKey,
+        children: [],
+        _force: forceTopic,
+      };
+
+      // Pop stack until we find a shallower parent
+      while (stack.length && stack[stack.length - 1].level >= level) stack.pop();
+      if (stack.length === 0) roots.push(node);
+      else stack[stack.length - 1].node.children.push(node);
+      stack.push({ node, level });
+    }
+
+    // Post-process: topic with children → group (unless forced leaf)
+    function postProcess(nodes) {
+      for (const node of nodes) {
+        postProcess(node.children);
+        if (node.type === 'topic' && !node._force && node.children.length > 0) {
+          node.type = 'group';
+        }
+        delete node._force;
+      }
+    }
+    postProcess(roots);
+    return roots;
+  }
+
+  // Split text into subject blocks by divider lines
   const rawLines = text.split('\n');
-  const subjects = [];
-  let currentSubject  = null;
-  let currentSection  = null;   // Roman numeral group (isGroup:true)
-  let currentTopic    = null;   // Letter item
-  let currentSubtopic = null;   // Number item
+  const subjectBlocks = [];
+  let blockKey = null, blockName = null, blockLines = [];
 
   for (const rawLine of rawLines) {
-    const line       = rawLine.trim();
-    const indentLevel = rawLine.search(/\S/);
-    if (!line) continue;
-
-    // ─ DETECT SUBJECT DIVIDER ─
-    // Handles: -----Criminal Law-----  === Civil Law ===  * Taxation *
-    const dividerMatch = line.match(/^[-=*]+\s*(.+?)\s*[-=*]+$/);
-    const subjectFromDivider = dividerMatch
-      ? detectSubjectKey(dividerMatch[1])
-      : detectSubjectKey(line);
-
-    const isDivider = dividerMatch ||
-      (line.length < 50 && subjectFromDivider && !line.match(/^[IVX]+\./));
-
-    if (isDivider && subjectFromDivider) {
-      currentSubject = {
-        key: subjectFromDivider,
-        name: SUBJECT_MAP[subjectFromDivider] || (dividerMatch ? dividerMatch[1].trim() : line),
-        topics: [],
-      };
-      subjects.push(currentSubject);
-      currentSection = null; currentTopic = null; currentSubtopic = null;
+    const line = rawLine.trim();
+    if (!line) {
+      if (blockKey) blockLines.push(rawLine);
       continue;
     }
 
-    // Auto-detect subject from first lines if none set yet
-    if (!currentSubject) {
-      const autoKey = detectSubjectKey(line);
-      if (autoKey && line.length < 60) {
-        currentSubject = { key: autoKey, name: SUBJECT_MAP[autoKey] || line, topics: [] };
-        subjects.push(currentSubject);
-      }
+    // Check for subject divider: -----Name-----  or  === Name ===
+    const divMatch = line.match(/^[-=*]+\s*(.+?)\s*[-=*]+$/);
+    let subjKey = null, subjName = null;
+    if (divMatch) {
+      subjKey = detectSubjectKey(divMatch[1]);
+      subjName = divMatch[1].trim();
+    } else if (line.length < 60 && !ROMAN.test(line) && !LETTER.test(line) && !NUMBER.test(line)) {
+      subjKey = detectSubjectKey(line);
+      subjName = line;
+    }
+
+    if (subjKey) {
+      if (blockKey) subjectBlocks.push({ key: blockKey, name: blockName, lines: blockLines });
+      blockKey  = subjKey;
+      blockName = SUBJECT_MAP[subjKey] || subjName;
+      blockLines = [];
       continue;
     }
 
-    // ─ ROMAN NUMERAL SECTION ─  I. BASIC CONCEPTS
-    const romanMatch = line.match(/^(I{1,3}V?|VI{0,3}|I?X|XI{0,3}|[IVX]+)\.\s+(.+)$/);
-    if (romanMatch) {
-      currentSection = { name: romanMatch[2].trim(), isGroup: true, subject: currentSubject.key, subtopics: [], children: [] };
-      currentSubject.topics.push(currentSection);
-      currentTopic = null; currentSubtopic = null;
-      continue;
-    }
-
-    // ─ LETTER TOPIC ─  A. Nature and Concept
-    const letterMatch = line.match(/^([A-Z])\.\s+(.+)$/);
-    if (letterMatch) {
-      currentTopic = { name: letterMatch[2].trim(), isGroup: false, subject: currentSubject.key, subtopics: [], children: [] };
-      if (currentSection) currentSection.subtopics.push(currentTopic);
-      else currentSubject.topics.push(currentTopic);
-      currentSubtopic = null;
-      continue;
-    }
-
-    // ─ NUMBERED SUBTOPIC ─  1. Police Power
-    const numberMatch = line.match(/^(\d+)\.\s+(.+)$/);
-    if (numberMatch) {
-      currentSubtopic = { name: numberMatch[2].trim(), subject: currentSubject.key, children: [] };
-      const parent = currentTopic || currentSection;
-      if (parent) { parent.children = parent.children || []; parent.children.push(currentSubtopic); }
-      else currentSubject.topics.push(currentSubtopic);
-      continue;
-    }
-
-    // ─ LOWERCASE LETTER SUB-SUBTOPIC ─  a. Service Incentive Leave
-    const lowerMatch = line.match(/^([a-z])\.\s+(.+)$/);
-    if (lowerMatch) {
-      const subItem = { name: lowerMatch[2].trim(), subject: currentSubject.key, children: [] };
-      const parent = currentSubtopic || currentTopic;
-      if (parent) { parent.children = parent.children || []; parent.children.push(subItem); }
-      continue;
-    }
-
-    // ─ INDENTED CONTINUATION (≥4 spaces/tabs) ─
-    if (indentLevel >= 4) {
-      const lastItem = currentSubtopic || currentTopic || currentSection;
-      if (lastItem) {
-        lastItem.children = lastItem.children || [];
-        lastItem.children.push({ name: line, subject: currentSubject.key, children: [] });
-      }
-      continue;
-    }
-
-    // ─ FALLBACK — add as topic in current context ─
-    if (line.length > 2 && line.length < 200) {
-      const fallbackItem = { name: line, subject: currentSubject.key, subtopics: [], children: [] };
-      const parent = currentTopic || currentSection;
-      if (parent) { parent.children = parent.children || []; parent.children.push(fallbackItem); }
-      else currentSubject.topics.push(fallbackItem);
-    }
+    if (blockKey) blockLines.push(rawLine);
   }
+  if (blockKey) subjectBlocks.push({ key: blockKey, name: blockName, lines: blockLines });
+
+  // Fallback: no dividers found — try auto-detect from first lines
+  if (subjectBlocks.length === 0) {
+    let autoKey = null, autoName = null;
+    for (const rawLine of rawLines.slice(0, 15)) {
+      const line = rawLine.trim();
+      const k = line ? detectSubjectKey(line) : null;
+      if (k) { autoKey = k; autoName = SUBJECT_MAP[k] || line; break; }
+    }
+    subjectBlocks.push({ key: autoKey || 'civil', name: autoName || 'Unknown', lines: rawLines });
+  }
+
+  const subjects = subjectBlocks.map(b => ({
+    key: b.key,
+    name: b.name,
+    topics: parseSubjectBlock(b.lines, b.key),
+  }));
 
   return { subjects };
 }

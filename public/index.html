@@ -275,24 +275,27 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .t-chk{font-size:10px;flex-shrink:0;color:rgba(255,255,255,.15);}
 .topic-item.done .t-chk{color:var(--teal);}
 .t-lbl{flex:1;line-height:1.4;}
-/* HIERARCHICAL TOPIC TREE */
-.topic-group-header{display:flex;align-items:center;gap:8px;padding:8px 12px 5px 16px;cursor:pointer;user-select:none;font-size:11px;font-weight:700;letter-spacing:.04em;color:rgba(248,246,241,.45);text-transform:uppercase;}
-.topic-group-header:hover{color:rgba(248,246,241,.7);}
-.topic-expand-icon{font-size:8px;transition:transform .18s;display:inline-block;color:rgba(248,246,241,.3);}
-.topic-group-header.open .topic-expand-icon{transform:rotate(90deg);}
-.topic-group-children{display:none;padding-left:10px;}
-.topic-group-children.open{display:block;}
-.topic-parent-row{display:flex;align-items:center;gap:7px;padding:6px 12px 6px 20px;cursor:pointer;font-size:12px;font-weight:600;color:rgba(248,246,241,.6);position:relative;transition:all .15s;}
-.topic-parent-row:hover{color:rgba(248,246,241,.9);background:rgba(255,255,255,.03);}
-.topic-parent-row.open .topic-expand-icon{transform:rotate(90deg);}
-.topic-parent-children{display:none;padding-left:10px;}
-.topic-parent-children.open{display:block;}
-.topic-leaf-item{display:flex;align-items:center;gap:7px;padding:6px 12px 6px 24px;cursor:pointer;transition:all .18s;font-size:12px;color:var(--muted);position:relative;}
-.topic-leaf-item:hover{color:var(--white);background:rgba(255,255,255,.03);}
-.topic-leaf-item.active{color:var(--gold-l);background:rgba(201,168,76,.08);}
-.topic-leaf-item.active::before{content:'';position:absolute;left:0;top:0;bottom:0;width:2px;background:var(--gold);}
-.topic-leaf-item.done .t-chk{color:var(--teal);}
-.topic-badge-cached{font-size:9px;padding:1px 5px;border-radius:3px;font-family:var(--fm);flex-shrink:0;background:rgba(20,180,160,.15);color:var(--teal);}
+/* HIERARCHICAL TOPIC TREE (.tl-* classes) */
+.tl-count-header{padding:8px 16px 4px;font-size:10px;color:rgba(248,246,241,.35);letter-spacing:.05em;text-transform:uppercase;}
+.tl-section-header{display:flex;align-items:center;gap:6px;padding:10px 12px 5px 14px;cursor:pointer;user-select:none;}
+.tl-section-header:hover .tl-section-name{color:rgba(248,246,241,.7);}
+.tl-section-name{font-size:11px;font-weight:700;letter-spacing:.05em;color:rgba(248,246,241,.4);text-transform:uppercase;flex:1;}
+.tl-expand-arrow{font-size:8px;transition:transform .18s;display:inline-block;color:rgba(248,246,241,.25);flex-shrink:0;}
+.tl-expand-arrow.open{transform:rotate(90deg);}
+.tl-group{margin-bottom:1px;}
+.tl-group-header{display:flex;align-items:center;gap:6px;padding:6px 12px 6px 20px;cursor:pointer;font-size:12px;font-weight:600;color:rgba(248,246,241,.55);transition:color .15s;}
+.tl-group-header:hover{color:rgba(248,246,241,.85);background:rgba(255,255,255,.02);}
+.tl-group-name{flex:1;line-height:1.4;}
+.tl-group-body{display:none;padding-left:10px;}
+.tl-group-body.open{display:block;}
+.tl-topic{display:flex;align-items:center;gap:7px;padding:6px 12px 6px 26px;cursor:pointer;transition:all .18s;font-size:12px;color:var(--muted);position:relative;}
+.tl-topic:hover{color:var(--white);background:rgba(255,255,255,.03);}
+.tl-topic.tl-selected{color:var(--gold-l);background:rgba(201,168,76,.08);}
+.tl-topic.tl-selected::before{content:'';position:absolute;left:0;top:0;bottom:0;width:2px;background:var(--gold);}
+.tl-topic.tl-done .tl-topic-check{color:var(--teal);}
+.tl-topic-check{font-size:10px;flex-shrink:0;color:rgba(255,255,255,.15);}
+.tl-topic-name{flex:1;line-height:1.4;}
+.tl-cached-badge{font-size:9px;padding:1px 5px;border-radius:3px;font-family:var(--fm);flex-shrink:0;background:rgba(20,180,160,.15);color:var(--teal);}
 /* SYLLABUS WARNINGS PANEL */
 .syllabus-warnings{margin-top:10px;border:1px solid rgba(255,160,64,.25);border-radius:10px;overflow:hidden;}
 .sw-header{display:flex;align-items:center;gap:8px;padding:10px 14px;cursor:pointer;background:rgba(255,160,64,.06);font-size:12px;color:#f0a040;}
@@ -1864,16 +1867,27 @@ document.querySelectorAll('.overlay').forEach(o=>o.addEventListener('click',e=>{
 // ══════════════════════════════════
 
 // Recursively extract all testable (non-group) topics from hierarchical structure
+// Flatten all learnable (clickable) topics — handles both new type:'topic' and legacy !isGroup formats
 function flattenLeafTopics(topics) {
   const result = [];
   function walk(items) {
-    (items||[]).forEach(t => {
-      if (!t.isGroup) result.push(t);
-      walk(t.subtopics); walk(t.children);
+    (items || []).forEach(t => {
+      if (t.type === 'topic' || (!t.type && !t.isGroup)) result.push(t);
+      walk(t.children || []);
+      if (!t.type) walk(t.subtopics || []); // legacy format compat
     });
   }
   walk(topics);
   return result;
+}
+
+function isTopicCached(subj, topicName) { return !!getCached(subj, topicName); }
+function loadTopicContent(subj, topicName) { clickTopic(subj, topicName); }
+function countLearnableTopics(nodes) {
+  let n = 0;
+  function walk(items) { (items||[]).forEach(t => { if (t.type==='topic') n++; walk(t.children||[]); }); }
+  walk(nodes);
+  return n;
 }
 
 // Toggle expand/collapse on a tree group or parent node
@@ -1892,109 +1906,151 @@ function toggleTopicChildren(iconEl) {
   childDiv.classList.toggle('open');
 }
 
-// Recursive tree renderer — returns HTML string
-function renderTopicTree(topics, subjKey, depth) {
+// DOM-based topic tree renderer — builds elements directly into container
+function renderTopicTree(nodes, container, subj, depth) {
   depth = depth || 0;
-  if (!topics || !topics.length) return '';
-  let html = '';
-  topics.forEach(t => {
-    const sub = [...(t.subtopics||[]), ...(t.children||[])];
-    if (t.isGroup) {
-      // Non-testable section header — expand/collapse only
-      html += `<div class="topic-group-header" onclick="toggleTopicGroup(this)">
-        <span class="topic-expand-icon">▶</span>
-        <span class="t-lbl">${h(t.name)}</span>
-      </div>
-      <div class="topic-group-children">
-        ${renderTopicTree(sub, subjKey, depth+1)}
-      </div>`;
-    } else if (sub.length) {
-      // Testable topic that also has subtopics — clicking row loads lesson;
-      // expand icon separately collapses children
-      const cached = getCached(subjKey, t.name);
-      const genNow = KB.genState?.running && KB.genState?.current?.includes(t.name);
-      html += `<div class="topic-parent-row${cached?' done':''}" onclick="clickTopic('${h(subjKey)}','${h(t.name)}')">
-        <span class="t-chk">${cached?'✓':'○'}</span>
-        <span class="t-lbl">${h(t.name)}</span>
-        ${genNow?'<span class="ready-badge rb-gen">gen…</span>':cached?'<span class="topic-badge-cached">cached</span>':''}
-        <span class="topic-expand-icon" onclick="event.stopPropagation();toggleTopicChildren(this)">▶</span>
-      </div>
-      <div class="topic-parent-children">
-        ${renderTopicTree(sub, subjKey, depth+1)}
-      </div>`;
+  if (!nodes || !nodes.length) return;
+  nodes.forEach(node => {
+    const children = node.children || [];
+    if (node.type === 'section') {
+      // Roman numeral section header — expand/collapse, non-clickable
+      const headerEl = document.createElement('div');
+      headerEl.className = 'tl-section-header';
+      const arrowEl = document.createElement('span');
+      arrowEl.className = 'tl-expand-arrow open';
+      arrowEl.textContent = '▶';
+      const nameEl = document.createElement('span');
+      nameEl.className = 'tl-section-name';
+      nameEl.textContent = node.name;
+      headerEl.appendChild(arrowEl);
+      headerEl.appendChild(nameEl);
+      const bodyEl = document.createElement('div');
+      bodyEl.className = 'tl-group-body open';
+      headerEl.addEventListener('click', () => {
+        arrowEl.classList.toggle('open');
+        bodyEl.classList.toggle('open');
+      });
+      container.appendChild(headerEl);
+      container.appendChild(bodyEl);
+      if (children.length) renderTopicTree(children, bodyEl, subj, depth + 1);
+
+    } else if (node.type === 'group' || node.isGroup) {
+      // Topic group — expand/collapse, non-clickable
+      const groupEl = document.createElement('div');
+      groupEl.className = 'tl-group';
+      const headerEl = document.createElement('div');
+      headerEl.className = 'tl-group-header';
+      const arrowEl = document.createElement('span');
+      arrowEl.className = 'tl-expand-arrow open';
+      arrowEl.textContent = '▶';
+      const nameEl = document.createElement('span');
+      nameEl.className = 'tl-group-name';
+      nameEl.textContent = node.name;
+      headerEl.appendChild(arrowEl);
+      headerEl.appendChild(nameEl);
+      const bodyEl = document.createElement('div');
+      bodyEl.className = 'tl-group-body open';
+      headerEl.addEventListener('click', () => {
+        arrowEl.classList.toggle('open');
+        bodyEl.classList.toggle('open');
+      });
+      groupEl.appendChild(headerEl);
+      groupEl.appendChild(bodyEl);
+      container.appendChild(groupEl);
+      if (children.length) renderTopicTree(children, bodyEl, subj, depth + 1);
+
     } else {
-      // Pure leaf topic
-      const cached = getCached(subjKey, t.name);
-      const genNow = KB.genState?.running && KB.genState?.current?.includes(t.name);
-      html += `<div class="topic-leaf-item${cached?' done':''}" onclick="clickTopic('${h(subjKey)}','${h(t.name)}')">
-        <span class="t-chk">${cached?'✓':'○'}</span>
-        <span class="t-lbl">${h(t.name)}</span>
-        ${genNow?'<span class="ready-badge rb-gen">gen…</span>':cached?'<span class="topic-badge-cached">cached</span>':''}
-      </div>`;
+      // Learnable topic — clickable leaf
+      const cached = isTopicCached(subj, node.name);
+      const genNow = KB.genState?.running && KB.genState?.current?.includes(node.name);
+      const topicEl = document.createElement('div');
+      topicEl.className = 'tl-topic' + (cached ? ' tl-done' : '');
+      topicEl.setAttribute('data-subj-key', subj);
+      topicEl.setAttribute('data-topic-name', node.name);
+      const checkEl = document.createElement('span');
+      checkEl.className = 'tl-topic-check';
+      checkEl.textContent = cached ? '✓' : '○';
+      const nameEl = document.createElement('span');
+      nameEl.className = 'tl-topic-name';
+      nameEl.textContent = node.name;
+      topicEl.appendChild(checkEl);
+      topicEl.appendChild(nameEl);
+      if (genNow) {
+        const b = document.createElement('span');
+        b.className = 'ready-badge rb-gen'; b.textContent = 'gen…';
+        topicEl.appendChild(b);
+      } else if (cached) {
+        const b = document.createElement('span');
+        b.className = 'tl-cached-badge'; b.textContent = 'cached';
+        topicEl.appendChild(b);
+      }
+      topicEl.addEventListener('click', () => loadTopicContent(subj, node.name));
+      container.appendChild(topicEl);
     }
   });
-  return html;
 }
 
 function renderSyllabusTree(filter, subjFilter) {
   filter = filter || '';
   subjFilter = subjFilter || null;
   const tree = document.getElementById('syllabusTree');
-  if (!tree) return;  // element only exists while Learn tab is active
+  if (!tree) return;
   if (!KB.hasSyllabus && !KB.syllabusTopics?.length) {
-    tree.innerHTML=`<div style="padding:20px 12px;text-align:center;color:var(--muted);font-size:12px;line-height:1.6;"><div style="font-size:28px;margin-bottom:8px;opacity:.4;">📋</div>Upload Bar Syllabus in Admin.</div>`;
+    tree.innerHTML = `<div style="padding:20px 12px;text-align:center;color:var(--muted);font-size:12px;line-height:1.6;"><div style="font-size:28px;margin-bottom:8px;opacity:.4;">📋</div>Upload Bar Syllabus in Admin.</div>`;
     return;
   }
   const fl = filter.toLowerCase();
-  let html = '', tAll = 0, tDone = 0;
-  (KB.syllabusTopics||[]).forEach(subj => {
+  tree.innerHTML = '';
+  let tAll = 0, tDone = 0;
+
+  (KB.syllabusTopics || []).forEach(subj => {
     if (subjFilter && subj.key !== subjFilter) return;
-    const sub = SUBJS.find(s=>s.key===subj.key)||{name:subj.name||subj.key,cls:'sg-gen'};
-    const allLeaves = flattenLeafTopics(subj.topics||[]);
+    const sub = SUBJS.find(s => s.key === subj.key) || { name: subj.name || subj.key, cls: 'sg-gen' };
+    const allLeaves = flattenLeafTopics(subj.topics || []);
+    const doneCnt = allLeaves.filter(t => isTopicCached(subj.key, t.name)).length;
     tAll += allLeaves.length;
-    tDone += allLeaves.filter(t=>getCached(subj.key,t.name)).length;
-    const hasRef = KB.references?.some(r=>r.subject===subj.key);
+    tDone += doneCnt;
+    const hasRef = KB.references?.some(r => r.subject === subj.key);
+
+    const wrapper = document.createElement('div');
+    const hdr = document.createElement('div');
+    hdr.className = 'subj-hdr open';
+    hdr.innerHTML = `<span class="chev">▶</span><span class="subj-label">${h(sub.name)}</span>${hasRef ? '<span style="font-size:9px;color:var(--teal);" title="References loaded">📚</span>' : ''}<span class="subj-cnt">${doneCnt}/${allLeaves.length}</span>`;
+    const listEl = document.createElement('div');
+    listEl.className = 'topic-list open';
+    hdr.addEventListener('click', () => { hdr.classList.toggle('open'); listEl.classList.toggle('open'); });
+    wrapper.appendChild(hdr);
+    wrapper.appendChild(listEl);
 
     if (fl) {
-      // Flat filtered list — search across all descendants
-      const matches = allLeaves.filter(t=>t.name.toLowerCase().includes(fl));
+      // Flat filtered list
+      const matches = allLeaves.filter(t => t.name.toLowerCase().includes(fl));
       if (!matches.length) return;
-      html += `<div>
-        <div class="subj-hdr open" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">
-          <span class="chev">▶</span><span class="subj-label">${h(sub.name)}</span>
-          ${hasRef?'<span style="font-size:9px;color:var(--teal);" title="References loaded">📚</span>':''}
-          <span class="subj-cnt">${matches.filter(t=>getCached(subj.key,t.name)).length}/${matches.length}</span>
-        </div>
-        <div class="topic-list open">
-          ${matches.map(t => {
-            const cached = getCached(subj.key,t.name);
-            const genNow = KB.genState?.running && KB.genState?.current?.includes(t.name);
-            return `<div class="topic-leaf-item${cached?' done':''}" onclick="clickTopic('${h(subj.key)}','${h(t.name)}')">
-              <span class="t-chk">${cached?'✓':'○'}</span>
-              <span class="t-lbl">${h(t.name)}</span>
-              ${genNow?'<span class="ready-badge rb-gen">gen…</span>':cached?'<span class="topic-badge-cached">cached</span>':''}
-            </div>`;
-          }).join('')}
-        </div>
-      </div>`;
+      matches.forEach(t => {
+        const cached = isTopicCached(subj.key, t.name);
+        const genNow = KB.genState?.running && KB.genState?.current?.includes(t.name);
+        const el = document.createElement('div');
+        el.className = 'tl-topic' + (cached ? ' tl-done' : '');
+        el.setAttribute('data-subj-key', subj.key);
+        el.setAttribute('data-topic-name', t.name);
+        el.innerHTML = `<span class="tl-topic-check">${cached ? '✓' : '○'}</span><span class="tl-topic-name">${h(t.name)}</span>${genNow ? '<span class="ready-badge rb-gen">gen…</span>' : cached ? '<span class="tl-cached-badge">cached</span>' : ''}`;
+        el.addEventListener('click', () => loadTopicContent(subj.key, t.name));
+        listEl.appendChild(el);
+      });
     } else {
-      // Hierarchical tree display
-      const treeHtml = renderTopicTree(subj.topics||[], subj.key, 0);
-      if (!treeHtml) return;
-      html += `<div>
-        <div class="subj-hdr open" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">
-          <span class="chev">▶</span><span class="subj-label">${h(sub.name)}</span>
-          ${hasRef?'<span style="font-size:9px;color:var(--teal);" title="References loaded">📚</span>':''}
-          <span class="subj-cnt">${allLeaves.filter(t=>getCached(subj.key,t.name)).length}/${allLeaves.length}</span>
-        </div>
-        <div class="topic-list open">${treeHtml}</div>
-      </div>`;
+      // Hierarchical tree
+      renderTopicTree(subj.topics || [], listEl, subj.key, 0);
+      if (!listEl.children.length) return;
     }
+    tree.appendChild(wrapper);
   });
-  tree.innerHTML = html || `<div style="padding:18px;text-align:center;color:var(--muted);font-size:12px;">No topics match.</div>`;
-  const pct = tAll ? Math.round(tDone/tAll*100) : 0;
-  const pctEl = document.getElementById('learn-pct'); if(pctEl) pctEl.textContent = pct+'%';
-  const fillEl = document.getElementById('learn-fill'); if(fillEl) fillEl.style.width = pct+'%';
+
+  if (!tree.children.length) {
+    tree.innerHTML = `<div style="padding:18px;text-align:center;color:var(--muted);font-size:12px;">No topics match.</div>`;
+  }
+  const pct = tAll ? Math.round(tDone / tAll * 100) : 0;
+  const pctEl = document.getElementById('learn-pct'); if (pctEl) pctEl.textContent = pct + '%';
+  const fillEl = document.getElementById('learn-fill'); if (fillEl) fillEl.style.width = pct + '%';
 }
 function filterTopics(v){renderSyllabusTree(v, currentSubject);}
 
@@ -2002,10 +2058,16 @@ function filterTopics(v){renderSyllabusTree(v, currentSubject);}
 // LESSON VIEWER
 // ══════════════════════════════════
 async function clickTopic(subjKey, topicName) {
-  document.querySelectorAll('.topic-item,.topic-leaf-item,.topic-parent-row').forEach(t=>{
+  // Clear all active/selected states
+  document.querySelectorAll('.topic-item,.topic-leaf-item,.topic-parent-row').forEach(t => {
     t.classList.remove('active');
-    const oc=t.getAttribute('onclick')||'';
-    if(oc.includes(topicName)&&oc.includes(subjKey)) t.classList.add('active');
+    const oc = t.getAttribute('onclick') || '';
+    if (oc.includes(topicName) && oc.includes(subjKey)) t.classList.add('active');
+  });
+  document.querySelectorAll('.tl-topic').forEach(t => {
+    t.classList.remove('tl-selected');
+    if (t.getAttribute('data-subj-key') === subjKey && t.getAttribute('data-topic-name') === topicName)
+      t.classList.add('tl-selected');
   });
   curSubj=subjKey; curTopic=topicName; curPage=0;
   const sub=SUBJS.find(s=>s.key===subjKey)||{name:subjKey,cls:'sg-gen'};
@@ -2133,7 +2195,10 @@ function chgPage(d){
   const data=getCached(curSubj,curTopic);if(!data)return;
   curPage+=d;renderLesson(data,curTopic,curSubj,'cache');
 }
-function markDone(){document.querySelector('.topic-item.active,.topic-leaf-item.active,.topic-parent-row.active')?.classList.add('done');}
+function markDone(){
+  document.querySelector('.topic-item.active,.topic-leaf-item.active,.topic-parent-row.active')?.classList.add('done');
+  document.querySelector('.tl-topic.tl-selected')?.classList.add('tl-done');
+}
 function goToPractice(){
   if (currentSubject) {
     switchSubjectTab(currentSubject, 'quiz');
@@ -3277,9 +3342,15 @@ async function readFile(input,targetId){
   }
 }
 function countLeafTopics(topics) {
-  let n=0;
-  function walk(items){(items||[]).forEach(t=>{if(!t.isGroup)n++;walk(t.subtopics);walk(t.children);});}
-  walk(topics);return n;
+  let n = 0;
+  function walk(items) {
+    (items || []).forEach(t => {
+      if (t.type === 'topic' || (!t.type && !t.isGroup)) n++;
+      walk(t.children || []);
+      if (!t.type) walk(t.subtopics || []); // legacy compat
+    });
+  }
+  walk(topics); return n;
 }
 function updateSyllabusStatus(){
   const el=document.getElementById('syllabusStatus');if(!el)return;
