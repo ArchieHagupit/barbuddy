@@ -3287,7 +3287,13 @@ async function uploadSyllabus(){
   if(!content){alert('Paste or upload syllabus content.');return;}
   try{
     const r=await adminPost('/api/admin/syllabus',{name,content},'syl-status');
-    if(r.error)throw new Error(r.error);
+    if(r.error){
+      const staEl=document.getElementById('syl-status');
+      let msg=h(r.error);
+      if(r.raw){msg+=`<br><br><span style="color:rgba(248,246,241,.4);font-size:11px;">Claude returned: &ldquo;${h(r.raw)}&hellip;&rdquo;</span><br><span style="color:rgba(248,246,241,.4);font-size:11px;">Tip: Try uploading again. If this keeps happening, try breaking the syllabus into smaller sections by subject.</span>`;}
+      staEl.innerHTML=`<div style="color:#e07080;font-size:13px;line-height:1.7;padding:12px;background:rgba(155,35,53,.1);border:1px solid rgba(155,35,53,.3);border-radius:10px;">⚠️ ${msg}</div>`;
+      return;
+    }
     document.getElementById('syl-status').innerHTML=`<div style="color:var(--teal);font-size:13px;padding:8px;">✅ Saved! ${r.subjects} subjects, ${r.totalTopics} topics. Pre-generating content now…</div>`;
     // Per-subject breakdown
     const bdEl=document.getElementById('syl-breakdown');

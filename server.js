@@ -81,6 +81,48 @@ function deepMerge(defaults, overrides) {
 }
 let TAB_SETTINGS = JSON.parse(JSON.stringify(DEFAULT_TAB_SETTINGS));
 
+// ── Universal JSON extractor ─────────────────────────────────
+// Claude sometimes returns plain text preambles or markdown fences.
+// Try 5 strategies in order before giving up.
+function extractJSON(raw) {
+  if (!raw || typeof raw !== 'string') return null;
+
+  // Strategy 1: Direct parse (already valid JSON)
+  try { return JSON.parse(raw); } catch(_) {}
+
+  // Strategy 2: Strip markdown code fences  ```json ... ``` or ``` ... ```
+  const fenceMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fenceMatch) { try { return JSON.parse(fenceMatch[1].trim()); } catch(_) {} }
+
+  // Strategy 3: Greedy-match first { ... } or [ ... ] (handles preamble text)
+  const objMatch = raw.match(/(\{[\s\S]*\})/s);
+  if (objMatch) { try { return JSON.parse(objMatch[1].trim()); } catch(_) {} }
+  const arrMatch = raw.match(/(\[[\s\S]*\])/s);
+  if (arrMatch) { try { return JSON.parse(arrMatch[1].trim()); } catch(_) {} }
+
+  // Strategy 4: Slice from first { or [ to matching last } or ]
+  const fb = raw.indexOf('{'), fk = raw.indexOf('[');
+  let si = -1;
+  if (fb !== -1 && fk !== -1) si = Math.min(fb, fk);
+  else if (fb !== -1) si = fb;
+  else if (fk !== -1) si = fk;
+  if (si !== -1) {
+    const trimmed = raw.slice(si);
+    const ei = Math.max(trimmed.lastIndexOf('}'), trimmed.lastIndexOf(']'));
+    if (ei !== -1) { try { return JSON.parse(trimmed.slice(0, ei + 1)); } catch(_) {} }
+  }
+
+  // Strategy 5: Fix common malformed JSON (trailing commas, unquoted keys)
+  const cleaned = raw
+    .replace(/,\s*([}\]])/g, '$1')
+    .replace(/(['"])?([a-zA-Z0-9_]+)(['"])?\s*:/g, '"$2":');
+  const co = cleaned.match(/(\{[\s\S]*\})/s);
+  if (co) { try { return JSON.parse(co[1].trim()); } catch(_) {} }
+
+  console.error('[extractJSON] All strategies failed. First 500 chars:', raw.slice(0, 500));
+  return null;
+}
+
 // User auth state
 let USERS          = {};   // { [userId]: { id, name, email, passwordHash, role, active, createdAt, stats } }
 let SESSIONS       = {};   // { [token]: { userId, createdAt, expiresAt } }
@@ -520,12 +562,12 @@ async function parseSyllabusInPasses(content) {
   // Pass 1 — find subject boundaries
   const p1 = `This is a Philippine Bar Exam Syllabus. Find where each of the 8 bar subject sections starts.
 Subjects: Civil Law, Criminal Law, Political Law, Labor Law and Social Legislation, Commercial Law, Taxation, Remedial Law, Legal and Judicial Ethics.
-Return ONLY valid JSON with no markdown:
+Return ONLY valid JSON with no markdown. DO NOT write any explanation. Start immediately with {:
 { "sections": [ { "subject":"political","subjectName":"Political Law","headerText":"exact header as it appears in text" } ] }
 Document (first 8000 chars):
 ${content.slice(0,8000)}`;
-  const raw1 = await callClaude([{role:'user',content:p1}], 1500);
-  const bounds = JSON.parse(raw1.replace(/^```json\s*/i,'').replace(/```$/,'').trim());
+  const bounds = await callClaudeJSON([{role:'user',content:p1}], 1500);
+  if (!bounds) throw new Error('Failed to identify subject boundaries — Claude did not return valid JSON');
 
   // Resolve character positions
   const sections = [];
@@ -544,12 +586,15 @@ ${content.slice(0,8000)}`;
     const p2 = `Parse ONLY this ${sec.subjectName} section of a Philippine Bar Exam Syllabus.
 Subject key: "${sec.subject}". Extract ALL topics in the EXACT ORDER they appear.
 Preserve full hierarchy. Tag every item with subject:"${sec.subject}".
-Return ONLY valid JSON with no markdown:
+Output ONLY the JSON object below — no words before or after it, no markdown fences:
 { "key":"${sec.subject}","name":"${sec.subjectName}","topics":[{"name":"exact name","isGroup":false,"subject":"${sec.subject}","subtopics":[],"children":[]}] }
 Section text:
 ${sec.text.slice(0,6000)}`;
-    const raw2 = await callClaude([{role:'user',content:p2}], 3000);
-    const parsed = JSON.parse(raw2.replace(/^```json\s*/i,'').replace(/```$/,'').trim());
+    const parsed = await callClaudeJSON([{role:'user',content:p2}], 3000);
+    if (!parsed) {
+      console.warn(`[syllabus] Pass 2 parse failed for ${sec.subjectName} — skipping subject`);
+      continue;
+    }
     function forceSubj(topics, key) {
       return (topics||[]).map(t => ({ ...t, subject:key, subtopics:forceSubj(t.subtopics,key), children:forceSubj(t.children,key) }));
     }
@@ -586,13 +631,21 @@ Rules:
 - subject field must match the parent subject key exactly
 - Do NOT merge or skip topics
 
-Return ONLY valid JSON, no markdown:
+OUTPUT FORMAT — CRITICAL:
+- Output ONLY the JSON object. No words before it. No words after it. No markdown fences.
+- Do NOT say "Looking at this document", "Here is the parsed structure", "I've analyzed", or any preamble.
+- Start your response with { and end with }
 {"subjects":[{"key":"civil","name":"Civil Law","topics":[{"name":"exact topic name","isGroup":false,"subject":"civil","subtopics":[],"children":[]}]}]}
 
 Syllabus text:
 ${content.slice(0, 14000)}`;
-      const raw = await callClaude([{ role:'user', content:prompt }], 4000);
-      parsed = JSON.parse(raw.replace(/^```json\s*/i,'').replace(/```$/,'').trim());
+      parsed = await callClaudeJSON([{ role:'user', content:prompt }], 4000);
+    }
+
+    if (!parsed) {
+      return res.status(422).json({
+        error: 'Syllabus parsing failed — Claude returned an unexpected response format. Try uploading again. If the problem persists, try a shorter or simpler syllabus document.',
+      });
     }
 
     // Validate and clean
@@ -912,11 +965,16 @@ Respond ONLY with valid JSON (no markdown):
 
 IMPORTANT for essay classification:
 - SITUATIONAL: question involves specific named parties (Mr. A, ABC Corp), a sequence of events, a legal dispute or transaction. Put the COMPLETE fact pattern in "context" — nothing summarized or omitted. Put the actual question in "prompt" AND "q".
-- CONCEPTUAL: question asks to define, distinguish, enumerate, or explain a doctrine — no specific parties or events. Leave "context" empty. Put the full question in "prompt" AND "q".`;
+- CONCEPTUAL: question asks to define, distinguish, enumerate, or explain a doctrine — no specific parties or events. Leave "context" empty. Put the full question in "prompt" AND "q".
+- Output ONLY the JSON object. Start with { and end with }. No markdown, no preamble.`;
 
-  const raw    = await callClaude([{ role:'user', content:prompt }], 4096);
-  const parsed = JSON.parse(raw.replace(/^```json\s*/i,'').replace(/```$/,'').trim());
+  const parsed = await callClaudeJSON([{ role:'user', content:prompt }], 4096);
   if (!CONTENT[subjKey]) CONTENT[subjKey] = {};
+  if (!parsed) {
+    console.error(`[generateTopicContent] JSON parse failed for: ${topicName}`);
+    CONTENT[subjKey][topicName] = { status:'generation_failed', message:'Content generation failed. Click to retry.', generatedAt:new Date().toISOString() };
+    return;
+  }
   CONTENT[subjKey][topicName] = { lesson:parsed.lesson, mcq:parsed.mcq, essay:parsed.essay, generatedAt:new Date().toISOString() };
 }
 
@@ -953,7 +1011,7 @@ ${syllCtx ? `Syllabus coverage:\n${syllCtx}` : ''}
 
 Each question must be a complete bar exam question with full fact pattern if situational.
 
-Respond ONLY with valid JSON — an array of exactly ${needed} objects:
+Output ONLY a valid JSON array. Start with [ and end with ]. No markdown, no preamble, no text after:
 [
   {
     "subject": "civil|criminal|political|labor|commercial|taxation|remedial|ethics",
@@ -967,11 +1025,12 @@ Respond ONLY with valid JSON — an array of exactly ${needed} objects:
   }
 ]`;
 
-  const raw = await callClaude([{ role:'user', content:prompt }], 4000);
-  const cleaned = raw.replace(/^```json\s*/i,'').replace(/```$/,'').trim();
-  const parsed = JSON.parse(cleaned);
+  const parsed = await callClaudeJSON([{ role:'user', content:prompt }], 4000);
 
-  if (!Array.isArray(parsed)) return [];
+  if (!parsed || !Array.isArray(parsed)) {
+    console.warn('[mockbar/ai] generateAIQuestions: no valid JSON array returned');
+    return [];
+  }
   if (parsed.length < needed) {
     console.warn(`[mockbar/ai] AI returned ${parsed.length} but needed ${needed}`);
   }
@@ -1337,8 +1396,10 @@ Respond ONLY with valid JSON (no markdown):
   }
 
   try {
-    const raw = await callClaude([{ role:'user', content: prompt }], maxTok);
-    const result = JSON.parse(raw.replace(/^```json\s*/i,'').replace(/```$/,'').trim());
+    const result = await callClaudeJSON([{ role:'user', content: prompt }], maxTok);
+    if (!result) {
+      return res.status(422).json({ error:'Evaluation failed — could not parse scoring response. Please try submitting your answer again.' });
+    }
     result.format = result.format || format; // ensure format tag is present
     res.json(result);
   } catch(err) { res.status(500).json({ error:err.message }); }
@@ -1522,15 +1583,17 @@ async function extractPastBarInBackground(id, content, name, subject, year) {
       const partLabel = chunks.length > 1 ? ` | Part ${i+1} of ${chunks.length}` : '';
       const extractPrompt = `Based on your analysis:\n${analyses[i]}\n\nNow READ AND EXTRACT — do not create or invent anything:\n\nFor each question identified:\n1. Copy the question text EXACTLY as written in the document\n2. Look for any answer or suggested answer that immediately follows the question in the document\n3. If an answer exists in the document, copy it EXACTLY as written\n4. If no answer exists in the document, use exactly this text: "[No suggested answer in uploaded material]"\n\nNEVER write a model answer from your own knowledge. Only copy what is already written in this document.\n\nMaterial: ${name} (${year||'?'}) | Subject: ${subject}${partLabel}\nContent:\n${chunks[i]}\n\nRespond ONLY with valid JSON (no markdown fence):\n{ "questions": [{ "q": "Exact question text as written in document", "modelAnswer": "Exact answer from document, or [No suggested answer in uploaded material]", "keyPoints": [], "topics": ["${subject}"] }] }`;
       let chunkQ = [];
-      try {
-        const raw = await callClaude([{ role:'user', content: extractPrompt }], 4000);
-        chunkQ = JSON.parse(raw.replace(/^```json\s*/i,'').replace(/```$/,'').trim()).questions || [];
-      } catch(e) {
+      const chunkResult = await callClaudeJSON([{ role:'user', content: extractPrompt }], 4000);
+      if (chunkResult) {
+        chunkQ = chunkResult.questions || [];
+      } else {
         console.warn(`pastbar bg chunk ${i+1}: JSON parse failed — trying text-only retry`);
-        try {
-          const textRaw = await callClaude([{ role:'user', content:`This is an uploaded bar exam document. READ AND EXTRACT ONLY — do not create.\n\nFind all questions in this text. Copy each question exactly as written. If an answer appears in the text immediately after the question, copy it exactly. If no answer, use: "[No suggested answer in uploaded material]"\n\nReturn ONLY:\n{ "questions": [{ "q": "exact question text", "modelAnswer": "exact answer from document or [No suggested answer in uploaded material]", "keyPoints": [], "topics": ["${subject}"] }] }\n\nText:\n${chunks[i].slice(0,6000)}` }], 1500);
-          chunkQ = JSON.parse(textRaw.replace(/^```json\s*/i,'').replace(/```$/,'').trim()).questions || [];
-        } catch(e2) { console.warn(`pastbar bg chunk ${i+1}: retry also failed`); }
+        const retryResult = await callClaudeJSON([{ role:'user', content:`This is an uploaded bar exam document. READ AND EXTRACT ONLY — do not create.\n\nFind all questions in this text. Copy each question exactly as written. If an answer appears in the text immediately after the question, copy it exactly. If no answer, use: "[No suggested answer in uploaded material]"\n\nOutput ONLY this JSON (start with {, no markdown):\n{ "questions": [{ "q": "exact question text", "modelAnswer": "exact answer from document or [No suggested answer in uploaded material]", "keyPoints": [], "topics": ["${subject}"] }] }\n\nText:\n${chunks[i].slice(0,6000)}` }], 1500);
+        if (retryResult) {
+          chunkQ = retryResult.questions || [];
+        } else {
+          console.warn(`pastbar bg chunk ${i+1}: retry also failed`);
+        }
       }
       console.log(`pastbar bg chunk ${i+1}/${chunks.length}: found ${chunkQ.length} question(s)`);
       allQ.push(...chunkQ);
@@ -1554,6 +1617,38 @@ async function extractPastBarInBackground(id, content, name, subject, year) {
     entry.extractError = err.message;
     saveKB();
   }
+}
+
+// callClaudeJSON: like callClaude but retries until it gets valid JSON back
+const JSON_FORMAT_REMINDER = '\n\nRESPONSE FORMAT — STRICTLY FOLLOW:\n1. Your ENTIRE response must be valid JSON only\n2. Start with { or [ immediately — no preamble\n3. End with } or ] — no text after\n4. No markdown code fences (no ```)\n5. No explanations before or after the JSON\n6. If unsure, return the JSON with empty arrays rather than explaining why';
+
+async function callClaudeJSON(messages, maxTokens, retries = 3) {
+  const msgs = messages.map((m, i) => {
+    if (i !== messages.length - 1 || m.role !== 'user') return m;
+    const alreadyHasInstruction = m.content.includes('valid JSON') || m.content.includes('ONLY JSON') || m.content.includes('ONLY with valid JSON');
+    return alreadyHasInstruction ? m : { ...m, content: m.content + JSON_FORMAT_REMINDER };
+  });
+
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const attemptMsgs = attempt === 1 ? msgs : [{
+        ...msgs[msgs.length - 1],
+        content: msgs[msgs.length - 1].content +
+          '\n\nCRITICAL: Output ONLY the JSON object/array. Do NOT write any words or sentences. Do NOT use markdown. Start with { or [. If you cannot comply, return {}.'
+      }];
+      const raw = await callClaude(attempt === 1 ? msgs : [attemptMsgs[0]], maxTokens);
+      const parsed = extractJSON(raw);
+      if (parsed !== null) return parsed;
+      console.warn(`[callClaudeJSON] attempt ${attempt}/${retries} — extractJSON failed, retrying`);
+      if (attempt < retries) await sleep(2000);
+    } catch(e) {
+      console.error(`[callClaudeJSON] attempt ${attempt} threw:`, e.message);
+      if (attempt === retries) throw e;
+      await sleep(3000);
+    }
+  }
+  console.error('[callClaudeJSON] all retries exhausted');
+  return null;
 }
 
 // callClaude: Sonnet first → 20s wait → Sonnet again → Haiku → 60s wait → Haiku → throw
