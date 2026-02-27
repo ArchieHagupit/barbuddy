@@ -831,18 +831,25 @@ Respond ONLY with valid JSON — an array of exactly ${needed} objects:
 async function generateMockBar(subjects, count, options = {}) {
   const {
     sources      = { pastBar: true, preGen: true, aiGenerate: true },
+    pastBarIds   = [],       // specific past bar file IDs to include; empty = all matching subjects
+    includePreGen = null,    // explicit boolean override; null = use sources.preGen
     topics       = [],       // filter preGen pool to these topic names (when non-empty)
     difficulty   = 'balanced',
   } = options;
+
+  const usePastBar  = sources.pastBar !== false;
+  const usePreGen   = includePreGen !== null ? includePreGen : sources.preGen !== false;
+  const useAI       = sources.aiGenerate !== false;
 
   let warning = null;
 
   // STEP 1: Build real past bar pool
   let realPool = [];
-  if (sources.pastBar !== false) {
+  if (usePastBar) {
     KB.pastBar.forEach(pb => {
-      const match = !subjects || subjects.includes('all') || subjects.includes(pb.subject);
-      if (match) {
+      const subjMatch = !subjects || subjects.includes('all') || subjects.includes(pb.subject);
+      const idMatch   = !pastBarIds?.length || pastBarIds.includes(pb.id);
+      if (subjMatch && idMatch) {
         (pb.questions || []).forEach(q => {
           realPool.push({
             q: q.q,
@@ -854,6 +861,8 @@ async function generateMockBar(subjects, count, options = {}) {
             year: pb.year,
             isReal: true,
             type: q.type || 'situational',
+            pastBarId: pb.id,
+            pastBarName: pb.name,
           });
         });
       }
@@ -864,7 +873,7 @@ async function generateMockBar(subjects, count, options = {}) {
 
   // STEP 2: Build pre-gen pool
   let preGenPool = [];
-  if (sources.preGen !== false) {
+  if (usePreGen) {
     const targetSubjs = (!subjects || subjects.includes('all')) ? Object.keys(CONTENT) : subjects;
     targetSubjs.forEach(subj => {
       Object.entries(CONTENT[subj] || {}).forEach(([topicName, data]) => {
@@ -919,7 +928,7 @@ async function generateMockBar(subjects, count, options = {}) {
   console.log(`[mockbar] gap to fill with AI: ${gap}`);
 
   if (gap > 0) {
-    if (sources.aiGenerate === false) {
+    if (!useAI) {
       // Clamp to available pool size
       const available = chosen.length;
       warning = `⚠️ Only ${available} question${available===1?'':'s'} available in pool. Starting with ${available} question${available===1?'':'s'}.`;
@@ -960,10 +969,12 @@ async function generateMockBar(subjects, count, options = {}) {
 // ── MOCK BAR GENERATOR ──────────────────────────────────────
 app.post('/api/mockbar/generate', async (req, res) => {
   if (!API_KEY) return res.status(500).json({ error:'API key not set' });
-  const { subjects, count=20, sources, topics, difficulty } = req.body;
+  const { subjects, count=20, sources, pastBarIds, includePreGen, aiGenerate, topics, difficulty } = req.body;
   console.log(`[mockbar] requested: ${count} questions, subjects: ${JSON.stringify(subjects)}`);
+  // Merge explicit top-level aiGenerate flag into sources object (new UI sends it at top level)
+  const mergedSources = aiGenerate !== undefined ? { ...sources, aiGenerate } : sources;
   try {
-    const result = await generateMockBar(subjects, count, { sources, topics, difficulty });
+    const result = await generateMockBar(subjects, count, { sources: mergedSources, pastBarIds, includePreGen: includePreGen ?? null, topics, difficulty });
     res.json(result);
   } catch(err) {
     console.error('[mockbar] error:', err.message);

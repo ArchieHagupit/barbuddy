@@ -85,6 +85,19 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .mb-source-count{font-size:11px;color:var(--muted);font-family:var(--fm);}
 .mb-preview{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px 14px;font-size:12px;color:var(--muted);line-height:1.6;}
 .mb-warn-banner{background:rgba(240,160,64,.08);border:1px solid rgba(240,160,64,.3);border-radius:10px;padding:11px 14px;font-size:12px;color:#f0a040;margin-bottom:12px;display:none;}
+/* Source picker */
+.sources-group-label{font-size:10px;font-weight:800;letter-spacing:.1em;color:rgba(248,246,241,.35);text-transform:uppercase;margin:14px 0 6px;}
+.source-item{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:12px;border:1px solid rgba(248,246,241,.08);background:rgba(255,255,255,.03);cursor:pointer;transition:all .18s;margin-bottom:6px;user-select:none;}
+.source-item:hover{background:rgba(255,255,255,.06);border-color:rgba(248,246,241,.15);}
+.source-item.source-checked{background:rgba(201,168,76,.08);border-color:rgba(201,168,76,.3);}
+.source-check-icon{font-size:18px;color:rgba(248,246,241,.4);flex-shrink:0;width:22px;line-height:1;}
+.source-item.source-checked .source-check-icon{color:var(--gold);}
+.source-item-info{flex:1;min-width:0;}
+.source-item-name{font-size:13px;font-weight:600;color:rgba(248,246,241,.88);margin-bottom:3px;}
+.source-item.source-checked .source-item-name{color:var(--gold-l);}
+.source-item-meta{font-size:11px;color:var(--muted);font-family:var(--fm);}
+.source-ctrl-btn{padding:5px 12px;font-size:11px;font-weight:600;border-radius:7px;border:1px solid rgba(248,246,241,.12);background:rgba(255,255,255,.04);color:rgba(248,246,241,.5);cursor:pointer;font-family:var(--fb);transition:all .15s;}
+.source-ctrl-btn:hover{background:rgba(255,255,255,.09);color:rgba(248,246,241,.8);}
 /* Overview grid */
 .overview-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;}
 @media(max-width:1100px){.overview-grid{grid-template-columns:repeat(2,1fr);}}
@@ -1501,8 +1514,6 @@ function renderQuizTab(subj, container) {
 
 function renderMockBarTab(subj, container) {
   const s = SUBJS.find(x => x.key === subj);
-  const pbQs = (KB.pastBar||[]).filter(p=>p.subject===subj).reduce((a,p)=>a+(p.qCount||0),0);
-  const cached = Object.keys(CACHE[subj]||{}).length;
   const presets = [[5,'5'],[10,'10'],[20,'20']];
   const timeOpts = [[0,'No limit'],[30,'30 min'],[60,'1 hr'],[120,'2 hr'],[180,'3 hr']];
   const diffOpts = [['balanced','⚖️ Balanced'],['situational','📋 Situational'],['conceptual','💡 Conceptual']];
@@ -1524,33 +1535,28 @@ function renderMockBarTab(subj, container) {
           ${timeOpts.map(([m,l])=>`<button class="mb-preset-btn${mbTimeMins===m?' active':''}" onclick="stSetMbTime(${m},this)">${l}</button>`).join('')}
         </div>
       </div>
-      <div class="mb-setup-card">
-        <div class="mb-section-label">Question Sources</div>
-        <div style="display:flex;flex-direction:column;gap:8px;">
-          <label class="mb-source-row"><input type="checkbox" id="stMbSrcPastBar" checked> <span class="mb-source-label">📜 Past Bar Questions</span> <span class="mb-source-count">${pbQs} available</span></label>
-          <label class="mb-source-row"><input type="checkbox" id="stMbSrcPreGen" checked> <span class="mb-source-label">🤖 Pre-Generated</span> <span class="mb-source-count">${cached} topics cached</span></label>
-          <label class="mb-source-row"><input type="checkbox" id="stMbSrcAI" checked> <span class="mb-source-label">✨ AI Fill</span> <span class="mb-source-count">fills remaining slots</span></label>
-        </div>
-      </div>
+      ${renderSourcesSection(subj)}
       <div class="mb-setup-card">
         <div class="mb-section-label">Difficulty Preference</div>
         <div class="mb-btn-row" id="stMbDiffRow">
           ${diffOpts.map(([d,l])=>`<button class="mb-preset-btn${mbDifficulty===d?' active':''}" onclick="stSetMbDiff('${d}',this)">${l}</button>`).join('')}
         </div>
       </div>
-      <div class="mb-preview" id="stMbPreview">📊 ${pbQs} past bar + ${cached} pre-gen topics available</div>
+      <div class="mb-preview" id="mockbar-preview">Loading…</div>
       <div id="stMbWarnBanner" class="mb-warn-banner" style="display:none;"></div>
       <button class="btn-gold" id="stStartMockBtn" onclick="startSubjectMockBar('${subj}')"
         style="width:100%;justify-content:center;font-size:15px;padding:14px;margin-top:8px;">
         ⚡ Start ${h(s?.name||subj)} Mock Bar
       </button>
     </div>`;
+  updateMockPreview();
 }
 
 function stSetMbCount(n, btn) {
   mbCount = n || 20;
   document.querySelectorAll('#stMbCountRow .mb-preset-btn').forEach(b => b.classList.remove('active'));
   if (btn) btn.classList.add('active');
+  updateMockPreview();
 }
 function stSetMbTime(mins, btn) {
   mbTimeMins = mins;
@@ -1563,19 +1569,128 @@ function stSetMbDiff(diff, btn) {
   if (btn) btn.classList.add('active');
 }
 
+// ── SOURCE PICKER ────────────────────────────────────────────
+// Builds the sources section HTML and initialises window.mockSources
+function renderSourcesSection(subj) {
+  window.mockSources = {};
+
+  const subjPastBar   = (KB.pastBar||[]).filter(pb => pb.subject === subj);
+  const subjContent   = CACHE[subj] || {};
+  const preGenTopics  = Object.keys(subjContent).filter(t => subjContent[t]?.essay?.questions?.length);
+  const preGenCount   = preGenTopics.reduce((a,t) => a + (subjContent[t].essay.questions.length), 0);
+
+  // Populate state
+  subjPastBar.forEach(pb => {
+    window.mockSources[pb.id] = { type:'pastbar', id:pb.id, name:pb.name, subject:pb.subject, year:pb.year, count:pb.qCount||0, selected:true };
+  });
+  if (preGenTopics.length > 0) {
+    window.mockSources['pregen'] = { type:'pregen', id:'pregen', name:'Pre-Generated Topic Questions', subject:subj, count:preGenCount, topics:preGenTopics, selected:true };
+  }
+
+  const makeItem = (id, icon, name, meta, checked) =>
+    `<label class="source-item${checked?' source-checked':''}" id="src-item-${id}" onclick="toggleSource('${id}')">
+      <input type="checkbox" id="src-${id}"${checked?' checked':''} style="display:none;">
+      <div class="source-check-icon">${checked?'☑':'☐'}</div>
+      <div class="source-item-info">
+        <div class="source-item-name">${icon} ${h(name)}</div>
+        <div class="source-item-meta">${meta}</div>
+      </div>
+    </label>`;
+
+  let html = `<div class="mb-setup-card">
+    <div class="mb-section-label">Question Sources</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">Select which uploaded materials to draw questions from.</div>`;
+
+  if (subjPastBar.length > 0) {
+    html += `<div class="sources-group-label">Past Bar &amp; Exam Materials</div>`;
+    subjPastBar.forEach(pb => {
+      const meta = `${h(pb.subject)}${pb.year?' · '+pb.year:''} · <strong>${pb.qCount||0} questions</strong>`;
+      html += makeItem(pb.id, '📜', pb.name, meta, true);
+    });
+  }
+
+  if (preGenTopics.length > 0) {
+    html += `<div class="sources-group-label"${subjPastBar.length?' style="margin-top:12px;"':''}>Pre-Generated Content</div>`;
+    html += makeItem('pregen', '📚', 'Pre-Generated Topic Questions', `${preGenTopics.length} topics · <strong>${preGenCount} questions</strong>`, true);
+  }
+
+  if (subjPastBar.length === 0 && preGenTopics.length === 0) {
+    html += `<div style="text-align:center;padding:24px 12px;color:var(--muted);font-size:13px;line-height:1.7;">
+      <div style="font-size:32px;margin-bottom:10px;">📂</div>
+      No materials uploaded for this subject yet.<br>
+      Go to <button class="source-ctrl-btn" onclick="navToAdmin()" style="vertical-align:middle;">⚙️ Admin</button> to upload past bar questions or reference materials.
+    </div>`;
+  }
+
+  const totalItems = subjPastBar.length + (preGenTopics.length > 0 ? 1 : 0);
+  if (totalItems > 1) {
+    html += `<div style="display:flex;gap:8px;margin-top:12px;">
+      <button class="source-ctrl-btn" onclick="selectAllSources(true)">✓ Select All</button>
+      <button class="source-ctrl-btn" onclick="selectAllSources(false)">✗ Deselect All</button>
+    </div>`;
+  }
+
+  html += `</div>`;
+  return html;
+}
+
+function toggleSource(id) {
+  if (!window.mockSources?.[id]) return;
+  window.mockSources[id].selected = !window.mockSources[id].selected;
+  updateSourcesDisplay();
+  updateMockPreview();
+}
+
+function selectAllSources(val) {
+  if (!window.mockSources) return;
+  Object.keys(window.mockSources).forEach(id => { window.mockSources[id].selected = val; });
+  updateSourcesDisplay();
+  updateMockPreview();
+}
+
+function updateSourcesDisplay() {
+  if (!window.mockSources) return;
+  Object.keys(window.mockSources).forEach(id => {
+    const src  = window.mockSources[id];
+    const item = document.getElementById('src-item-' + id);
+    const icon = item?.querySelector('.source-check-icon');
+    if (!item) return;
+    item.classList.toggle('source-checked', src.selected);
+    if (icon) icon.textContent = src.selected ? '☑' : '☐';
+  });
+}
+
+function updateMockPreview() {
+  const sel   = Object.values(window.mockSources || {}).filter(s => s.selected);
+  const avail = sel.reduce((a,s) => a + (s.count||0), 0);
+  const want  = mbCount || 5;
+  let text;
+  if (sel.length === 0) {
+    text = '⚠️ No sources selected. Select at least one source to begin.';
+  } else if (avail === 0) {
+    text = '⚠️ Selected sources have 0 questions available.';
+  } else if (avail < want) {
+    text = `⚠️ Only ${avail} question${avail!==1?'s':''} available — will generate ${avail}.`;
+  } else {
+    text = `✓ ${avail} questions available from ${sel.length} source${sel.length!==1?'s':''} · Will draw ${want}`;
+  }
+  const prev = document.getElementById('mockbar-preview');
+  if (prev) prev.textContent = text;
+  const btn = document.getElementById('stStartMockBtn');
+  if (btn) { const off = sel.length === 0 || avail === 0; btn.disabled = off; btn.style.opacity = off ? '0.4' : '1'; }
+}
+
 async function startSubjectMockBar(subj) {
   const btn = document.getElementById('stStartMockBtn');
-  if (btn) { btn.disabled = true; btn.textContent = '⏳ Generating…'; }
-  const sources = {
-    pastBar:     (document.getElementById('stMbSrcPastBar')?.checked) !== false,
-    preGen:      (document.getElementById('stMbSrcPreGen')?.checked) !== false,
-    aiGenerate:  (document.getElementById('stMbSrcAI')?.checked) !== false,
-  };
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Preparing…'; }
+  const sel          = Object.values(window.mockSources || {}).filter(s => s.selected);
+  const pastBarIds   = sel.filter(s => s.type === 'pastbar').map(s => s.id);
+  const includePreGen = sel.some(s => s.type === 'pregen');
   try {
     const r = await fetch('/api/mockbar/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ subjects: [subj], count: mbCount, sources, difficulty: mbDifficulty, timeMins: mbTimeMins || 0 }),
+      body: JSON.stringify({ subjects: [subj], count: mbCount, pastBarIds, includePreGen, aiGenerate: false, difficulty: mbDifficulty, timeMins: mbTimeMins || 0 }),
     });
     const d = await r.json();
     if (d.error) throw new Error(d.error);
@@ -2405,7 +2520,7 @@ function renderMockQ(){
   document.getElementById('ms-prog').style.width=`${((mockIdx+1)/mockQs.length)*100}%`;
   const sub=SUBJS.find(s=>s.key===q.subject)||{name:q.subject,cls:'sg-gen'};
   document.getElementById('ms-src').innerHTML=q.isReal
-    ?`<span class="ms-source">📜 Past Bar ${h(q.year||q.source||'')}</span>`
+    ?`<span class="ms-source">📜 ${h(q.pastBarName||q.source||'Past Bar')}${q.year?' · '+h(q.year):''}</span>`
     :q.source==='Pre-generated'
       ?`<span class="ms-source">📚 Pre-generated</span>`
       :`<span class="ms-source">🤖 AI Generated</span>`;
@@ -2491,7 +2606,7 @@ async function endMockSession(){
       return `<div class="q-review-item">
         <div style="font-size:11px;color:#a08060;margin-bottom:5px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
           Q${i+1} · <span class="sbg ${sub.cls}">${sub.name}</span>
-          ${q.isReal?'<span style="font-size:9px;">📜 Past Bar</span>':q.source==='Pre-generated'?'<span style="font-size:9px;color:var(--teal);">📚 Pre-gen</span>':'<span style="font-size:9px;">🤖 AI</span>'}
+          ${q.isReal?`<span style="font-size:9px;">📜 ${h(q.pastBarName||'Past Bar')}</span>`:q.source==='Pre-generated'?'<span style="font-size:9px;color:var(--teal);">📚 Pre-gen</span>':'<span style="font-size:9px;">🤖 AI</span>'}
           <span class="q-score-badge ${s.grade==='Not Answered'?'qsb-low':qBadgeCls}" style="margin-left:auto;">${s.grade==='Not Answered'?'Not Answered':ns+'/10'}</span>
         </div>
         ${isSit
