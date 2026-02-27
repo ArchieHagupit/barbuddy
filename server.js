@@ -640,8 +640,58 @@ ${content.slice(0, 14000)}`;
 
 // ── ADMIN: Upload Syllabus + trigger pre-gen ────────────────
 app.post('/api/admin/syllabus', adminOnly, async (req, res) => {
-  const { name, content } = req.body;
+  const { name, content, subject } = req.body;
   if (!content?.trim()) return res.status(400).json({ error: 'content required' });
+
+  // ── Subject override: skip full-syllabus parsing, assign everything to one subject ──
+  if (subject && VALID_SUBJECTS.includes(subject)) {
+    const subjName = SUBJECT_MAP_FALLBACK[subject] || subject;
+
+    // Parse structure from the content (reuse regex parser)
+    let allTopics = [];
+    try {
+      const attempt = parseSyllabusText(content);
+      if (attempt?.subjects?.length > 0) {
+        attempt.subjects.forEach(s => { allTopics = allTopics.concat(s.topics || []); });
+      }
+    } catch(_) {}
+
+    // Fallback: simple line split if parser found nothing
+    if (allTopics.length === 0) {
+      allTopics = content.split('\n').map(l => l.trim()).filter(l => l.length > 2)
+        .map(l => ({ name: l, isGroup: false, subject, subtopics: [], children: [] }));
+    }
+
+    // Force all nodes to the selected subject key
+    function forceSubjectKey(topics, key) {
+      return (topics || []).map(t => ({
+        ...t, subject: key,
+        subtopics: forceSubjectKey(t.subtopics, key),
+        children:  forceSubjectKey(t.children,  key),
+      }));
+    }
+    const forcedTopics = forceSubjectKey(allTopics, subject);
+
+    // Merge with existing syllabus (replace only this subject's entry)
+    const existingSubjects = (KB.syllabus?.topics || []).filter(s => s.key !== subject);
+    existingSubjects.push({ key: subject, name: subjName, topics: forcedTopics });
+
+    KB.syllabus = {
+      name: KB.syllabus?.name || name || 'Bar Exam Syllabus',
+      rawText: ((KB.syllabus?.rawText || '') + '\n\n' + content).slice(0, 60000),
+      topics: existingSubjects,
+      uploadedAt: new Date().toISOString(),
+    };
+    saveKB();
+    triggerPreGeneration();
+
+    const topicCount = countAllTopics(forcedTopics);
+    console.log(`[syllabus] Subject-override saved for ${subject}: ${topicCount} topics`);
+    return res.json({
+      success: true, parseMethod: 'subject-override', subjects: 1,
+      totalTopics: topicCount, breakdown: [{ key: subject, name: subjName, topicCount }],
+    });
+  }
 
   let parsed = null;
   let parseMethod = 'unknown';

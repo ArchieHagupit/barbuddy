@@ -939,6 +939,21 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
         <div id="syllabusStatus" style="padding:10px;background:rgba(255,255,255,.04);border-radius:8px;margin-bottom:12px;font-size:12px;color:var(--muted);">No syllabus uploaded yet.</div>
         <label class="form-label">Name</label>
         <input class="form-input" id="syl-name" placeholder="e.g. 2025 Bar Exam Syllabus">
+        <label class="form-label">Subject</label>
+        <select id="syllabusSubject" class="form-input">
+          <option value="">— All Subjects (full syllabus) —</option>
+          <option value="civil">Civil Law</option>
+          <option value="criminal">Criminal Law</option>
+          <option value="political">Political Law</option>
+          <option value="labor">Labor Law &amp; Social Legislation</option>
+          <option value="commercial">Commercial Law</option>
+          <option value="taxation">Taxation</option>
+          <option value="remedial">Remedial Law</option>
+          <option value="ethics">Legal and Judicial Ethics</option>
+          <option disabled>──────────────────</option>
+          <option value="custom">📁 Custom Subject</option>
+        </select>
+        <div style="font-size:11px;color:var(--muted);margin-top:4px;margin-bottom:12px;line-height:1.5;">Select a specific subject to assign ALL topics in this upload to that subject. Select "All Subjects" only if the document covers the full bar syllabus with subject dividers.</div>
         <label class="form-label">Content (paste or upload file)</label>
         <textarea class="form-input" id="syl-content" rows="5" placeholder="Paste syllabus text here…" style="resize:vertical;"></textarea>
         <div style="display:flex;gap:8px;margin-bottom:12px;">
@@ -3284,9 +3299,10 @@ async function adminPost(url,body,status){
 async function uploadSyllabus(){
   const name=document.getElementById('syl-name').value.trim();
   const content=document.getElementById('syl-content').value.trim();
+  const subject=document.getElementById('syllabusSubject')?.value||'';
   if(!content){alert('Paste or upload syllabus content.');return;}
   try{
-    const r=await adminPost('/api/admin/syllabus',{name,content},'syl-status');
+    const r=await adminPost('/api/admin/syllabus',{name,content,subject},'syl-status');
     if(r.error){
       const staEl=document.getElementById('syl-status');
       let msg=h(r.error);
@@ -3294,29 +3310,32 @@ async function uploadSyllabus(){
       staEl.innerHTML=`<div style="color:#e07080;font-size:13px;line-height:1.7;padding:12px;background:rgba(155,35,53,.1);border:1px solid rgba(155,35,53,.3);border-radius:10px;">⚠️ ${msg}</div>`;
       return;
     }
-    const _methodBadge={'regex':'⚡ Fast (outline detected)','ai':'🤖 AI parsed','fallback-split':'⚠️ Basic split (verify results)'};
-    const _methodLabel=_methodBadge[r.parseMethod]?` &nbsp;·&nbsp; <span style="font-size:11px;opacity:.65;">${_methodBadge[r.parseMethod]}</span>`:'';
-    document.getElementById('syl-status').innerHTML=`<div style="color:var(--teal);font-size:13px;padding:8px;">✅ Saved! ${r.subjects} subjects, ${r.totalTopics} topics. Pre-generating content now…${_methodLabel}</div>`;
-    // Per-subject breakdown
+    // Reset dropdown for next upload
+    const subjEl=document.getElementById('syllabusSubject');
+    if(subjEl) subjEl.value='';
+
     const bdEl=document.getElementById('syl-breakdown');
-    if(bdEl && r.breakdown?.length){
-      const clr={civil:'#4a9eff',criminal:'#e07080',political:'#50d090',labor:'#f0a040',commercial:'#a070e0',taxation:'#40c0b0',remedial:'#e0c050',ethics:'#c0a080',custom:'#8899aa'};
-      const rows=r.breakdown.map(s=>`<div style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12px;"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${clr[s.key]||'#888'};flex-shrink:0;"></span><span style="flex:1;color:rgba(248,246,241,.8);">${h(s.name)}</span><span style="color:var(--muted);font-family:var(--fm);">${s.topicCount} topics</span></div>`).join('');
-      const unknownHtml=r.unknownTopics?.length?`<div style="margin-top:8px;padding:8px;background:rgba(155,35,53,.1);border-radius:6px;font-size:11px;color:#e07080;">⚠️ ${r.unknownTopics.length} unrecognized subject(s) skipped: ${r.unknownTopics.map(h).join(', ')}</div>`:'';
-      // Warnings panel
-      let warningsHtml = '';
-      if (r.warnings?.length) {
-        const items = r.warnings.map(w=>`<div class="sw-item">⚠ <strong>${h(w.topic)}</strong> is under <em>${h(w.assignedTo)}</em> but keywords suggest <em>${h(w.possiblyBelongsTo)}</em> (matched: ${w.matchedKeywords.map(h).join(', ')})</div>`).join('');
-        warningsHtml = `<div class="syllabus-warnings" style="margin-top:10px;">
-          <div class="sw-header" onclick="this.nextElementSibling.classList.toggle('open')">
-            ⚠️ ${r.warningCount} topic assignment warning${r.warningCount>1?'s':''} — click to review
-            <span style="margin-left:auto;font-size:10px;opacity:.6;">Topics kept as-is. Review if needed.</span>
-          </div>
-          <div class="sw-body">${items}</div>
-        </div>`;
+    if(r.parseMethod==='subject-override'){
+      // Single-subject confirmation card
+      document.getElementById('syl-status').innerHTML=`<div style="background:rgba(20,180,160,.1);border:1px solid rgba(20,180,160,.3);border-radius:12px;padding:16px;"><div style="font-family:var(--fd);font-size:16px;font-weight:700;color:#14b4a0;margin-bottom:8px;">✅ ${h(r.breakdown[0].name)} syllabus saved</div><div style="font-size:13px;color:rgba(248,246,241,.7);">${r.totalTopics} topics loaded · Pre-generation queued</div></div>`;
+      if(bdEl) bdEl.style.display='none';
+    } else {
+      // Multi-subject success
+      const _methodBadge={'regex':'⚡ Fast (outline detected)','ai':'🤖 AI parsed','fallback-split':'⚠️ Basic split (verify results)'};
+      const _methodLabel=_methodBadge[r.parseMethod]?` &nbsp;·&nbsp; <span style="font-size:11px;opacity:.65;">${_methodBadge[r.parseMethod]}</span>`:'';
+      document.getElementById('syl-status').innerHTML=`<div style="color:var(--teal);font-size:13px;padding:8px;">✅ Saved! ${r.subjects} subjects, ${r.totalTopics} topics. Pre-generating content now…${_methodLabel}</div>`;
+      if(bdEl && r.breakdown?.length){
+        const clr={civil:'#4a9eff',criminal:'#e07080',political:'#50d090',labor:'#f0a040',commercial:'#a070e0',taxation:'#40c0b0',remedial:'#e0c050',ethics:'#c0a080',custom:'#8899aa'};
+        const rows=r.breakdown.map(s=>`<div style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12px;"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${clr[s.key]||'#888'};flex-shrink:0;"></span><span style="flex:1;color:rgba(248,246,241,.8);">${h(s.name)}</span><span style="color:var(--muted);font-family:var(--fm);">${s.topicCount} topics</span></div>`).join('');
+        const unknownHtml=r.unknownTopics?.length?`<div style="margin-top:8px;padding:8px;background:rgba(155,35,53,.1);border-radius:6px;font-size:11px;color:#e07080;">⚠️ ${r.unknownTopics.length} unrecognized subject(s) skipped: ${r.unknownTopics.map(h).join(', ')}</div>`:'';
+        let warningsHtml='';
+        if(r.warnings?.length){
+          const items=r.warnings.map(w=>`<div class="sw-item">⚠ <strong>${h(w.topic)}</strong> is under <em>${h(w.assignedTo)}</em> but keywords suggest <em>${h(w.possiblyBelongsTo)}</em> (matched: ${w.matchedKeywords.map(h).join(', ')})</div>`).join('');
+          warningsHtml=`<div class="syllabus-warnings" style="margin-top:10px;"><div class="sw-header" onclick="this.nextElementSibling.classList.toggle('open')">⚠️ ${r.warningCount} topic assignment warning${r.warningCount>1?'s':''} — click to review<span style="margin-left:auto;font-size:10px;opacity:.6;">Topics kept as-is. Review if needed.</span></div><div class="sw-body">${items}</div></div>`;
+        }
+        bdEl.innerHTML=`<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:12px 14px;"><div style="font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;margin-bottom:8px;">Subjects Parsed</div>${rows}${unknownHtml}</div>${warningsHtml}`;
+        bdEl.style.display='';
       }
-      bdEl.innerHTML=`<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:12px 14px;"><div style="font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;margin-bottom:8px;">Subjects Parsed</div>${rows}${unknownHtml}</div>${warningsHtml}`;
-      bdEl.style.display='';
     }
     document.getElementById('adminGenPanel').style.display='block';
     document.getElementById('adminGenDone').style.display='none';
