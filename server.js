@@ -16,6 +16,12 @@ const API_KEY   = process.env.ANTHROPIC_API_KEY;
 const ADMIN_KEY = process.env.ADMIN_KEY || 'barbuddy-admin-2025';
 
 const VALID_SUBJECTS = ['civil','criminal','political','labor','commercial','taxation','remedial','ethics','custom'];
+const SUBJECT_MAP_FALLBACK = {
+  civil:'Civil Law', criminal:'Criminal Law', political:'Political Law',
+  labor:'Labor Law and Social Legislation', commercial:'Commercial Law',
+  taxation:'Taxation', remedial:'Remedial Law',
+  ethics:'Legal and Judicial Ethics', custom:'Custom Subject',
+};
 
 // Every Claude call is restricted to uploaded materials only
 const STRICT_SYSTEM_PROMPT = `You are a content extraction and organization assistant for a Philippine Bar Exam review platform. Your ONLY role is to read the uploaded reference materials provided and organize their content into structured study materials.
@@ -604,22 +610,12 @@ ${sec.text.slice(0,6000)}`;
   return { subjects: allSubjects };
 }
 
-// ── ADMIN: Upload Syllabus + trigger pre-gen ────────────────
-app.post('/api/admin/syllabus', adminOnly, async (req, res) => {
-  const { name, content } = req.body;
-  if (!content) return res.status(400).json({ error: 'content required' });
-  try {
-    let parsed;
-    if (!API_KEY) {
-      // No AI key — fall back to regex parser
-      const subjects = parseSyllabusText(content);
-      parsed = { subjects };
-    } else if (content.length > 14000) {
-      // Long document — two-pass Claude parse
-      parsed = await parseSyllabusInPasses(content);
-    } else {
-      // Single-pass Claude parse
-      const prompt = `You are parsing a Philippine Bar Exam Syllabus. Extract ALL topics for EACH subject in the EXACT ORDER they appear in the document.
+// AI syllabus parser — single-pass for short docs, two-pass for long ones
+async function parseSyllabusWithAI(content) {
+  if (content.length > 14000) {
+    return await parseSyllabusInPasses(content);
+  }
+  const prompt = `You are parsing a Philippine Bar Exam Syllabus. Extract ALL topics for EACH subject in the EXACT ORDER they appear in the document.
 Preserve the full hierarchy: group headers, parent topics, and leaf topics.
 The 8 subjects are: Civil Law (civil), Criminal Law (criminal), Political Law (political), Labor Law and Social Legislation (labor), Commercial Law (commercial), Taxation (taxation), Remedial Law (remedial), Legal and Judicial Ethics (ethics).
 
@@ -633,47 +629,100 @@ Rules:
 
 OUTPUT FORMAT — CRITICAL:
 - Output ONLY the JSON object. No words before it. No words after it. No markdown fences.
-- Do NOT say "Looking at this document", "Here is the parsed structure", "I've analyzed", or any preamble.
+- Do NOT say "Looking at this document", "Here is the parsed structure", or any preamble.
 - Start your response with { and end with }
 {"subjects":[{"key":"civil","name":"Civil Law","topics":[{"name":"exact topic name","isGroup":false,"subject":"civil","subtopics":[],"children":[]}]}]}
 
 Syllabus text:
 ${content.slice(0, 14000)}`;
-      parsed = await callClaudeJSON([{ role:'user', content:prompt }], 4000);
-    }
+  return await callClaudeJSON([{ role:'user', content:prompt }], 4000);
+}
 
-    if (!parsed) {
+// ── ADMIN: Upload Syllabus + trigger pre-gen ────────────────
+app.post('/api/admin/syllabus', adminOnly, async (req, res) => {
+  const { name, content } = req.body;
+  if (!content?.trim()) return res.status(400).json({ error: 'content required' });
+
+  let parsed = null;
+  let parseMethod = 'unknown';
+
+  // ── Step 1: Regex parser (fast, no AI, works for standard outline format) ──
+  try {
+    const hasDividers    = /[-=]+.{3,40}[-=]+/.test(content);
+    const hasRomanNums   = /^[IVX]+\./m.test(content);
+    const hasLetterTopics = /^[A-Z]\. /m.test(content);
+    if (hasDividers || (hasRomanNums && hasLetterTopics)) {
+      console.log('[syllabus] Trying regex parser…');
+      const attempt = parseSyllabusText(content);
+      if (attempt?.subjects?.length > 0) {
+        parsed = attempt;
+        parseMethod = 'regex';
+        console.log(`[syllabus] Regex parsed ${parsed.subjects.length} subject(s)`);
+      }
+    }
+  } catch(e) {
+    console.warn('[syllabus] Regex parser error:', e.message);
+  }
+
+  // ── Step 2: AI fallback ──
+  if (!parsed && API_KEY) {
+    console.log('[syllabus] Falling back to AI parser…');
+    try {
+      const attempt = await parseSyllabusWithAI(content);
+      if (attempt?.subjects?.length > 0) { parsed = attempt; parseMethod = 'ai'; }
+    } catch(e) {
+      console.error('[syllabus] AI parser error:', e.message);
+    }
+  }
+
+  // ── Step 3: Last-resort divider split ──
+  if (!parsed || !parsed.subjects?.length) {
+    console.warn('[syllabus] All parsers failed — trying raw split');
+    const dividers    = content.match(/[-=]{3,}(.{3,40})[-=]{3,}/g) || [];
+    const dividerParts = content.split(/[-=]{3,}.{3,40}[-=]{3,}/g).filter(p => p.trim());
+    if (dividers.length > 1 && dividerParts.length > 1) {
+      parsed = {
+        subjects: dividers.map((d, i) => {
+          const subjName = d.replace(/[-=]/g, '').trim();
+          const key      = detectSubjectKeyFromName(subjName) || 'custom';
+          return {
+            key, name: SUBJECT_MAP_FALLBACK[key] || subjName,
+            topics: (dividerParts[i] || '').split('\n').filter(l => l.trim())
+              .map(l => ({ name: l.trim(), subject: key, subtopics: [], children: [] })),
+          };
+        }),
+      };
+      parseMethod = 'fallback-split';
+    } else {
       return res.status(422).json({
-        error: 'Syllabus parsing failed — Claude returned an unexpected response format. Try uploading again. If the problem persists, try a shorter or simpler syllabus document.',
+        error: 'Could not parse this syllabus format. Make sure each subject is separated by a divider like "-----Criminal Law-----" and topics use standard outline format (I. A. 1. a.).',
+        tip: 'Your content preview: ' + content.slice(0, 200),
       });
     }
-
-    // Validate and clean
-    const validated = validateAndCleanParsed(parsed);
-    const { parsed: finalParsed, warnings } = crossCheckSubjectAssignment(validated);
-
-    if (!finalParsed.subjects?.length) {
-      return res.status(400).json({ error:'Could not parse any subjects. Try plain text with clear subject headings.' });
-    }
-
-    // Save to KB
-    KB.syllabus = {
-      name: name || 'Bar Exam Syllabus',
-      rawText: content.slice(0, 60000),
-      topics: finalParsed.subjects,
-      uploadedAt: new Date().toISOString()
-    };
-    saveKB();
-
-    const totalTopics = countAllTopics(finalParsed.subjects.flatMap(s => s.topics||[]));
-    const breakdown   = finalParsed.subjects.map(s => ({ key:s.key, name:s.name, topicCount:countAllTopics(s.topics||[]) }));
-
-    res.json({ success:true, subjects:finalParsed.subjects.length, totalTopics, breakdown, unknownTopics:[], warnings, warningCount:warnings.length });
-    triggerPreGeneration();   // fire-and-forget
-  } catch(err) {
-    console.error('[syllabus] Parse error:', err);
-    res.status(500).json({ error:err.message });
   }
+
+  // Validate subject keys and cross-check assignments
+  const validated = validateAndCleanParsed(parsed);
+  const { parsed: finalParsed, warnings } = crossCheckSubjectAssignment(validated);
+
+  if (!finalParsed.subjects?.length) {
+    return res.status(400).json({ error: 'Could not parse any recognized subjects.' });
+  }
+
+  KB.syllabus = {
+    name: name || 'Bar Exam Syllabus',
+    rawText: content.slice(0, 60000),
+    topics: finalParsed.subjects,
+    parseMethod,
+    uploadedAt: new Date().toISOString(),
+  };
+  saveKB();
+  triggerPreGeneration();   // fire-and-forget
+
+  const breakdown  = finalParsed.subjects.map(s => ({ key: s.key, name: s.name, topicCount: countAllTopics(s.topics || []) }));
+  const totalTopics = breakdown.reduce((a, s) => a + s.topicCount, 0);
+  console.log(`[syllabus] Saved via ${parseMethod}:`, breakdown.map(s => `${s.name}: ${s.topicCount}`).join(', '));
+  res.json({ success: true, parseMethod, subjects: finalParsed.subjects.length, totalTopics, breakdown, warnings, warningCount: warnings.length });
 });
 
 // ── ADMIN: Upload Reference — save instantly, summarise in background ──
@@ -1457,55 +1506,145 @@ app.post('/api/admin/pastbar/manual', adminOnly, (req, res) => {
 const CHUNK_SIZE  = 10000;  // chars per chunk sent to Claude
 const MAX_CHUNKS  = 12;     // max chunks → up to ~120k chars processed
 
-// ── Fast synchronous syllabus parser (no Claude, no blocking) ─
-function parseSyllabusText(content) {
-  const SUBJECTS = [
-    { key:'civil',      name:'Civil Law',                 patterns:['civil law','obligations and contracts','family code','property','succession law','obligations'] },
-    { key:'labor',      name:'Labor Law',                 patterns:['labor law','social legislation','employment','labor standard','labor relation'] },
-    { key:'political',  name:'Political Law',             patterns:['political law','constitutional law','public international','administrative law','constitutional'] },
-    { key:'commercial', name:'Commercial Law',            patterns:['commercial law','corporation code','negotiable instruments','insurance','banking','securities','transport law'] },
-    { key:'criminal',   name:'Criminal Law',              patterns:['criminal law','revised penal code','special penal','special laws','penal code'] },
-    { key:'taxation',   name:'Taxation',                  patterns:['taxation','internal revenue','tariff','tax code','income tax','national tax'] },
-    { key:'remedial',   name:'Remedial Law',              patterns:['remedial law','civil procedure','criminal procedure','evidence','special proceedings','rules of court'] },
-    { key:'ethics',     name:'Legal and Judicial Ethics', patterns:['legal ethics','judicial ethics','code of professional','practical exercise','notarial','bar matters'] },
-  ];
-  const subjectMap = {};
-  let currentKey   = null;
-  let lastTopicIdx = -1;
+// ── Subject key resolver (standalone — used by parser + route fallback) ─
+function detectSubjectKeyFromName(name) {
+  const lower = name.toLowerCase();
+  const map = {
+    'civil': 'civil', 'criminal': 'criminal', 'political': 'political',
+    'labor': 'labor', 'social': 'labor', 'commercial': 'commercial',
+    'taxation': 'taxation', 'tax': 'taxation', 'remedial': 'remedial',
+    'ethics': 'ethics', 'custom': 'custom',
+  };
+  for (const [frag, key] of Object.entries(map)) {
+    if (lower.includes(frag)) return key;
+  }
+  return null;
+}
 
-  for (const rawLine of content.split(/\r?\n/)) {
-    const line  = rawLine.trim();
+// ── Hierarchical regex syllabus parser (no AI, handles outline format) ─
+// Handles: -----Subject----- dividers, I. sections, A. topics, 1. subtopics, a. sub-subtopics
+function parseSyllabusText(text) {
+  const SUBJECT_MAP = {
+    civil:'Civil Law', criminal:'Criminal Law', political:'Political Law',
+    labor:'Labor Law and Social Legislation', commercial:'Commercial Law',
+    taxation:'Taxation', remedial:'Remedial Law',
+    ethics:'Legal and Judicial Ethics', custom:'Custom Subject',
+  };
+  const NAME_TO_KEY = {
+    'civil':'civil', 'criminal':'criminal', 'political':'political',
+    'labor':'labor', 'social leg':'labor', 'commercial':'commercial',
+    'taxation':'taxation', 'tax law':'taxation', 'remedial':'remedial',
+    'legal ethics':'ethics', 'judicial eth':'ethics', 'ethics':'ethics', 'custom':'custom',
+  };
+  function detectSubjectKey(name) {
+    const lower = name.toLowerCase();
+    for (const [frag, key] of Object.entries(NAME_TO_KEY)) {
+      if (lower.includes(frag)) return key;
+    }
+    return null;
+  }
+
+  const rawLines = text.split('\n');
+  const subjects = [];
+  let currentSubject  = null;
+  let currentSection  = null;   // Roman numeral group (isGroup:true)
+  let currentTopic    = null;   // Letter item
+  let currentSubtopic = null;   // Number item
+
+  for (const rawLine of rawLines) {
+    const line       = rawLine.trim();
+    const indentLevel = rawLine.search(/\S/);
     if (!line) continue;
-    const lower = line.toLowerCase();
 
-    // Match subject headings (line must be short and contain a known pattern)
-    for (const s of SUBJECTS) {
-      if (line.length < 150 && s.patterns.some(p => lower.includes(p))) {
-        currentKey = s.key;
-        if (!subjectMap[s.key]) subjectMap[s.key] = { key:s.key, name:s.name, topics:[] };
-        lastTopicIdx = -1;
-        break;
-      }
+    // ─ DETECT SUBJECT DIVIDER ─
+    // Handles: -----Criminal Law-----  === Civil Law ===  * Taxation *
+    const dividerMatch = line.match(/^[-=*]+\s*(.+?)\s*[-=*]+$/);
+    const subjectFromDivider = dividerMatch
+      ? detectSubjectKey(dividerMatch[1])
+      : detectSubjectKey(line);
+
+    const isDivider = dividerMatch ||
+      (line.length < 50 && subjectFromDivider && !line.match(/^[IVX]+\./));
+
+    if (isDivider && subjectFromDivider) {
+      currentSubject = {
+        key: subjectFromDivider,
+        name: SUBJECT_MAP[subjectFromDivider] || (dividerMatch ? dividerMatch[1].trim() : line),
+        topics: [],
+      };
+      subjects.push(currentSubject);
+      currentSection = null; currentTopic = null; currentSubtopic = null;
+      continue;
     }
 
-    // Match topic lines that start with a numbering/bullet prefix
-    if (currentKey) {
-      const m = line.match(/^(?:[IVXivx]+[.)]\s+|\d+[.)]\s+|[A-Za-z][.)]\s+|[-•·*]\s+)(.+)/);
-      if (m) {
-        const name   = m[1].trim();
-        const indent = rawLine.search(/\S/);
-        if (name.length >= 3 && name.length <= 200) {
-          if (indent <= 3 || subjectMap[currentKey].topics.length === 0) {
-            subjectMap[currentKey].topics.push({ name, subject: currentKey, subtopics:[] });
-            lastTopicIdx = subjectMap[currentKey].topics.length - 1;
-          } else if (lastTopicIdx >= 0) {
-            subjectMap[currentKey].topics[lastTopicIdx].subtopics.push(name);
-          }
-        }
+    // Auto-detect subject from first lines if none set yet
+    if (!currentSubject) {
+      const autoKey = detectSubjectKey(line);
+      if (autoKey && line.length < 60) {
+        currentSubject = { key: autoKey, name: SUBJECT_MAP[autoKey] || line, topics: [] };
+        subjects.push(currentSubject);
       }
+      continue;
+    }
+
+    // ─ ROMAN NUMERAL SECTION ─  I. BASIC CONCEPTS
+    const romanMatch = line.match(/^(I{1,3}V?|VI{0,3}|I?X|XI{0,3}|[IVX]+)\.\s+(.+)$/);
+    if (romanMatch) {
+      currentSection = { name: romanMatch[2].trim(), isGroup: true, subject: currentSubject.key, subtopics: [], children: [] };
+      currentSubject.topics.push(currentSection);
+      currentTopic = null; currentSubtopic = null;
+      continue;
+    }
+
+    // ─ LETTER TOPIC ─  A. Nature and Concept
+    const letterMatch = line.match(/^([A-Z])\.\s+(.+)$/);
+    if (letterMatch) {
+      currentTopic = { name: letterMatch[2].trim(), isGroup: false, subject: currentSubject.key, subtopics: [], children: [] };
+      if (currentSection) currentSection.subtopics.push(currentTopic);
+      else currentSubject.topics.push(currentTopic);
+      currentSubtopic = null;
+      continue;
+    }
+
+    // ─ NUMBERED SUBTOPIC ─  1. Police Power
+    const numberMatch = line.match(/^(\d+)\.\s+(.+)$/);
+    if (numberMatch) {
+      currentSubtopic = { name: numberMatch[2].trim(), subject: currentSubject.key, children: [] };
+      const parent = currentTopic || currentSection;
+      if (parent) { parent.children = parent.children || []; parent.children.push(currentSubtopic); }
+      else currentSubject.topics.push(currentSubtopic);
+      continue;
+    }
+
+    // ─ LOWERCASE LETTER SUB-SUBTOPIC ─  a. Service Incentive Leave
+    const lowerMatch = line.match(/^([a-z])\.\s+(.+)$/);
+    if (lowerMatch) {
+      const subItem = { name: lowerMatch[2].trim(), subject: currentSubject.key, children: [] };
+      const parent = currentSubtopic || currentTopic;
+      if (parent) { parent.children = parent.children || []; parent.children.push(subItem); }
+      continue;
+    }
+
+    // ─ INDENTED CONTINUATION (≥4 spaces/tabs) ─
+    if (indentLevel >= 4) {
+      const lastItem = currentSubtopic || currentTopic || currentSection;
+      if (lastItem) {
+        lastItem.children = lastItem.children || [];
+        lastItem.children.push({ name: line, subject: currentSubject.key, children: [] });
+      }
+      continue;
+    }
+
+    // ─ FALLBACK — add as topic in current context ─
+    if (line.length > 2 && line.length < 200) {
+      const fallbackItem = { name: line, subject: currentSubject.key, subtopics: [], children: [] };
+      const parent = currentTopic || currentSection;
+      if (parent) { parent.children = parent.children || []; parent.children.push(fallbackItem); }
+      else currentSubject.topics.push(fallbackItem);
     }
   }
-  return Object.values(subjectMap);
+
+  return { subjects };
 }
 
 // ── Job queue: sequential background tasks with 3s gap ───────

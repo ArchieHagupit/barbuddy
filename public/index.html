@@ -3294,7 +3294,9 @@ async function uploadSyllabus(){
       staEl.innerHTML=`<div style="color:#e07080;font-size:13px;line-height:1.7;padding:12px;background:rgba(155,35,53,.1);border:1px solid rgba(155,35,53,.3);border-radius:10px;">⚠️ ${msg}</div>`;
       return;
     }
-    document.getElementById('syl-status').innerHTML=`<div style="color:var(--teal);font-size:13px;padding:8px;">✅ Saved! ${r.subjects} subjects, ${r.totalTopics} topics. Pre-generating content now…</div>`;
+    const _methodBadge={'regex':'⚡ Fast (outline detected)','ai':'🤖 AI parsed','fallback-split':'⚠️ Basic split (verify results)'};
+    const _methodLabel=_methodBadge[r.parseMethod]?` &nbsp;·&nbsp; <span style="font-size:11px;opacity:.65;">${_methodBadge[r.parseMethod]}</span>`:'';
+    document.getElementById('syl-status').innerHTML=`<div style="color:var(--teal);font-size:13px;padding:8px;">✅ Saved! ${r.subjects} subjects, ${r.totalTopics} topics. Pre-generating content now…${_methodLabel}</div>`;
     // Per-subject breakdown
     const bdEl=document.getElementById('syl-breakdown');
     if(bdEl && r.breakdown?.length){
