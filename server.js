@@ -445,22 +445,182 @@ function broadcast() {
   GEN.clients.forEach(c => sseSend(c, msg));
 }
 
+// ── SYLLABUS HELPERS ────────────────────────────────────────
+function countAllTopics(topics) {
+  let n = 0;
+  function walk(items) { (items||[]).forEach(t => { n++; walk(t.subtopics); walk(t.children); }); }
+  walk(topics);
+  return n;
+}
+
+// Recursively force every node to inherit the parent subject key
+function validateAndCleanParsed(parsed) {
+  const VALID_KEYS = ['civil','criminal','political','labor','commercial','taxation','remedial','ethics'];
+  parsed.subjects = (parsed.subjects||[]).filter(s => {
+    if (!VALID_KEYS.includes(s.key)) { console.warn(`[syllabus] Invalid key "${s.key}" — skipped`); return false; }
+    return true;
+  });
+  function tagTopics(topics, key) {
+    return (topics||[]).map(t => ({ ...t, subject:key, subtopics:tagTopics(t.subtopics,key), children:tagTopics(t.children,key) }));
+  }
+  parsed.subjects = parsed.subjects.map(s => ({ ...s, topics:tagTopics(s.topics, s.key) }));
+  return parsed;
+}
+
+// Keyword-based sanity check — logs warnings, never moves topics
+function crossCheckSubjectAssignment(parsed) {
+  const KW = {
+    labor:      ['labor code','dole','employment','wages','termination','leave','telecommuting','poea','overseas worker','union','cba','collective bargaining','strike','lockout','maternity','paternity','gynecological','social legislation'],
+    civil:      ['civil code','ncc','obligations','contracts','property','succession','family code','marriage','adoption','torts','damages'],
+    criminal:   ['revised penal code','felony','crime','penalty','conspiracy','recidivism','special penal'],
+    political:  ['constitution','sovereignty','due process','equal protection','bill of rights','administrative law'],
+    commercial: ['corporation code','partnership','negotiable instruments','insurance','banking','intellectual property'],
+    taxation:   ['nirc','income tax','estate tax','donor tax','tariff','value-added'],
+    remedial:   ['rules of court','civil procedure','criminal procedure','jurisdiction','pleadings','appeals','special proceedings'],
+    ethics:     ['legal ethics','notarial','disbarment','attorney','code of professional'],
+  };
+  const warnings = [];
+  parsed.subjects.forEach(subj => {
+    function check(topics) {
+      (topics||[]).forEach(t => {
+        const low = t.name.toLowerCase();
+        Object.entries(KW).forEach(([other, kws]) => {
+          if (other === subj.key) return;
+          const hits = kws.filter(k => low.includes(k));
+          if (hits.length >= 2) warnings.push({ topic:t.name, assignedTo:subj.key, possiblyBelongsTo:other, matchedKeywords:hits });
+        });
+        check(t.subtopics); check(t.children);
+      });
+    }
+    check(subj.topics);
+  });
+  if (warnings.length) {
+    console.warn('[syllabus] Assignment warnings:');
+    warnings.forEach(w => console.warn(`  "${w.topic}" under ${w.assignedTo} — keywords suggest ${w.possiblyBelongsTo}`));
+  }
+  return { parsed, warnings };
+}
+
+// Flatten all non-group leaf topics for the generation queue
+function flattenTopicsForGen(topics, subjKey, subjName) {
+  const result = [];
+  function walk(items) {
+    (items||[]).forEach(t => {
+      if (!t.isGroup) result.push({ subjKey, subjName, topicName:t.name, subtopics:[...(t.subtopics||[]),(t.children||[])].filter(x=>typeof x==='object').map(x=>x.name||x) });
+      walk(t.subtopics); walk(t.children);
+    });
+  }
+  walk(topics);
+  return result;
+}
+
+// Two-pass Claude parse for long documents (>14 000 chars)
+async function parseSyllabusInPasses(content) {
+  const SUBJECT_MAP = { civil:'Civil Law', criminal:'Criminal Law', political:'Political Law', labor:'Labor Law and Social Legislation', commercial:'Commercial Law', taxation:'Taxation', remedial:'Remedial Law', ethics:'Legal and Judicial Ethics' };
+  // Pass 1 — find subject boundaries
+  const p1 = `This is a Philippine Bar Exam Syllabus. Find where each of the 8 bar subject sections starts.
+Subjects: Civil Law, Criminal Law, Political Law, Labor Law and Social Legislation, Commercial Law, Taxation, Remedial Law, Legal and Judicial Ethics.
+Return ONLY valid JSON with no markdown:
+{ "sections": [ { "subject":"political","subjectName":"Political Law","headerText":"exact header as it appears in text" } ] }
+Document (first 8000 chars):
+${content.slice(0,8000)}`;
+  const raw1 = await callClaude([{role:'user',content:p1}], 1500);
+  const bounds = JSON.parse(raw1.replace(/^```json\s*/i,'').replace(/```$/,'').trim());
+
+  // Resolve character positions
+  const sections = [];
+  (bounds.sections||[]).forEach((b,i) => {
+    const start = content.indexOf(b.headerText);
+    if (start === -1) return;
+    const next = (bounds.sections||[]).slice(i+1).find(s => content.indexOf(s.headerText) > start);
+    const end   = next ? content.indexOf(next.headerText) : content.length;
+    sections.push({ subject:b.subject, subjectName:b.subjectName||SUBJECT_MAP[b.subject]||b.subject, text:content.slice(start,end) });
+  });
+
+  // Pass 2 — parse each section individually
+  const allSubjects = [];
+  for (const sec of sections) {
+    await sleep(800);
+    const p2 = `Parse ONLY this ${sec.subjectName} section of a Philippine Bar Exam Syllabus.
+Subject key: "${sec.subject}". Extract ALL topics in the EXACT ORDER they appear.
+Preserve full hierarchy. Tag every item with subject:"${sec.subject}".
+Return ONLY valid JSON with no markdown:
+{ "key":"${sec.subject}","name":"${sec.subjectName}","topics":[{"name":"exact name","isGroup":false,"subject":"${sec.subject}","subtopics":[],"children":[]}] }
+Section text:
+${sec.text.slice(0,6000)}`;
+    const raw2 = await callClaude([{role:'user',content:p2}], 3000);
+    const parsed = JSON.parse(raw2.replace(/^```json\s*/i,'').replace(/```$/,'').trim());
+    function forceSubj(topics, key) {
+      return (topics||[]).map(t => ({ ...t, subject:key, subtopics:forceSubj(t.subtopics,key), children:forceSubj(t.children,key) }));
+    }
+    allSubjects.push({ key:sec.subject, name:sec.subjectName, topics:forceSubj(parsed.topics||[], sec.subject) });
+    console.log(`[syllabus] Parsed ${sec.subjectName}: ${parsed.topics?.length||0} top-level items`);
+  }
+  return { subjects: allSubjects };
+}
+
 // ── ADMIN: Upload Syllabus + trigger pre-gen ────────────────
-// Uses fast regex parser — no Claude needed, returns immediately
-app.post('/api/admin/syllabus', adminOnly, (req, res) => {
+app.post('/api/admin/syllabus', adminOnly, async (req, res) => {
   const { name, content } = req.body;
   if (!content) return res.status(400).json({ error: 'content required' });
   try {
-    const subjects = parseSyllabusText(content);
-    if (!subjects.length) return res.status(400).json({ error: 'Could not parse any subjects. Try plain text with clear subject headings.' });
-    KB.syllabus = { name:name||'Bar Exam Syllabus', rawText:content.slice(0,60000), topics:subjects, uploadedAt:new Date().toISOString() };
+    let parsed;
+    if (!API_KEY) {
+      // No AI key — fall back to regex parser
+      const subjects = parseSyllabusText(content);
+      parsed = { subjects };
+    } else if (content.length > 14000) {
+      // Long document — two-pass Claude parse
+      parsed = await parseSyllabusInPasses(content);
+    } else {
+      // Single-pass Claude parse
+      const prompt = `You are parsing a Philippine Bar Exam Syllabus. Extract ALL topics for EACH subject in the EXACT ORDER they appear in the document.
+Preserve the full hierarchy: group headers, parent topics, and leaf topics.
+The 8 subjects are: Civil Law (civil), Criminal Law (criminal), Political Law (political), Labor Law and Social Legislation (labor), Commercial Law (commercial), Taxation (taxation), Remedial Law (remedial), Legal and Judicial Ethics (ethics).
+
+Rules:
+- Keep ALL topics in the ORDER they appear
+- isGroup:true for section headers that contain subtopics but are not themselves testable topics
+- isGroup:false for actual testable topics
+- Put sub-items inside subtopics[] or children[] of their parent
+- subject field must match the parent subject key exactly
+- Do NOT merge or skip topics
+
+Return ONLY valid JSON, no markdown:
+{"subjects":[{"key":"civil","name":"Civil Law","topics":[{"name":"exact topic name","isGroup":false,"subject":"civil","subtopics":[],"children":[]}]}]}
+
+Syllabus text:
+${content.slice(0, 14000)}`;
+      const raw = await callClaude([{ role:'user', content:prompt }], 4000);
+      parsed = JSON.parse(raw.replace(/^```json\s*/i,'').replace(/```$/,'').trim());
+    }
+
+    // Validate and clean
+    const validated = validateAndCleanParsed(parsed);
+    const { parsed: finalParsed, warnings } = crossCheckSubjectAssignment(validated);
+
+    if (!finalParsed.subjects?.length) {
+      return res.status(400).json({ error:'Could not parse any subjects. Try plain text with clear subject headings.' });
+    }
+
+    // Save to KB
+    KB.syllabus = {
+      name: name || 'Bar Exam Syllabus',
+      rawText: content.slice(0, 60000),
+      topics: finalParsed.subjects,
+      uploadedAt: new Date().toISOString()
+    };
     saveKB();
-    const totalTopics = subjects.reduce((a,s) => a+(s.topics?.length||0), 0);
-    const breakdown = subjects.map(s => ({ key:s.key, name:s.name, topicCount:s.topics?.length||0 }));
-    const unknownTopics = subjects.filter(s => !VALID_SUBJECTS.includes(s.key)).map(s => s.name);
-    res.json({ success:true, subjects:subjects.length, totalTopics, breakdown, unknownTopics });
+
+    const totalTopics = countAllTopics(finalParsed.subjects.flatMap(s => s.topics||[]));
+    const breakdown   = finalParsed.subjects.map(s => ({ key:s.key, name:s.name, topicCount:countAllTopics(s.topics||[]) }));
+
+    res.json({ success:true, subjects:finalParsed.subjects.length, totalTopics, breakdown, unknownTopics:[], warnings, warningCount:warnings.length });
     triggerPreGeneration();   // fire-and-forget
-  } catch(err) { res.status(500).json({ error:err.message }); }
+  } catch(err) {
+    console.error('[syllabus] Parse error:', err);
+    res.status(500).json({ error:err.message });
+  }
 });
 
 // ── ADMIN: Upload Reference — save instantly, summarise in background ──
@@ -645,7 +805,7 @@ app.post('/api/admin/generate', adminOnly, (req, res) => {
   if (!KB.syllabus) return res.status(400).json({ error:'No syllabus' });
   if (GEN.running) return res.json({ message:'Already running', done:GEN.done, total:GEN.total });
   triggerPreGeneration();
-  res.json({ message:'Started', total:KB.syllabus.topics.reduce((a,s)=>a+(s.topics?.length||0),0) });
+  res.json({ message:'Started', total:countAllTopics(KB.syllabus.topics.flatMap(s=>s.topics||[])) });
 });
 
 // ── PRE-GENERATION ENGINE ───────────────────────────────────
@@ -657,14 +817,7 @@ async function triggerPreGeneration() {
       console.warn(`triggerPreGeneration: skipping unknown subject key "${subj.key}"`);
       return;
     }
-    (subj.topics||[]).forEach(t => {
-      const topicSubj = t.subject || subj.key;
-      if (topicSubj !== subj.key) {
-        console.warn(`Skipping topic "${t.name}" — tagged to "${topicSubj}" but found under "${subj.key}"`);
-        return;
-      }
-      queue.push({ subjKey:subj.key, subjName:subj.name, topicName:t.name, subtopics:t.subtopics||[] });
-    });
+    queue.push(...flattenTopicsForGen(subj.topics, subj.key, subj.name));
   });
   if (!queue.length) return;
   await runGenQueue(queue);
@@ -676,9 +829,7 @@ async function triggerPreGenerationForSubject(subjKey) {
   const subj = KB.syllabus.topics.find(s => s.key === subjKey);
   if (!subj) return;
   delete CONTENT[subjKey];
-  const queue = (subj.topics||[])
-    .filter(t => (t.subject || subjKey) === subjKey)
-    .map(t => ({ subjKey, subjName:subj.name, topicName:t.name, subtopics:t.subtopics||[] }));
+  const queue = flattenTopicsForGen(subj.topics, subjKey, subj.name);
   await runGenQueue(queue);
 }
 
