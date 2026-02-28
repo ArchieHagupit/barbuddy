@@ -585,6 +585,52 @@ select.form-input{cursor:pointer;}
 .ur-act.del{color:#e07080;border-color:rgba(155,35,53,.4);background:transparent;}
 .ur-act.view{color:var(--gold);border-color:rgba(201,168,76,.4);background:rgba(201,168,76,.1);}
 .ur-act.access{color:#7ab8ff;border-color:rgba(122,184,255,.35);background:rgba(122,184,255,.08);}
+/* Syllabus Builder */
+.sb-section{margin-bottom:16px;border:1px solid rgba(201,168,76,.15);border-radius:12px;overflow:hidden;}
+.sb-section-header{display:flex;align-items:center;gap:8px;padding:10px 14px;background:rgba(201,168,76,.05);border-bottom:1px solid rgba(201,168,76,.1);}
+.sb-roman{font-family:var(--fd);font-size:14px;font-weight:900;color:var(--gold);min-width:28px;}
+.sb-section-title{font-family:var(--fd);font-size:13px;font-weight:800;color:var(--gold-l);text-transform:uppercase;letter-spacing:.04em;flex:1;}
+.sb-node{border-top:1px solid var(--bdr2);}
+.sb-node-row{display:flex;align-items:center;gap:6px;padding:8px 14px;transition:background .15s;}
+.sb-node-row:hover{background:rgba(255,255,255,.03);}
+.sb-label{font-family:var(--fm);font-size:12px;font-weight:700;color:var(--muted);min-width:24px;}
+.sb-node-title{font-size:13px;color:var(--text,var(--white));flex:1;line-height:1.4;}
+.sb-group>.sb-node-row>.sb-node-title{font-weight:600;}
+.sb-pdf-badge{font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px;background:rgba(20,180,160,.1);border:1px solid rgba(20,180,160,.2);color:var(--teal);white-space:nowrap;}
+.sb-no-pdf{font-size:10px;color:var(--muted);}
+.sb-actions{display:flex;gap:3px;align-items:center;flex-shrink:0;}
+.sb-btn-icon,.sb-btn-edit,.sb-btn-delete,.sb-btn-add,.sb-btn-pdf{padding:3px 6px;font-size:11px;border-radius:5px;border:1px solid transparent;cursor:pointer;transition:all .15s;background:transparent;font-family:var(--fb);}
+.sb-btn-icon{color:var(--muted);border-color:var(--bdr2);}
+.sb-btn-icon:hover:not(:disabled){background:rgba(255,255,255,.07);color:var(--text,var(--white));}
+.sb-btn-icon:disabled{opacity:.25;cursor:default;}
+.sb-btn-edit{color:var(--gold);}
+.sb-btn-edit:hover{background:rgba(201,168,76,.1);border-color:rgba(201,168,76,.2);}
+.sb-btn-delete{color:#e05060;}
+.sb-btn-delete:hover{background:rgba(224,80,96,.1);border-color:rgba(224,80,96,.2);}
+.sb-btn-add{color:var(--teal);font-weight:800;font-size:13px;}
+.sb-btn-add:hover{background:rgba(20,180,160,.1);border-color:rgba(20,180,160,.2);}
+.sb-btn-pdf{color:var(--muted);font-size:10px;border-color:var(--bdr2);}
+.sb-btn-pdf:hover{background:rgba(255,255,255,.05);color:var(--text,var(--white));}
+.sb-add-child-btn{width:100%;padding:7px 14px;font-size:12px;color:var(--muted);background:transparent;border:none;border-top:1px dashed var(--bdr2);cursor:pointer;text-align:left;transition:all .15s;font-family:var(--fb);}
+.sb-add-child-btn:hover{color:var(--gold);background:rgba(201,168,76,.04);}
+.sb-add-form{padding:10px 14px;background:rgba(201,168,76,.04);border-top:1px solid rgba(201,168,76,.1);}
+.sb-field-label{display:block;font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:3px;}
+.sb-field-input{background:rgba(255,255,255,.05);border:1px solid var(--bdr2);border-radius:8px;padding:7px 10px;color:var(--text,var(--white));font-size:13px;font-family:var(--fb);transition:border-color .15s;width:100%;box-sizing:border-box;}
+.sb-field-input:focus{outline:none;border-color:var(--gold);}
+.sb-save-btn{padding:6px 14px;background:linear-gradient(135deg,var(--gold),var(--gold-d));color:#1a1200;font-weight:800;font-size:12px;border:none;border-radius:7px;cursor:pointer;font-family:var(--fd);}
+.sb-cancel-btn{padding:6px 12px;background:transparent;border:1px solid var(--bdr2);color:var(--muted);font-size:12px;border-radius:7px;cursor:pointer;font-family:var(--fb);}
+.sb-modal-overlay{position:fixed;inset:0;background:rgba(8,12,24,.85);backdrop-filter:blur(6px);z-index:2000;display:flex;align-items:center;justify-content:center;padding:20px;}
+.sb-modal{background:var(--card,#1a2235);border:1px solid rgba(201,168,76,.2);border-radius:16px;padding:24px;width:100%;max-width:480px;box-shadow:0 24px 64px rgba(0,0,0,.5);}
+.sb-modal-header{font-family:var(--fd);font-size:16px;font-weight:800;color:var(--gold-l);margin-bottom:16px;}
+.sb-pdf-current{margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--bdr2);}
+.sb-delete-pdf-btn{margin-top:8px;padding:5px 12px;font-size:11px;font-weight:700;color:#e05060;background:rgba(224,80,96,.08);border:1px solid rgba(224,80,96,.2);border-radius:7px;cursor:pointer;font-family:var(--fb);}
+.sb-upload-pdf-btn{padding:10px 18px;background:rgba(255,255,255,.04);border:1px dashed var(--bdr2);color:var(--muted);border-radius:10px;cursor:pointer;font-size:13px;font-family:var(--fb);transition:all .15s;width:100%;box-sizing:border-box;}
+.sb-upload-pdf-btn:hover{background:rgba(201,168,76,.07);border-color:rgba(201,168,76,.3);color:var(--gold-l);}
+/* Lesson PDF Viewer */
+.lesson-pdf-viewer{display:flex;flex-direction:column;height:100%;min-height:580px;}
+.lesson-pdf-header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:var(--card,rgba(255,255,255,.03));border:1px solid var(--bdr2);border-radius:12px 12px 0 0;border-bottom:none;flex-wrap:wrap;gap:8px;}
+.lesson-pdf-frame-wrap{flex:1;border:1px solid var(--bdr2);border-radius:0 0 12px 12px;overflow:hidden;min-height:540px;}
+.lesson-pdf-iframe{width:100%;height:100%;min-height:540px;border:none;display:block;background:#fff;}
 .admin-locked{text-align:center;padding:48px;color:var(--muted);}
 /* Gen progress panel */
 .gen-prog-panel{background:linear-gradient(135deg,#0a1000,#141800);border:1px solid rgba(255,140,66,.25);border-radius:14px;padding:18px;margin-top:14px;}
@@ -1030,37 +1076,33 @@ select.form-input{cursor:pointer;}
       </div>
     </div>
     <div class="admin-grid">
-      <!-- SYLLABUS -->
-      <div class="admin-panel">
-        <h3>📋 Bar Exam Syllabus</h3>
-        <p>Upload once. Claude parses all subjects and topics, populates the Learn sidebar, and <strong>immediately kicks off pre-generation</strong> of all lessons and quizzes in the background.</p>
-        <div id="syllabusStatus" style="padding:10px;background:rgba(255,255,255,.04);border-radius:8px;margin-bottom:12px;font-size:12px;color:var(--muted);">No syllabus uploaded yet.</div>
-        <label class="form-label">Name</label>
-        <input class="form-input" id="syl-name" placeholder="e.g. 2025 Bar Exam Syllabus">
-        <label class="form-label">Subject</label>
-        <select id="syllabusSubject" class="form-input">
-          <option value="">— All Subjects (full syllabus) —</option>
-          <option value="civil">Civil Law</option>
-          <option value="criminal">Criminal Law</option>
-          <option value="political">Political Law</option>
-          <option value="labor">Labor Law &amp; Social Legislation</option>
-          <option value="commercial">Commercial Law</option>
-          <option value="taxation">Taxation</option>
-          <option value="remedial">Remedial Law</option>
-          <option value="ethics">Legal and Judicial Ethics</option>
-          <option disabled>──────────────────</option>
-          <option value="custom">📁 Custom Subject</option>
-        </select>
-        <div style="font-size:11px;color:var(--muted);margin-top:4px;margin-bottom:12px;line-height:1.5;">Select a specific subject to assign ALL topics in this upload to that subject. Select "All Subjects" only if the document covers the full bar syllabus with subject dividers.</div>
-        <label class="form-label">Content (paste or upload file)</label>
-        <textarea class="form-input" id="syl-content" rows="5" placeholder="Paste syllabus text here…" style="resize:vertical;"></textarea>
-        <div style="display:flex;gap:8px;margin-bottom:12px;">
-          <input type="file" id="syl-file" accept=".txt,.md,.pdf,.doc,.docx" style="display:none;" onchange="readFile(this,'syl-content')">
-          <button class="btn-og" onclick="document.getElementById('syl-file').click()">📄 Upload File</button>
+      <!-- SYLLABUS BUILDER -->
+      <div class="admin-panel" id="syllabusBuilderPanel" style="grid-column:1/-1;">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
+          <div>
+            <h3 style="margin-bottom:3px;">📋 Syllabus Builder</h3>
+            <p style="margin:0;">Manually build the topic hierarchy per subject. Each leaf topic can have a PDF review material attached — students see it directly in the Learn tab.</p>
+          </div>
         </div>
-        <div id="syl-status"></div>
-        <div id="syl-breakdown" style="display:none;margin-bottom:12px;"></div>
-        <button class="btn-gold" onclick="uploadSyllabus()" style="width:100%;justify-content:center;">📋 Save &amp; Pre-generate</button>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
+          <div>
+            <label class="form-label">SUBJECT</label>
+            <select id="syllabus-subject-select" class="form-input" style="min-width:200px;" onchange="syllabusBuilderSubject=this.value;renderSyllabusBuilder()">
+              <option value="civil">Civil Law</option>
+              <option value="criminal">Criminal Law</option>
+              <option value="political">Political Law</option>
+              <option value="labor">Labor Law &amp; Social Leg.</option>
+              <option value="commercial">Commercial Law</option>
+              <option value="taxation">Taxation</option>
+              <option value="remedial">Remedial Law</option>
+              <option value="ethics">Legal &amp; Judicial Ethics</option>
+            </select>
+          </div>
+        </div>
+        <div id="syllabus-builder-container" style="margin-bottom:14px;max-height:560px;overflow-y:auto;border:1px solid var(--bdr2);border-radius:12px;padding:12px;">
+          <div style="text-align:center;padding:32px;color:var(--muted);font-size:13px;">Loading…</div>
+        </div>
+        <button class="btn-gold" onclick="showAddSectionForm()" style="width:100%;justify-content:center;">+ Add Section (Roman Numeral)</button>
       </div>
       <!-- REFERENCES -->
       <div class="admin-panel">
@@ -1259,6 +1301,11 @@ let manualBatch=[], manualQNum=1;
 let adminKey='', sseSource=null;
 let currentSubject = null;  // active subject key ('civil'|'labor'|...|'custom'|null)
 let currentMode    = null;  // active mode ('learn'|'quiz'|'mockbar'|null)
+// Syllabus builder state
+let syllabusBuilderSubject = 'civil';
+let syllabusData = {};
+// Per-subject syllabus cache for Learn tab
+const syllabusCache = {};
 let mbCount = 20, mbTimeMins = 0, mbDifficulty = 'balanced';  // mock bar setup state
 
 const SUBJS=[
@@ -1655,7 +1702,18 @@ function renderLearnTab(subj, container) {
         </div>
       </div>
     </div>`;
-  renderSyllabusTree('', subj);
+  // Load syllabus tree for this subject (fetch if not cached)
+  loadSubjectSyllabus(subj).then(() => renderSyllabusTree('', subj));
+}
+
+async function loadSubjectSyllabus(subj) {
+  if (syllabusCache[subj]) return syllabusCache[subj];
+  try {
+    const headers = sessionToken ? {'x-session-token': sessionToken} : {};
+    const r = await fetch(`/api/syllabus/${subj}`, { headers });
+    if (r.ok) { syllabusCache[subj] = await r.json(); }
+  } catch(e) {}
+  return syllabusCache[subj] || { sections: [] };
 }
 
 function renderQuizTab(subj, container) {
@@ -2098,11 +2156,15 @@ function toggleTopicChildren(iconEl) {
 }
 
 // DOM-based topic tree renderer — builds elements directly into container
+// Handles both new format (node.title, node.id, node.pdfId) and legacy (node.name)
 function renderTopicTree(nodes, container, subj, depth) {
   depth = depth || 0;
   if (!nodes || !nodes.length) return;
   nodes.forEach(node => {
     const children = node.children || [];
+    const displayName = node.title || node.name || '';
+    const isGroup = children.length > 0;
+
     if (node.type === 'section') {
       // Roman numeral section header — expand/collapse, non-clickable
       const headerEl = document.createElement('div');
@@ -2112,7 +2174,7 @@ function renderTopicTree(nodes, container, subj, depth) {
       arrowEl.textContent = '▶';
       const nameEl = document.createElement('span');
       nameEl.className = 'tl-section-name';
-      nameEl.textContent = node.name;
+      nameEl.textContent = (node.label ? node.label + '. ' : '') + displayName;
       headerEl.appendChild(arrowEl);
       headerEl.appendChild(nameEl);
       const bodyEl = document.createElement('div');
@@ -2125,7 +2187,7 @@ function renderTopicTree(nodes, container, subj, depth) {
       container.appendChild(bodyEl);
       if (children.length) renderTopicTree(children, bodyEl, subj, depth + 1);
 
-    } else if (node.type === 'group' || node.isGroup) {
+    } else if (node.type === 'group' || node.isGroup || isGroup) {
       // Topic group — expand/collapse, non-clickable
       const groupEl = document.createElement('div');
       groupEl.className = 'tl-group';
@@ -2136,9 +2198,15 @@ function renderTopicTree(nodes, container, subj, depth) {
       arrowEl.textContent = '▶';
       const nameEl = document.createElement('span');
       nameEl.className = 'tl-group-name';
-      nameEl.textContent = node.name;
+      nameEl.textContent = (node.label ? node.label + '. ' : '') + displayName;
       headerEl.appendChild(arrowEl);
       headerEl.appendChild(nameEl);
+      if (node.pdfId) {
+        const pdfBadge = document.createElement('span');
+        pdfBadge.style.cssText = 'font-size:10px;color:var(--teal);margin-left:5px;';
+        pdfBadge.textContent = '📄';
+        headerEl.appendChild(pdfBadge);
+      }
       const bodyEl = document.createElement('div');
       bodyEl.className = 'tl-group-body open';
       headerEl.addEventListener('click', () => {
@@ -2152,21 +2220,28 @@ function renderTopicTree(nodes, container, subj, depth) {
 
     } else {
       // Learnable topic — clickable leaf
-      const cached = isTopicCached(subj, node.name);
-      const genNow = KB.genState?.running && KB.genState?.current?.includes(node.name);
+      const cached = !node.pdfId && isTopicCached(subj, displayName);
+      const genNow = !node.pdfId && KB.genState?.running && KB.genState?.current?.includes(displayName);
       const topicEl = document.createElement('div');
-      topicEl.className = 'tl-topic' + (cached ? ' tl-done' : '');
+      topicEl.className = 'tl-topic' + (cached ? ' tl-done' : '') + (node.pdfId ? ' tl-has-pdf' : '');
+      topicEl.setAttribute('data-node-id', node.id || '');
       topicEl.setAttribute('data-subj-key', subj);
-      topicEl.setAttribute('data-topic-name', node.name);
+      topicEl.setAttribute('data-topic-name', displayName);
       const checkEl = document.createElement('span');
       checkEl.className = 'tl-topic-check';
-      checkEl.textContent = cached ? '✓' : '○';
+      checkEl.textContent = node.pdfId ? '📄' : cached ? '✓' : '○';
       const nameEl = document.createElement('span');
       nameEl.className = 'tl-topic-name';
-      nameEl.textContent = node.name;
+      nameEl.textContent = (node.label ? node.label + '. ' : '') + displayName;
       topicEl.appendChild(checkEl);
       topicEl.appendChild(nameEl);
-      if (genNow) {
+      if (node.pdfId) {
+        const b = document.createElement('span');
+        b.className = 'tl-cached-badge';
+        b.style.cssText = 'background:rgba(20,180,160,.1);border-color:rgba(20,180,160,.2);color:var(--teal);';
+        b.textContent = 'PDF';
+        topicEl.appendChild(b);
+      } else if (genNow) {
         const b = document.createElement('span');
         b.className = 'ready-badge rb-gen'; b.textContent = 'gen…';
         topicEl.appendChild(b);
@@ -2175,7 +2250,10 @@ function renderTopicTree(nodes, container, subj, depth) {
         b.className = 'tl-cached-badge'; b.textContent = 'cached';
         topicEl.appendChild(b);
       }
-      topicEl.addEventListener('click', () => loadTopicContent(subj, node.name));
+      topicEl.addEventListener('click', () => {
+        if (node.id) { clickSyllabusNode(subj, node); }
+        else { loadTopicContent(subj, displayName); } // legacy fallback
+      });
       container.appendChild(topicEl);
     }
   });
@@ -2183,65 +2261,41 @@ function renderTopicTree(nodes, container, subj, depth) {
 
 function renderSyllabusTree(filter, subjFilter) {
   filter = filter || '';
-  subjFilter = subjFilter || null;
+  const subj = subjFilter || currentSubject;
   const tree = document.getElementById('syllabusTree');
   if (!tree) return;
-  if (!KB.hasSyllabus && !KB.syllabusTopics?.length) {
-    tree.innerHTML = `<div style="padding:20px 12px;text-align:center;color:var(--muted);font-size:12px;line-height:1.6;"><div style="font-size:28px;margin-bottom:8px;opacity:.4;">📋</div>Upload Bar Syllabus in Admin.</div>`;
+  const subjData = syllabusCache[subj];
+  const sections = subjData?.sections || [];
+  if (!sections.length) {
+    tree.innerHTML = `<div style="padding:20px 12px;text-align:center;color:var(--muted);font-size:12px;line-height:1.6;"><div style="font-size:28px;margin-bottom:8px;opacity:.4;">📋</div>No topics yet. Admin can add them in the Syllabus Builder.</div>`;
     return;
   }
   const fl = filter.toLowerCase();
   tree.innerHTML = '';
-  let tAll = 0, tDone = 0;
-
-  (KB.syllabusTopics || []).forEach(subj => {
-    if (subjFilter && subj.key !== subjFilter) return;
-    const sub = SUBJS.find(s => s.key === subj.key) || { name: subj.name || subj.key, cls: 'sg-gen' };
-    const allLeaves = flattenLeafTopics(subj.topics || []);
-    const doneCnt = allLeaves.filter(t => isTopicCached(subj.key, t.name)).length;
-    tAll += allLeaves.length;
-    tDone += doneCnt;
-    const hasRef = KB.references?.some(r => r.subject === subj.key);
-
-    const wrapper = document.createElement('div');
-    const hdr = document.createElement('div');
-    hdr.className = 'subj-hdr open';
-    hdr.innerHTML = `<span class="chev">▶</span><span class="subj-label">${h(sub.name)}</span>${hasRef ? '<span style="font-size:9px;color:var(--teal);" title="References loaded">📚</span>' : ''}<span class="subj-cnt">${doneCnt}/${allLeaves.length}</span>`;
-    const listEl = document.createElement('div');
-    listEl.className = 'topic-list open';
-    hdr.addEventListener('click', () => { hdr.classList.toggle('open'); listEl.classList.toggle('open'); });
-    wrapper.appendChild(hdr);
-    wrapper.appendChild(listEl);
-
-    if (fl) {
-      // Flat filtered list
-      const matches = allLeaves.filter(t => t.name.toLowerCase().includes(fl));
-      if (!matches.length) return;
-      matches.forEach(t => {
-        const cached = isTopicCached(subj.key, t.name);
-        const genNow = KB.genState?.running && KB.genState?.current?.includes(t.name);
-        const el = document.createElement('div');
-        el.className = 'tl-topic' + (cached ? ' tl-done' : '');
-        el.setAttribute('data-subj-key', subj.key);
-        el.setAttribute('data-topic-name', t.name);
-        el.innerHTML = `<span class="tl-topic-check">${cached ? '✓' : '○'}</span><span class="tl-topic-name">${h(t.name)}</span>${genNow ? '<span class="ready-badge rb-gen">gen…</span>' : cached ? '<span class="tl-cached-badge">cached</span>' : ''}`;
-        el.addEventListener('click', () => loadTopicContent(subj.key, t.name));
-        listEl.appendChild(el);
-      });
-    } else {
-      // Hierarchical tree
-      renderTopicTree(subj.topics || [], listEl, subj.key, 0);
-      if (!listEl.children.length) return;
-    }
-    tree.appendChild(wrapper);
-  });
-
-  if (!tree.children.length) {
-    tree.innerHTML = `<div style="padding:18px;text-align:center;color:var(--muted);font-size:12px;">No topics match.</div>`;
+  // Collect all leaf topics for flat search
+  const allLeaves = [];
+  function collectLeaves(nodes) {
+    (nodes || []).forEach(n => {
+      if (!(n.children?.length)) allLeaves.push({ id: n.id, title: n.title, pdfId: n.pdfId, node: n });
+      collectLeaves(n.children || []);
+    });
   }
-  const pct = tAll ? Math.round(tDone / tAll * 100) : 0;
-  const pctEl = document.getElementById('learn-pct'); if (pctEl) pctEl.textContent = pct + '%';
-  const fillEl = document.getElementById('learn-fill'); if (fillEl) fillEl.style.width = pct + '%';
+  sections.forEach(sec => collectLeaves(sec.children || []));
+  if (fl) {
+    const matches = allLeaves.filter(t => t.title.toLowerCase().includes(fl));
+    if (!matches.length) { tree.innerHTML = `<div style="padding:18px;text-align:center;color:var(--muted);font-size:12px;">No topics match.</div>`; return; }
+    matches.forEach(t => {
+      const cached = isTopicCached(subj, t.title);
+      const el = document.createElement('div');
+      el.className = 'tl-topic' + (cached ? ' tl-done' : '') + (t.pdfId ? ' tl-has-pdf' : '');
+      el.setAttribute('data-node-id', t.id);
+      el.innerHTML = `<span class="tl-topic-check">${t.pdfId ? '📄' : cached ? '✓' : '○'}</span><span class="tl-topic-name">${h(t.title)}</span>${cached && !t.pdfId ? '<span class="tl-cached-badge">cached</span>' : ''}`;
+      el.addEventListener('click', () => clickSyllabusNode(subj, t.node));
+      tree.appendChild(el);
+    });
+  } else {
+    renderTopicTree(sections, tree, subj, 0);
+  }
 }
 function filterTopics(v){renderSyllabusTree(v, currentSubject);}
 
@@ -2288,6 +2342,56 @@ async function clickTopic(subjKey, topicName) {
 
   // 4) On-demand generation (fallback if pre-gen hasn't reached this yet)
   await genOnDemand(subjKey, topicName);
+}
+
+// PDF-aware topic click for new manual syllabus nodes
+async function clickSyllabusNode(subjKey, node) {
+  if (!node) return;
+  const displayName = node.title || node.name || '';
+  // Update active state in tree
+  document.querySelectorAll('.tl-topic').forEach(t => {
+    t.classList.remove('tl-selected');
+    if (t.getAttribute('data-node-id') === node.id) t.classList.add('tl-selected');
+  });
+  curSubj = subjKey; curTopic = displayName; curPage = 0;
+  const sub = SUBJS.find(s => s.key === subjKey) || { name: subjKey, cls: 'sg-gen' };
+  const lpBC = document.getElementById('lpBC');
+  if (lpBC) lpBC.innerHTML = `<span class="sbg ${sub.cls}">${h(sub.name)}</span> &nbsp;›&nbsp; <strong>${h((node.label ? node.label + '. ' : '') + displayName)}</strong>`;
+  const lpTB = document.getElementById('lpTopbar');
+  if (lpTB) lpTB.style.display = 'flex';
+  // If node has a PDF — show PDF viewer
+  if (node.pdfId) {
+    const lpContent = document.getElementById('lpContent');
+    const lpFooter  = document.getElementById('lpFooter');
+    if (lpFooter) lpFooter.style.display = 'none';
+    if (lpContent) lpContent.innerHTML = `
+      <div class="lesson-pdf-viewer">
+        <div class="lesson-pdf-header">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span style="font-size:22px;">📄</span>
+            <div>
+              <div style="font-family:var(--fd);font-size:15px;font-weight:700;color:var(--text,var(--white));">${h(displayName)}</div>
+              <div style="font-size:11px;color:var(--muted);">Review Material · ${h(node.pdfName || 'Document')}</div>
+            </div>
+          </div>
+          <a href="/api/syllabus/pdf/${node.id}" target="_blank" download="${h(node.pdfName||'review.pdf')}"
+            style="padding:7px 14px;background:rgba(201,168,76,.1);border:1px solid rgba(201,168,76,.3);border-radius:8px;color:var(--gold);font-size:12px;font-weight:700;text-decoration:none;white-space:nowrap;">
+            ⬇ Download
+          </a>
+        </div>
+        <div class="lesson-pdf-frame-wrap">
+          <iframe src="/api/syllabus/pdf/${node.id}" class="lesson-pdf-iframe" title="${h(displayName)}" type="application/pdf">
+            <div style="text-align:center;padding:40px;color:var(--muted);">
+              Your browser cannot display PDFs inline.<br><br>
+              <a href="/api/syllabus/pdf/${node.id}" target="_blank" style="color:var(--gold);">Open PDF in new tab ↗</a>
+            </div>
+          </iframe>
+        </div>
+      </div>`;
+    return;
+  }
+  // No PDF — fall back to AI-generated / cached lesson content
+  await clickTopic(subjKey, displayName);
 }
 
 function renderNoMaterials(subjKey, topicName) {
@@ -3466,7 +3570,7 @@ async function unlockAdmin(){
     // Show admin panels
     document.getElementById('adminUserPanel').style.display='block';
     document.getElementById('adminResultsPanel').style.display='block';
-    loadAdminUsers();loadAdminResults();
+    loadAdminUsers();loadAdminResults();loadSyllabusBuilder();
     // Update registration toggle label
     fetch('/api/settings').then(r=>r.json()).then(s=>{
       const btn=document.getElementById('regToggleBtn');
@@ -3511,11 +3615,7 @@ function countLeafTopics(topics) {
   walk(topics); return n;
 }
 function updateSyllabusStatus(){
-  const el=document.getElementById('syllabusStatus');if(!el)return;
-  if(KB.hasSyllabus){
-    const n=(KB.syllabusTopics||[]).reduce((a,s)=>a+countLeafTopics(s.topics||[]),0);
-    el.innerHTML=`<span style="color:var(--teal);">✓ ${h(KB.syllabusName||'Syllabus')} · ${KB.syllabusTopics?.length||0} subjects · ${n} topics</span>`;
-  } else el.textContent='No syllabus uploaded yet.';
+  // Legacy function — syllabus status is now shown inline in the builder panel
 }
 
 async function adminPost(url,body,status){
@@ -4097,6 +4197,269 @@ async function deleteResult(resultId) {
   if (!confirm('Delete this result?')) return;
   await fetch(`/api/admin/results/${resultId}`, { method:'DELETE', headers:{'x-admin-key':window._adminKey||''} });
   loadAdminResults();
+}
+
+// ══════════════════════════════════
+// ADMIN: SYLLABUS BUILDER
+// ══════════════════════════════════
+async function loadSyllabusBuilder() {
+  try {
+    const r = await fetch('/api/syllabus', { headers: {'x-admin-key': adminKey||''} });
+    const d = await r.json();
+    syllabusData = d.subjects || {};
+    // Sync into per-subject syllabus cache for Learn tab too
+    Object.assign(syllabusCache, syllabusData);
+    renderSyllabusBuilder();
+  } catch(e) {
+    const c = document.getElementById('syllabus-builder-container');
+    if (c) c.innerHTML = `<div style="color:#e07080;font-size:12px;padding:16px;">Failed to load syllabus.</div>`;
+  }
+}
+
+function renderSyllabusBuilder() {
+  const subj = syllabusBuilderSubject;
+  const container = document.getElementById('syllabus-builder-container');
+  if (!container) return;
+  const sections = syllabusData[subj]?.sections || [];
+  if (!sections.length) {
+    container.innerHTML = `<div style="text-align:center;padding:32px;color:var(--muted);font-size:13px;"><div style="font-size:36px;margin-bottom:12px;">📋</div>No topics yet for this subject.<br>Click the button below to add the first section.</div>`;
+    return;
+  }
+  container.innerHTML = sections.map((sec, si) => renderSectionAdmin(sec, si, sections.length)).join('');
+}
+
+function renderSectionAdmin(sec, si, total) {
+  const children = sec.children || [];
+  return `<div class="sb-section" id="sbsec-${sec.id}">
+    <div class="sb-section-header">
+      <span class="sb-roman">${h(sec.label)}.</span>
+      <span class="sb-section-title">${h(sec.title)}</span>
+      <div class="sb-actions">
+        <button class="sb-btn-icon" title="Move up" onclick="moveSyllabusNode('${sec.id}',-1)" ${si===0?'disabled':''}>▲</button>
+        <button class="sb-btn-icon" title="Move down" onclick="moveSyllabusNode('${sec.id}',1)" ${si===total-1?'disabled':''}>▼</button>
+        <button class="sb-btn-edit" onclick="editSyllabusNode('${sec.id}')">✏️</button>
+        <button class="sb-btn-delete" onclick="deleteSyllabusNode('${sec.id}')">🗑</button>
+      </div>
+    </div>
+    <div class="sb-children">${children.map((child, ci) => renderNodeAdmin(child, ci, children.length, sec.id, 0)).join('')}</div>
+    <button class="sb-add-child-btn" onclick="showAddNodeForm('${sec.id}','${sec.id}')">+ Add topic under ${h(sec.label)}</button>
+    <div id="addform-${sec.id}"></div>
+  </div>`;
+}
+
+function renderNodeAdmin(node, idx, total, parentId, depth) {
+  const indent = depth * 18 + 16;
+  const isGroup = (node.children||[]).length > 0;
+  const hasPDF = !!node.pdfId;
+  const children = node.children || [];
+  return `<div class="sb-node ${isGroup?'sb-group':'sb-leaf'}" id="sbnode-${node.id}">
+    <div class="sb-node-row" style="padding-left:${indent}px">
+      <span class="sb-label">${h(node.label)}.</span>
+      <span class="sb-node-title">${h(node.title)}</span>
+      <div class="sb-node-badges" style="flex-shrink:0;">${hasPDF ? `<span class="sb-pdf-badge" title="${h(node.pdfName||'')}">📄 PDF</span>` : '<span class="sb-no-pdf">No PDF</span>'}</div>
+      <div class="sb-actions">
+        <button class="sb-btn-icon" title="Move up" onclick="moveSyllabusNode('${node.id}',-1)" ${idx===0?'disabled':''}>▲</button>
+        <button class="sb-btn-icon" title="Move down" onclick="moveSyllabusNode('${node.id}',1)" ${idx===total-1?'disabled':''}>▼</button>
+        <button class="sb-btn-pdf" onclick="managePDF('${node.id}','${node.pdfId||''}','${(node.pdfName||'').replace(/'/g,"\\'")}',event)">${hasPDF?'🔄 PDF':'📤 PDF'}</button>
+        <button class="sb-btn-add" title="Add child" onclick="showAddNodeForm('${node.id}','${node.id}')">+</button>
+        <button class="sb-btn-edit" onclick="editSyllabusNode('${node.id}')">✏️</button>
+        <button class="sb-btn-delete" onclick="deleteSyllabusNode('${node.id}')">🗑</button>
+      </div>
+    </div>
+    ${isGroup ? `<div class="sb-children">${children.map((c,ci)=>renderNodeAdmin(c,ci,children.length,node.id,depth+1)).join('')}</div>` : ''}
+    <div id="addform-${node.id}"></div>
+  </div>`;
+}
+
+function showAddSectionForm() {
+  sbInputModal({
+    title: '+ Add Section',
+    fields: [
+      { id:'label', label:'Roman Numeral Label', placeholder:'e.g. I, II, III…' },
+      { id:'title', label:'Section Title', placeholder:'e.g. NATIONAL TERRITORY' },
+    ],
+    onSave: async (vals) => {
+      if (!vals.label || !vals.title) { alert('Label and title required.'); return false; }
+      await fetch(`/api/admin/syllabus/${syllabusBuilderSubject}/section`, {
+        method: 'POST',
+        headers: {'Content-Type':'application/json','x-admin-key':adminKey||''},
+        body: JSON.stringify({ label: vals.label.toUpperCase(), title: vals.title.toUpperCase() }),
+      });
+      await loadSyllabusBuilder();
+    },
+  });
+}
+
+function showAddNodeForm(parentId, containerId) {
+  document.querySelectorAll('.sb-add-form').forEach(f => f.remove());
+  const container = document.getElementById('addform-' + containerId);
+  if (!container) return;
+  container.innerHTML = `<div class="sb-add-form">
+    <div style="display:flex;gap:8px;margin-bottom:8px;">
+      <div style="flex:0 0 72px">
+        <label class="sb-field-label">LABEL</label>
+        <input type="text" id="new-node-label-${containerId}" placeholder="A, B, 1…" class="sb-field-input" style="text-align:center;">
+      </div>
+      <div style="flex:1">
+        <label class="sb-field-label">TITLE</label>
+        <input type="text" id="new-node-title-${containerId}" placeholder="Topic title…" class="sb-field-input">
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;">
+      <button class="sb-save-btn" onclick="submitAddNode('${parentId}','${containerId}')">✓ Add</button>
+      <button class="sb-cancel-btn" onclick="this.closest('.sb-add-form').remove()">Cancel</button>
+    </div>
+  </div>`;
+  document.getElementById(`new-node-title-${containerId}`)?.focus();
+}
+
+async function submitAddNode(parentId, containerId) {
+  const label = document.getElementById(`new-node-label-${containerId}`)?.value?.trim();
+  const title = document.getElementById(`new-node-title-${containerId}`)?.value?.trim();
+  if (!label || !title) { alert('Label and title are required.'); return; }
+  await fetch(`/api/admin/syllabus/${syllabusBuilderSubject}/node`, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json','x-admin-key':adminKey||''},
+    body: JSON.stringify({ parentId, label, title }),
+  });
+  await loadSyllabusBuilder();
+}
+
+function editSyllabusNode(nodeId) {
+  const sections = syllabusData[syllabusBuilderSubject]?.sections || [];
+  function findNode(arr) {
+    for (const n of arr) {
+      if (n.id === nodeId) return n;
+      if (n.children?.length) { const f = findNode(n.children); if (f) return f; }
+    }
+    return null;
+  }
+  const node = findNode(sections);
+  if (!node) return;
+  sbInputModal({
+    title: '✏️ Edit',
+    fields: [
+      { id:'label', label:'Label', defaultValue: node.label },
+      { id:'title', label:'Title', defaultValue: node.title },
+    ],
+    onSave: async (vals) => {
+      await fetch(`/api/admin/syllabus/${syllabusBuilderSubject}/node/${nodeId}`, {
+        method: 'PATCH',
+        headers: {'Content-Type':'application/json','x-admin-key':adminKey||''},
+        body: JSON.stringify({ label: vals.label||node.label, title: vals.title||node.title }),
+      });
+      await loadSyllabusBuilder();
+    },
+  });
+}
+
+async function deleteSyllabusNode(nodeId) {
+  if (!confirm('Delete this topic and ALL its children and attached PDFs? Cannot be undone.')) return;
+  await fetch(`/api/admin/syllabus/${syllabusBuilderSubject}/node/${nodeId}`, {
+    method: 'DELETE', headers: {'x-admin-key': adminKey||''},
+  });
+  await loadSyllabusBuilder();
+}
+
+async function moveSyllabusNode(nodeId, dir) {
+  await fetch(`/api/admin/syllabus/${syllabusBuilderSubject}/reorder`, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json','x-admin-key':adminKey||''},
+    body: JSON.stringify({ nodeId, direction: dir }),
+  });
+  await loadSyllabusBuilder();
+}
+
+function managePDF(nodeId, currentPdfId, currentPdfName, evt) {
+  if (evt) evt.stopPropagation();
+  const hasPDF = !!currentPdfId;
+  const modal = document.createElement('div');
+  modal.className = 'sb-modal-overlay';
+  modal.innerHTML = `<div class="sb-modal">
+    <div class="sb-modal-header">📄 Review Material PDF</div>
+    ${hasPDF ? `
+      <div class="sb-pdf-current">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">Current file:</div>
+        <div style="display:flex;align-items:center;gap:8px;padding:9px 12px;background:rgba(20,180,160,.07);border:1px solid rgba(20,180,160,.18);border-radius:9px;">
+          <span style="font-size:18px;">📄</span>
+          <span style="font-size:13px;flex:1;">${h(currentPdfName)}</span>
+          <a href="/api/syllabus/pdf/${nodeId}" target="_blank" style="font-size:11px;color:var(--teal);text-decoration:none;font-weight:700;">Preview ↗</a>
+        </div>
+        <button class="sb-delete-pdf-btn" onclick="deletePDF('${nodeId}')">🗑 Remove PDF</button>
+      </div>
+    ` : `<div style="text-align:center;padding:14px 0;color:var(--muted);font-size:13px;">No PDF attached yet.</div>`}
+    <div>
+      <div style="font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:7px;">${hasPDF?'Replace PDF':'Upload PDF'}</div>
+      <input type="file" id="pdf-file-input-${nodeId}" accept=".pdf" style="display:none" onchange="uploadPDF('${nodeId}',this)">
+      <button class="sb-upload-pdf-btn" onclick="document.getElementById('pdf-file-input-${nodeId}').click()">📤 Choose PDF File</button>
+      <div id="pdf-upload-status-${nodeId}" style="font-size:12px;color:var(--muted);margin-top:7px;"></div>
+    </div>
+    <div style="display:flex;justify-content:flex-end;margin-top:14px;">
+      <button class="sb-cancel-btn" onclick="this.closest('.sb-modal-overlay').remove()">Close</button>
+    </div>
+  </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+}
+
+async function uploadPDF(nodeId, input) {
+  const file = input.files[0];
+  if (!file) return;
+  if (!file.name.toLowerCase().endsWith('.pdf')) { alert('Please select a PDF file.'); return; }
+  const statusEl = document.getElementById('pdf-upload-status-' + nodeId);
+  if (statusEl) statusEl.textContent = 'Uploading…';
+  const formData = new FormData();
+  formData.append('pdf', file);
+  try {
+    const r = await fetch(`/api/admin/syllabus/${syllabusBuilderSubject}/node/${nodeId}/pdf`, {
+      method: 'POST', headers: {'x-admin-key': adminKey||''}, body: formData,
+    });
+    const d = await r.json();
+    if (d.pdfId) {
+      if (statusEl) { statusEl.textContent = '✅ ' + d.pdfName; statusEl.style.color = 'var(--teal)'; }
+      setTimeout(async () => { document.querySelector('.sb-modal-overlay')?.remove(); await loadSyllabusBuilder(); }, 900);
+    } else { throw new Error(d.error || 'Upload failed'); }
+  } catch(e) {
+    if (statusEl) { statusEl.textContent = '❌ ' + e.message; statusEl.style.color = '#e07080'; }
+  }
+}
+
+async function deletePDF(nodeId) {
+  if (!confirm('Remove the PDF for this topic?')) return;
+  await fetch(`/api/admin/syllabus/${syllabusBuilderSubject}/node/${nodeId}/pdf`, {
+    method: 'DELETE', headers: {'x-admin-key': adminKey||''},
+  });
+  document.querySelector('.sb-modal-overlay')?.remove();
+  await loadSyllabusBuilder();
+}
+
+function sbInputModal({ title, fields, onSave }) {
+  const modal = document.createElement('div');
+  modal.className = 'sb-modal-overlay';
+  modal.innerHTML = `<div class="sb-modal">
+    <div class="sb-modal-header">${title}</div>
+    ${fields.map(f => `<div style="margin-bottom:12px;">
+      <label class="sb-field-label">${f.label}</label>
+      <input type="text" id="sbm-${f.id}" class="sb-field-input" placeholder="${f.placeholder||''}" value="${h(f.defaultValue||'')}">
+    </div>`).join('')}
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;">
+      <button class="sb-cancel-btn" onclick="this.closest('.sb-modal-overlay').remove()">Cancel</button>
+      <button class="sb-save-btn" id="sbm-save-btn">Save</button>
+    </div>
+  </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+  modal.querySelector('#sbm-save-btn').addEventListener('click', async () => {
+    const vals = {};
+    fields.forEach(f => { vals[f.id] = document.getElementById('sbm-'+f.id)?.value?.trim(); });
+    const shouldClose = await onSave(vals);
+    if (shouldClose !== false) modal.remove();
+  });
+  // Enter key submits
+  modal.querySelectorAll('input').forEach(inp => {
+    inp.addEventListener('keydown', e => { if (e.key === 'Enter') modal.querySelector('#sbm-save-btn').click(); });
+  });
+  modal.querySelector('input')?.focus();
 }
 
 // ══════════════════════════════════

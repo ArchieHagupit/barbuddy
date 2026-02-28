@@ -51,6 +51,8 @@ const RESULTS_PATH       = path.join(UPLOADS_DIR, 'results.json');
 const SETTINGS_PATH      = path.join(UPLOADS_DIR, 'settings.json');
 const RESET_REQUESTS_PATH = path.join(UPLOADS_DIR, 'reset_requests.json');
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+const SYLLABUS_PDFS_DIR = path.join(UPLOADS_DIR, 'syllabus-pdfs');
+if (!fs.existsSync(SYLLABUS_PDFS_DIR)) fs.mkdirSync(SYLLABUS_PDFS_DIR, { recursive: true });
 
 // Knowledge Base — syllabus + references + past bar
 const KB = {
@@ -152,6 +154,108 @@ const JOB_MAP   = new Map();  // jobId → { status, result, error, createdAt }
 const JOB_QUEUE = [];
 let   JOB_RUNNING = false;
 
+// ── Syllabus tree helpers ────────────────────────────────────
+function generateId(prefix) {
+  return prefix + '_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+}
+
+function findInChildren(children, id, parent) {
+  for (const child of children) {
+    if (child.id === id) return { node: child, parent };
+    if (child.children?.length) {
+      const found = findInChildren(child.children, id, child);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+function findNodeById(sections, id) {
+  for (const sec of sections) {
+    if (sec.id === id) return { node: sec, parent: null };
+    const found = findInChildren(sec.children || [], id, sec);
+    if (found) return found;
+  }
+  return null;
+}
+
+function removeNodeById(sections, id) {
+  const pdfsToDelete = [];
+  function collectPdfs(node) {
+    if (node.pdfId) pdfsToDelete.push(node.pdfId);
+    (node.children || []).forEach(collectPdfs);
+  }
+  function removeFrom(arr) {
+    const idx = arr.findIndex(n => n.id === id);
+    if (idx !== -1) { collectPdfs(arr[idx]); arr.splice(idx, 1); return true; }
+    for (const node of arr) {
+      if (node.children?.length && removeFrom(node.children)) return true;
+    }
+    return false;
+  }
+  removeFrom(sections);
+  return pdfsToDelete;
+}
+
+function getAllSubjectsWithSections() {
+  return ['civil','criminal','political','labor','commercial','taxation','remedial','ethics','custom'];
+}
+
+function migrateSyllabusIfNeeded() {
+  if (!KB.syllabus) {
+    KB.syllabus = { subjects: {} };
+    getAllSubjectsWithSections().forEach(s => { KB.syllabus.subjects[s] = { sections: [] }; });
+    saveKB();
+    return;
+  }
+  if (!KB.syllabus.subjects) {
+    // Old format: { name, topics: [{key, name, topics:[]}], ... }
+    const oldTopics = KB.syllabus.topics || [];
+    const newSubjects = {};
+    getAllSubjectsWithSections().forEach(s => { newSubjects[s] = { sections: [] }; });
+    oldTopics.forEach(subjEntry => {
+      const key = subjEntry.key;
+      if (!newSubjects[key]) newSubjects[key] = { sections: [] };
+      newSubjects[key].sections = convertOldTopicsToSections(subjEntry.topics || []);
+    });
+    KB.syllabus = { subjects: newSubjects };
+    saveKB();
+    console.log('[syllabus] Migrated to manual builder format');
+  } else {
+    // Ensure all subjects exist
+    getAllSubjectsWithSections().forEach(s => {
+      if (!KB.syllabus.subjects[s]) KB.syllabus.subjects[s] = { sections: [] };
+    });
+  }
+}
+
+function convertOldTopicsToSections(topics) {
+  if (!topics || !topics.length) return [];
+  return [{
+    id: generateId('sec'),
+    type: 'section',
+    label: 'I',
+    title: 'IMPORTED TOPICS',
+    children: topics.map(t => ({
+      id: generateId('top'),
+      type: (t.children?.length || t.subtopics?.length) ? 'group' : 'topic',
+      label: t.label || '?',
+      title: t.name || t.title || 'Unknown Topic',
+      pdfId: null,
+      pdfName: null,
+      children: ((t.children || []).concat(t.subtopics || [])).map(c => ({
+        id: generateId('sub'),
+        type: 'topic',
+        label: c.label || '?',
+        title: c.name || c.title || '',
+        pdfId: null,
+        pdfName: null,
+        children: [],
+      })),
+    })),
+  }];
+}
+
 function loadData() {
   const persistent = !!process.env.PERSISTENT_STORAGE_PATH;
   console.log(`Storage: ${persistent ? '✅ Persistent (Railway Volume)' : '⚠️  Ephemeral (local)'} → ${UPLOADS_DIR}`);
@@ -216,6 +320,7 @@ function requireAuth(req, res, next) {
 
 loadData();
 loadUserData();
+migrateSyllabusIfNeeded();
 
 // ── Middleware ──────────────────────────────────────────────
 app.use(cors());
@@ -225,6 +330,20 @@ app.use(express.static(path.join(__dirname, 'public')));
 function adminOnly(req, res, next) {
   const key = req.headers['x-admin-key'] || req.body?.adminKey;
   if (key !== ADMIN_KEY) return res.status(401).json({ error: 'Unauthorized' });
+  next();
+}
+
+function authOrAdmin(req, res, next) {
+  const adminKey = req.headers['x-admin-key'] || req.body?.adminKey;
+  if (adminKey === ADMIN_KEY) return next();
+  const token = req.headers['x-session-token'];
+  if (!token || !SESSIONS[token]) return res.status(401).json({ error: 'Not authenticated' });
+  if (SESSIONS[token].expiresAt < Date.now()) {
+    delete SESSIONS[token]; saveSessions();
+    return res.status(401).json({ error: 'Session expired' });
+  }
+  req.userId = SESSIONS[token].userId;
+  req.user   = USERS[req.userId];
   next();
 }
 
@@ -488,9 +607,8 @@ app.delete('/api/admin/users/:userId/tab-settings', adminOnly, (req, res) => {
 app.get('/api/kb', (req, res) => {
   const n = Object.values(CONTENT).reduce((a,s) => a+Object.keys(s).length, 0);
   res.json({
-    hasSyllabus:    !!KB.syllabus,
-    syllabusName:   KB.syllabus?.name,
-    syllabusTopics: KB.syllabus?.topics || [],
+    hasSyllabus:    !!(KB.syllabus?.subjects),
+    syllabusTopics: [],  // legacy field (new format uses /api/syllabus/:subject)
     references:     KB.references.map(r => ({ id:r.id, name:r.name, subject:r.subject, type:r.type, size:r.size, uploadedAt:r.uploadedAt })),
     pastBar:        KB.pastBar.map(p  => ({ id:p.id, name:p.name, subject:p.subject, year:p.year, qCount:p.questions?.length||0, uploadedAt:p.uploadedAt })),
     contentTopics:  n,
@@ -678,141 +796,149 @@ ${content.slice(0, 14000)}`;
   return await callClaudeJSON([{ role:'user', content:prompt }], 4000);
 }
 
-// ── ADMIN: Upload Syllabus + trigger pre-gen ────────────────
-app.post('/api/admin/syllabus', adminOnly, async (req, res) => {
-  const { name, content, subject } = req.body;
-  if (!content?.trim()) return res.status(400).json({ error: 'content required' });
-
-  // ── Subject override: skip full-syllabus parsing, assign everything to one subject ──
-  if (subject && VALID_SUBJECTS.includes(subject)) {
-    const subjName = SUBJECT_MAP_FALLBACK[subject] || subject;
-
-    // Parse structure from the content (reuse regex parser)
-    let allTopics = [];
-    try {
-      const attempt = parseSyllabusText(content);
-      if (attempt?.subjects?.length > 0) {
-        attempt.subjects.forEach(s => { allTopics = allTopics.concat(s.topics || []); });
-      }
-    } catch(_) {}
-
-    // Fallback: simple line split if parser found nothing
-    if (allTopics.length === 0) {
-      allTopics = content.split('\n').map(l => l.trim()).filter(l => l.length > 2)
-        .map(l => ({ name: l, isGroup: false, subject, subtopics: [], children: [] }));
-    }
-
-    // Force all nodes to the selected subject key
-    function forceSubjectKey(topics, key) {
-      return (topics || []).map(t => ({
-        ...t, subject: key,
-        subtopics: forceSubjectKey(t.subtopics, key),
-        children:  forceSubjectKey(t.children,  key),
-      }));
-    }
-    const forcedTopics = forceSubjectKey(allTopics, subject);
-
-    // Merge with existing syllabus (replace only this subject's entry)
-    const existingSubjects = (KB.syllabus?.topics || []).filter(s => s.key !== subject);
-    existingSubjects.push({ key: subject, name: subjName, topics: forcedTopics });
-
-    KB.syllabus = {
-      name: KB.syllabus?.name || name || 'Bar Exam Syllabus',
-      rawText: ((KB.syllabus?.rawText || '') + '\n\n' + content).slice(0, 60000),
-      topics: existingSubjects,
-      uploadedAt: new Date().toISOString(),
-    };
-    saveKB();
-    triggerPreGeneration();
-
-    const topicCount = countAllTopics(forcedTopics);
-    console.log(`[syllabus] Subject-override saved for ${subject}: ${topicCount} topics`);
-    return res.json({
-      success: true, parseMethod: 'subject-override', subjects: 1,
-      totalTopics: topicCount, breakdown: [{ key: subject, name: subjName, topicCount }],
-    });
+// ── SYLLABUS: Manual builder read routes ─────────────────────
+// NOTE: /api/syllabus/pdf/:nodeId must come BEFORE /api/syllabus/:subject to avoid routing conflict
+app.get('/api/syllabus/pdf/:nodeId', authOrAdmin, (req, res) => {
+  const { nodeId } = req.params;
+  const subjKeys = getAllSubjectsWithSections();
+  let targetNode = null;
+  for (const key of subjKeys) {
+    const sections = KB.syllabus?.subjects?.[key]?.sections || [];
+    const found = findNodeById(sections, nodeId);
+    if (found) { targetNode = found.node; break; }
   }
+  if (!targetNode || !targetNode.pdfId) return res.status(404).json({ error: 'No PDF attached to this node' });
+  const filePath = path.join(SYLLABUS_PDFS_DIR, targetNode.pdfId);
+  if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'PDF file not found on disk' });
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(targetNode.pdfName || 'document.pdf')}"`);
+  fs.createReadStream(filePath).pipe(res);
+});
 
-  let parsed = null;
-  let parseMethod = 'unknown';
+app.get('/api/syllabus', authOrAdmin, (req, res) => {
+  res.json({ subjects: KB.syllabus?.subjects || {} });
+});
 
-  // ── Step 1: Regex parser (fast, no AI, works for standard outline format) ──
-  try {
-    const hasDividers    = /[-=]+.{3,40}[-=]+/.test(content);
-    const hasRomanNums   = /^[IVX]+\./m.test(content);
-    const hasLetterTopics = /^[A-Z]\. /m.test(content);
-    if (hasDividers || (hasRomanNums && hasLetterTopics)) {
-      console.log('[syllabus] Trying regex parser…');
-      const attempt = parseSyllabusText(content);
-      if (attempt?.subjects?.length > 0) {
-        parsed = attempt;
-        parseMethod = 'regex';
-        console.log(`[syllabus] Regex parsed ${parsed.subjects.length} subject(s)`);
-      }
-    }
-  } catch(e) {
-    console.warn('[syllabus] Regex parser error:', e.message);
-  }
+app.get('/api/syllabus/:subject', authOrAdmin, (req, res) => {
+  const subj = req.params.subject;
+  if (!getAllSubjectsWithSections().includes(subj)) return res.status(400).json({ error: 'Invalid subject' });
+  res.json(KB.syllabus?.subjects?.[subj] || { sections: [] });
+});
 
-  // ── Step 2: AI fallback ──
-  if (!parsed && API_KEY) {
-    console.log('[syllabus] Falling back to AI parser…');
-    try {
-      const attempt = await parseSyllabusWithAI(content);
-      if (attempt?.subjects?.length > 0) { parsed = attempt; parseMethod = 'ai'; }
-    } catch(e) {
-      console.error('[syllabus] AI parser error:', e.message);
-    }
-  }
-
-  // ── Step 3: Last-resort divider split ──
-  if (!parsed || !parsed.subjects?.length) {
-    console.warn('[syllabus] All parsers failed — trying raw split');
-    const dividers    = content.match(/[-=]{3,}(.{3,40})[-=]{3,}/g) || [];
-    const dividerParts = content.split(/[-=]{3,}.{3,40}[-=]{3,}/g).filter(p => p.trim());
-    if (dividers.length > 1 && dividerParts.length > 1) {
-      parsed = {
-        subjects: dividers.map((d, i) => {
-          const subjName = d.replace(/[-=]/g, '').trim();
-          const key      = detectSubjectKeyFromName(subjName) || 'custom';
-          return {
-            key, name: SUBJECT_MAP_FALLBACK[key] || subjName,
-            topics: (dividerParts[i] || '').split('\n').filter(l => l.trim())
-              .map(l => ({ name: l.trim(), subject: key, subtopics: [], children: [] })),
-          };
-        }),
-      };
-      parseMethod = 'fallback-split';
-    } else {
-      return res.status(422).json({
-        error: 'Could not parse this syllabus format. Make sure each subject is separated by a divider like "-----Criminal Law-----" and topics use standard outline format (I. A. 1. a.).',
-        tip: 'Your content preview: ' + content.slice(0, 200),
-      });
-    }
-  }
-
-  // Validate subject keys and cross-check assignments
-  const validated = validateAndCleanParsed(parsed);
-  const { parsed: finalParsed, warnings } = crossCheckSubjectAssignment(validated);
-
-  if (!finalParsed.subjects?.length) {
-    return res.status(400).json({ error: 'Could not parse any recognized subjects.' });
-  }
-
-  KB.syllabus = {
-    name: name || 'Bar Exam Syllabus',
-    rawText: content.slice(0, 60000),
-    topics: finalParsed.subjects,
-    parseMethod,
-    uploadedAt: new Date().toISOString(),
-  };
+// ── SYLLABUS: Admin write routes ──────────────────────────────
+app.post('/api/admin/syllabus/:subject/section', adminOnly, (req, res) => {
+  const subj = req.params.subject;
+  if (!getAllSubjectsWithSections().includes(subj)) return res.status(400).json({ error: 'Invalid subject' });
+  const { label, title } = req.body || {};
+  if (!label || !title) return res.status(400).json({ error: 'label and title required' });
+  const section = { id: generateId('sec'), type: 'section', label: label.toUpperCase(), title: title.toUpperCase(), children: [] };
+  KB.syllabus.subjects[subj].sections.push(section);
   saveKB();
-  triggerPreGeneration();   // fire-and-forget
+  res.json(KB.syllabus.subjects[subj]);
+});
 
-  const breakdown  = finalParsed.subjects.map(s => ({ key: s.key, name: s.name, topicCount: countAllTopics(s.topics || []) }));
-  const totalTopics = breakdown.reduce((a, s) => a + s.topicCount, 0);
-  console.log(`[syllabus] Saved via ${parseMethod}:`, breakdown.map(s => `${s.name}: ${s.topicCount}`).join(', '));
-  res.json({ success: true, parseMethod, subjects: finalParsed.subjects.length, totalTopics, breakdown, warnings, warningCount: warnings.length });
+app.post('/api/admin/syllabus/:subject/node', adminOnly, (req, res) => {
+  const subj = req.params.subject;
+  if (!getAllSubjectsWithSections().includes(subj)) return res.status(400).json({ error: 'Invalid subject' });
+  const { parentId, label, title } = req.body || {};
+  if (!parentId || !label || !title) return res.status(400).json({ error: 'parentId, label, and title required' });
+  const sections = KB.syllabus.subjects[subj].sections;
+  const found = findNodeById(sections, parentId);
+  if (!found) return res.status(404).json({ error: 'Parent node not found' });
+  const prefix = /^\d+$/.test(label) ? 'sub' : /^[a-z]$/.test(label) ? 'leaf' : 'top';
+  const newNode = { id: generateId(prefix), type: 'topic', label, title, pdfId: null, pdfName: null, children: [] };
+  if (!found.node.children) found.node.children = [];
+  found.node.children.push(newNode);
+  saveKB();
+  res.json(KB.syllabus.subjects[subj]);
+});
+
+app.patch('/api/admin/syllabus/:subject/node/:nodeId', adminOnly, (req, res) => {
+  const subj = req.params.subject;
+  if (!getAllSubjectsWithSections().includes(subj)) return res.status(400).json({ error: 'Invalid subject' });
+  const sections = KB.syllabus.subjects[subj].sections;
+  const found = findNodeById(sections, req.params.nodeId);
+  if (!found) return res.status(404).json({ error: 'Node not found' });
+  const { label, title, type } = req.body || {};
+  if (label !== undefined) found.node.label = label;
+  if (title !== undefined) found.node.title = title;
+  if (type  !== undefined) found.node.type  = type;
+  saveKB();
+  res.json(KB.syllabus.subjects[subj]);
+});
+
+app.delete('/api/admin/syllabus/:subject/node/:nodeId', adminOnly, (req, res) => {
+  const subj = req.params.subject;
+  if (!getAllSubjectsWithSections().includes(subj)) return res.status(400).json({ error: 'Invalid subject' });
+  const pdfsToDelete = removeNodeById(KB.syllabus.subjects[subj].sections, req.params.nodeId);
+  pdfsToDelete.forEach(pdfId => {
+    const filePath = path.join(SYLLABUS_PDFS_DIR, pdfId);
+    if (fs.existsSync(filePath)) { try { fs.unlinkSync(filePath); } catch(e) {} }
+  });
+  saveKB();
+  res.json(KB.syllabus.subjects[subj]);
+});
+
+app.post('/api/admin/syllabus/:subject/node/:nodeId/pdf', adminOnly, upload.single('pdf'), (req, res) => {
+  const subj = req.params.subject;
+  if (!getAllSubjectsWithSections().includes(subj)) return res.status(400).json({ error: 'Invalid subject' });
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+  if (!req.file.originalname.toLowerCase().endsWith('.pdf')) return res.status(400).json({ error: 'Only PDF files allowed' });
+  const sections = KB.syllabus.subjects[subj].sections;
+  const found = findNodeById(sections, req.params.nodeId);
+  if (!found) return res.status(404).json({ error: 'Node not found' });
+  // Delete old PDF if exists
+  if (found.node.pdfId) {
+    const oldPath = path.join(SYLLABUS_PDFS_DIR, found.node.pdfId);
+    if (fs.existsSync(oldPath)) { try { fs.unlinkSync(oldPath); } catch(e) {} }
+  }
+  const pdfId = `${req.params.nodeId}_${Date.now()}_${req.file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+  const filePath = path.join(SYLLABUS_PDFS_DIR, pdfId);
+  fs.writeFileSync(filePath, req.file.buffer);
+  found.node.pdfId   = pdfId;
+  found.node.pdfName = req.file.originalname;
+  saveKB();
+  res.json({ pdfId, pdfName: req.file.originalname });
+});
+
+app.delete('/api/admin/syllabus/:subject/node/:nodeId/pdf', adminOnly, (req, res) => {
+  const subj = req.params.subject;
+  if (!getAllSubjectsWithSections().includes(subj)) return res.status(400).json({ error: 'Invalid subject' });
+  const sections = KB.syllabus.subjects[subj].sections;
+  const found = findNodeById(sections, req.params.nodeId);
+  if (!found) return res.status(404).json({ error: 'Node not found' });
+  if (found.node.pdfId) {
+    const filePath = path.join(SYLLABUS_PDFS_DIR, found.node.pdfId);
+    if (fs.existsSync(filePath)) { try { fs.unlinkSync(filePath); } catch(e) {} }
+    found.node.pdfId   = null;
+    found.node.pdfName = null;
+    saveKB();
+  }
+  res.json({ success: true });
+});
+
+app.post('/api/admin/syllabus/:subject/reorder', adminOnly, (req, res) => {
+  const subj = req.params.subject;
+  if (!getAllSubjectsWithSections().includes(subj)) return res.status(400).json({ error: 'Invalid subject' });
+  const { nodeId, direction } = req.body || {};
+  const sections = KB.syllabus.subjects[subj].sections;
+  function reorderIn(arr) {
+    const idx = arr.findIndex(n => n.id === nodeId);
+    if (idx !== -1) {
+      const newIdx = idx + (direction > 0 ? 1 : -1);
+      if (newIdx >= 0 && newIdx < arr.length) {
+        [arr[idx], arr[newIdx]] = [arr[newIdx], arr[idx]];
+      }
+      return true;
+    }
+    for (const node of arr) {
+      if (node.children?.length && reorderIn(node.children)) return true;
+    }
+    return false;
+  }
+  reorderIn(sections);
+  saveKB();
+  res.json(KB.syllabus.subjects[subj]);
 });
 
 // ── ADMIN: Upload Reference — save instantly, summarise in background ──
@@ -986,7 +1112,10 @@ app.delete('/api/admin/reference/:id', adminOnly, (req, res) => {
   saveKB(); res.json({ success:true });
 });
 app.delete('/api/admin/syllabus', adminOnly, (req, res) => {
-  KB.syllabus = null; CONTENT = {}; saveKB(); saveContent(); res.json({ success:true });
+  // Reset all subjects to empty sections (new format)
+  KB.syllabus = { subjects: {} };
+  getAllSubjectsWithSections().forEach(s => { KB.syllabus.subjects[s] = { sections: [] }; });
+  CONTENT = {}; saveKB(); saveContent(); res.json({ success: true });
 });
 app.delete('/api/admin/content', adminOnly, (req, res) => {
   CONTENT = {}; saveContent(); res.json({ success:true });
@@ -997,18 +1126,18 @@ app.post('/api/admin/generate', adminOnly, (req, res) => {
   if (!KB.syllabus) return res.status(400).json({ error:'No syllabus' });
   if (GEN.running) return res.json({ message:'Already running', done:GEN.done, total:GEN.total });
   triggerPreGeneration();
-  res.json({ message:'Started', total:countAllTopics(KB.syllabus.topics.flatMap(s=>s.topics||[])) });
+  const topicsArr = (KB.syllabus.topics || []).flatMap(s => s.topics || []);
+  res.json({ message:'Started', total:countAllTopics(topicsArr) });
 });
 
 // ── PRE-GENERATION ENGINE ───────────────────────────────────
 async function triggerPreGeneration() {
   if (GEN.running || !KB.syllabus) return;
   const queue = [];
-  KB.syllabus.topics.forEach(subj => {
-    if (!VALID_SUBJECTS.includes(subj.key)) {
-      console.warn(`triggerPreGeneration: skipping unknown subject key "${subj.key}"`);
-      return;
-    }
+  // Support both old format (.topics[]) and new format (.subjects{})
+  const oldTopics = KB.syllabus.topics || [];
+  oldTopics.forEach(subj => {
+    if (!VALID_SUBJECTS.includes(subj.key)) return;
     queue.push(...flattenTopicsForGen(subj.topics, subj.key, subj.name));
   });
   if (!queue.length) return;
@@ -1018,7 +1147,8 @@ async function triggerPreGeneration() {
 async function triggerPreGenerationForSubject(subjKey) {
   if (GEN.running || !KB.syllabus) return;
   if (!VALID_SUBJECTS.includes(subjKey)) return;
-  const subj = KB.syllabus.topics.find(s => s.key === subjKey);
+  // Support both formats
+  const subj = (KB.syllabus.topics || []).find(s => s.key === subjKey);
   if (!subj) return;
   delete CONTENT[subjKey];
   const queue = flattenTopicsForGen(subj.topics, subjKey, subj.name);
