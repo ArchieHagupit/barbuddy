@@ -1351,6 +1351,7 @@ function getMotivationalQuote() {
 async function init() {
   loadLocalCache();
   renderSidebar();       // build subject list in sidebar
+  updateSidebarAdminVisibility(); // show admin link if key was restored
   renderSubjectTracker();
   await loadKB();
   await applyTabSettings();
@@ -1369,6 +1370,12 @@ async function checkAPIStatus(){
   }catch(e){}
 }
 window.addEventListener('DOMContentLoaded', async () => {
+  // Restore admin key from previous session so sidebar admin button shows
+  const savedAdminKey = localStorage.getItem('bb_admin_key');
+  if (savedAdminKey) {
+    window._adminKey = savedAdminKey;
+    adminKey = savedAdminKey;
+  }
   const hasSession = await checkExistingSession();
   if (!hasSession) {
     // Auth wall stays visible; app boots once user logs in
@@ -2929,13 +2936,17 @@ function showQuizResults(){
 // DASHBOARD
 // ══════════════════════════════════
 function updateDash(){
-  document.getElementById('st-score').textContent=totalQDone?Math.round(totalCorrect/totalQDone*100)+'%':'—';
-  document.getElementById('h-done').textContent=totalQDone;
-  document.getElementById('h-mock').textContent=mockSessions;
+  const stScore = document.getElementById('st-score');
+  const hDone   = document.getElementById('h-done');
+  const hMock   = document.getElementById('h-mock');
+  if(stScore) stScore.textContent=totalQDone?Math.round(totalCorrect/totalQDone*100)+'%':'—';
+  if(hDone)   hDone.textContent=totalQDone;
+  if(hMock)   hMock.textContent=mockSessions;
   updateKBIndicator();
   // Recent list
-  if(VISITED.length){
-    document.getElementById('recent-list').innerHTML=VISITED.slice(0,6).map(v=>{
+  const recentList = document.getElementById('recent-list');
+  if(recentList && VISITED.length){
+    recentList.innerHTML=VISITED.slice(0,6).map(v=>{
       const sub=SUBJS.find(s=>s.key===v.subjKey)||{cls:'sg-gen',name:v.subjKey};
       return `<div class="r-item" onclick="navToSubject('${v.subjKey}','learn');setTimeout(()=>clickTopic('${v.subjKey}','${h(v.topicName)}'),50);">
         <div class="r-ic">📖</div>
@@ -3738,10 +3749,17 @@ function quickAddPastBar(subjKey) {
   }, 150);
 }
 
+function updateSidebarAdminVisibility() {
+  const sbAdmin = document.getElementById('sb-admin');
+  if (!sbAdmin) return;
+  sbAdmin.style.display = window._adminKey ? '' : 'none';
+}
+
 async function unlockAdmin(){
   adminKey=document.getElementById('adminKeyInput').value.trim();
   if(!adminKey)return;
   window._adminKey=adminKey;
+  localStorage.setItem('bb_admin_key', adminKey);
   document.getElementById('adminStatus').textContent='Checking…';
   try{
     // loadKB() both validates connectivity and refreshes the in-memory KB state
@@ -3751,8 +3769,7 @@ async function unlockAdmin(){
     document.getElementById('adminStatus').textContent='✓ Unlocked';
     refreshAdminKB();updateSyllabusStatus();initTabControls();
     // Show admin sidebar button + subject overview
-    const sbAdmin = document.getElementById('sb-admin');
-    if (sbAdmin) sbAdmin.style.display = '';
+    updateSidebarAdminVisibility();
     const sovGrid = document.getElementById('subjectOverviewGrid');
     if (sovGrid) { sovGrid.style.display = ''; renderSubjectOverview(); }
     // Show admin panels
@@ -4157,6 +4174,8 @@ function onAuthSuccess(token, user) {
   // Refresh tab settings and sync progress from server
   applyTabSettings().catch(() => {});
   syncProgressFromServer().catch(() => {});
+  // Navigate to overview so the page isn't blank after login
+  navToOverview();
 }
 
 function updateUserDisplay() {
