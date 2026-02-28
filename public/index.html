@@ -1219,6 +1219,8 @@ select.form-input{cursor:pointer;}
         <div id="storageIndicator" style="margin-top:14px;padding:10px 13px;border-radius:10px;background:rgba(255,255,255,.04);border:1px solid var(--bdr2);font-size:12px;color:var(--muted);">
           Checking storage…
         </div>
+        <button class="btn-og" onclick="runKBDiagnostic()" style="font-size:11px;margin-top:8px;border-color:rgba(91,168,255,.4);color:#5ba8ff;">🔍 KB Diagnostic</button>
+        <pre id="kbDiagOutput" style="display:none;margin-top:10px;font-size:10px;line-height:1.5;background:rgba(0,0,0,.3);border:1px solid var(--bdr2);border-radius:8px;padding:10px;overflow-x:auto;max-height:300px;overflow-y:auto;color:rgba(248,246,241,.7);white-space:pre-wrap;"></pre>
       </div>
     </div>
 
@@ -3742,7 +3744,8 @@ async function unlockAdmin(){
   window._adminKey=adminKey;
   document.getElementById('adminStatus').textContent='Checking…';
   try{
-    await fetch('/api/kb');
+    // loadKB() both validates connectivity and refreshes the in-memory KB state
+    await loadKB();
     document.getElementById('adminLocked').style.display='none';
     document.getElementById('adminUnlocked').style.display='block';
     document.getElementById('adminStatus').textContent='✓ Unlocked';
@@ -3974,6 +3977,8 @@ async function downloadAllQuestions(){
   URL.revokeObjectURL(objUrl);
 }
 async function refreshAdminKB(){
+  // Always fetch fresh data from the server before rendering
+  await loadKB();
   loadStorageInfo();
   const el=document.getElementById('adminKbList');if(!el)return;
   const items=[
@@ -3981,12 +3986,14 @@ async function refreshAdminKB(){
     ...(KB.references||[]).map(r=>({...r,_cat:'ref'})),
     ...(KB.pastBar||[]).map(p=>({...p,_cat:'pb'})),
   ];
-  if(!items.length){el.innerHTML=`<div style="font-size:12px;color:var(--muted);">Knowledge base is empty.</div>`;return;}
+  if(!items.length){el.innerHTML=`<div style="font-size:12px;color:var(--muted);">No questions uploaded yet.</div>`;return;}
   el.innerHTML=items.map(i=>{
     const isPB=i._cat==='pb';
+    const isManual=isPB&&i.source==='manual';
+    const subLabel=[i.subject||'',i.year?'· '+i.year:'',i.qCount!=null?'· '+i.qCount+' Qs':i.type?'· '+i.type:'',isManual?'· <em style="color:var(--teal);">Manual Entry</em>':''].filter(Boolean).join(' ');
     const item=`<div class="kb-list-item" style="${isPB?'border-radius:9px 9px 0 0;margin-bottom:0;':''}">
       <div style="font-size:15px;">${i.type==='syllabus'?'📋':isPB?'📜':'📂'}</div>
-      <div style="flex:1;min-width:0;"><div class="kl-name">${h(i.name)}</div><div class="kl-sub">${i.subject||''} ${i.year?'· '+i.year:''} ${i.qCount!==undefined?'· '+i.qCount+' Qs':i.type?'· '+i.type:''}</div></div>
+      <div style="flex:1;min-width:0;"><div class="kl-name">${h(i.name)}</div><div class="kl-sub">${subLabel}</div></div>
       ${isPB?`<button class="kl-dl" onclick="toggleDownloadPicker('${i.id}')">⬇ Download</button>`:''}
       ${i.id!=='_syl'?`<button class="kl-del" onclick="deleteItem('${i.id}',this)">✕</button>`:`<button class="kl-del" onclick="deleteSyllabus(this)">✕</button>`}
     </div>`;
@@ -4026,6 +4033,35 @@ async function loadStorageInfo(){
     </div>`:''}`;
   }catch(e){el.innerHTML=`<span style="color:var(--muted);">Storage info unavailable.</span>`;}
 }
+async function runKBDiagnostic(){
+  const out=document.getElementById('kbDiagOutput');
+  if(!out)return;
+  out.style.display='block';out.textContent='Running diagnostic…';
+  try{
+    const r=await fetch('/api/admin/debug/kb',{headers:{'x-admin-key':adminKey}});
+    const d=await r.json();
+    if(d.error){out.textContent='Error: '+d.error;return;}
+    const lines=[
+      `KB Path: ${d.kbPath}`,
+      `File exists: ${d.fileExists} (${d.fileSizeBytes} bytes)`,
+      `Top-level keys: ${(d.topLevelKeys||[]).join(', ')||'(none)'}`,
+      `Past bar items (file): ${d.pastBarCount}`,
+      `Past bar items (memory): ${d.inMemoryKB?.pastBarCount}`,
+      `Memory matches file: ${d.memoryMatchesFile}`,
+      `References: ${d.referenceCount}`,
+      `Syllabus subjects: ${(d.syllabusSubjects||[]).join(', ')||'(none)'}`,
+      '',
+      '── Past Bar Items ──',
+      ...(d.pastBarItems||[]).map(pb=>`  [${pb.source||'upload'}] ${pb.name} (${pb.subject}, ${pb.questionCount}q) — id:${pb.id}`),
+      d.pastBarItems?.length===0?'  (none)':'',
+      '',
+      '── Alternate Paths ──',
+      ...(d.alternatePaths||[]).map(p=>`  ${p.exists?'✓':'✗'} ${p.path}${p.exists?' → '+p.pastBarCount+' items':''}`),
+    ];
+    out.textContent=lines.join('\n');
+  }catch(e){out.textContent='Fetch error: '+e.message;}
+}
+
 async function deleteItem(id,btn){
   if(!confirm('Delete this material?'))return;btn.disabled=true;
   await fetch('/api/admin/reference/'+id,{method:'DELETE',headers:{'x-admin-key':adminKey}});

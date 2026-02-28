@@ -61,7 +61,7 @@ ABSOLUTE RULES — never break these:
 const UPLOADS_DIR  = process.env.PERSISTENT_STORAGE_PATH
   ? path.join(process.env.PERSISTENT_STORAGE_PATH, 'uploads')
   : path.join(__dirname, 'uploads');
-const KB_PATH           = path.join(UPLOADS_DIR, 'kb.json');
+let KB_PATH             = path.join(UPLOADS_DIR, 'kb.json'); // let — updated if found at alternate path
 const CONTENT_PATH      = path.join(UPLOADS_DIR, 'content.json');
 const TAB_SETTINGS_PATH = path.join(UPLOADS_DIR, 'tab_settings.json');
 const USERS_PATH         = path.join(UPLOADS_DIR, 'users.json');
@@ -275,20 +275,63 @@ function convertOldTopicsToSections(topics) {
   }];
 }
 
+function loadKBFromDisk() {
+  // Build a prioritised list of paths to try (deduplicated)
+  const candidates = [
+    KB_PATH,
+    path.join('/data', 'uploads', 'kb.json'),
+    path.join('/data', 'kb.json'),
+    path.join(__dirname, 'uploads', 'kb.json'),
+  ].filter((p, i, a) => a.indexOf(p) === i);
+
+  console.log('🔍 Searching for kb.json:');
+  for (const tryPath of candidates) {
+    const exists = fs.existsSync(tryPath);
+    const size   = exists ? fs.statSync(tryPath).size : 0;
+    console.log(`  ${exists ? '✓' : '✗'} ${tryPath}${exists ? ' (' + size + ' bytes)' : ''}`);
+    if (!exists) continue;
+    try {
+      const parsed = JSON.parse(fs.readFileSync(tryPath, 'utf8'));
+      if (!parsed || typeof parsed !== 'object') { console.warn(`  ⚠️  ${tryPath} parsed but is not an object`); continue; }
+      Object.assign(KB, {
+        ...parsed,
+        pastBar:    Array.isArray(parsed.pastBar)    ? parsed.pastBar    : [],
+        references: Array.isArray(parsed.references) ? parsed.references : [],
+      });
+      console.log(`✅ KB loaded from ${tryPath}: ${KB.pastBar.length} past bar items, ${KB.references.length} refs`);
+      if (tryPath !== KB_PATH) {
+        console.log(`  ↳ Updating KB_PATH to ${tryPath} so saves go to the right place`);
+        KB_PATH = tryPath;
+      }
+      return tryPath;
+    } catch(e) { console.error(`  ❌ Failed to parse ${tryPath}: ${e.message}`); }
+  }
+  console.warn('⚠️  No valid kb.json found — starting with empty KB');
+  return null;
+}
+
 function loadData() {
   const persistent = !!process.env.PERSISTENT_STORAGE_PATH;
   console.log(`Storage: ${persistent ? '✅ Persistent (Railway Volume)' : '⚠️  Ephemeral (local)'} → ${UPLOADS_DIR}`);
+
+  // KB — multi-path search with explicit error reporting
+  loadKBFromDisk();
+
+  // content.json
   try {
-    if (fs.existsSync(KB_PATH))           Object.assign(KB, JSON.parse(fs.readFileSync(KB_PATH, 'utf8')));
-    if (fs.existsSync(CONTENT_PATH))      CONTENT = JSON.parse(fs.readFileSync(CONTENT_PATH, 'utf8'));
+    if (fs.existsSync(CONTENT_PATH)) CONTENT = JSON.parse(fs.readFileSync(CONTENT_PATH, 'utf8'));
+  } catch(e) { console.error('content.json load error:', e.message); }
+
+  // tab_settings.json
+  try {
     if (fs.existsSync(TAB_SETTINGS_PATH)) {
       const saved = JSON.parse(fs.readFileSync(TAB_SETTINGS_PATH, 'utf8'));
       TAB_SETTINGS = deepMerge(JSON.parse(JSON.stringify(DEFAULT_TAB_SETTINGS)), saved);
     }
-    const n = Object.values(CONTENT).reduce((a,s) => a+Object.keys(s).length, 0);
-    console.log(`KB loaded: syllabus=${!!KB.syllabus}, refs=${KB.references.length}, pastBar=${KB.pastBar.length}, content=${n} topics`);
-    console.log(`Tab settings loaded (overview=${TAB_SETTINGS.overview})`);
-  } catch(e) { console.error('Load error:', e.message); }
+  } catch(e) { console.error('tab_settings.json load error:', e.message); }
+
+  const n = Object.values(CONTENT).reduce((a,s) => a+Object.keys(s).length, 0);
+  console.log(`Content: ${n} topics | Tab settings: overview=${TAB_SETTINGS.overview}`);
 }
 function saveKB()          { try { fs.writeFileSync(KB_PATH, JSON.stringify(KB)); } catch(e) { console.error('KB save:', e.message); } }
 function saveContent()     { try { fs.writeFileSync(CONTENT_PATH, JSON.stringify(CONTENT)); } catch(e) { console.error('Content save:', e.message); } }
@@ -340,6 +383,21 @@ function requireAuth(req, res, next) {
 loadData();
 loadUserData();
 migrateSyllabusIfNeeded();
+
+// Migrate any KB.manual entries that aren't in KB.pastBar yet (safety net)
+(function migrateManualToPastBar() {
+  const manual = KB.manual;
+  if (!Array.isArray(manual) || !manual.length) return;
+  let migrated = 0;
+  manual.forEach(batch => {
+    const exists = (KB.pastBar || []).find(pb => pb.id === batch.id);
+    if (!exists && batch.questions?.length) {
+      KB.pastBar.push({ ...batch, source: 'manual' });
+      migrated++;
+    }
+  });
+  if (migrated > 0) { console.log(`Migrated ${migrated} KB.manual batch(es) to pastBar`); saveKB(); }
+})();
 
 // ── Middleware ──────────────────────────────────────────────
 app.use(cors());
@@ -641,18 +699,27 @@ app.delete('/api/admin/users/:userId/tab-settings', adminOnly, (req, res) => {
 });
 
 // ── GET KB state (public — browser caches) ─────────────────
-app.get('/api/kb', (req, res) => {
+app.get('/api/kb', (_req, res) => {
   const n = Object.values(CONTENT).reduce((a,s) => a+Object.keys(s).length, 0);
+  const pastBarSummary = KB.pastBar.map(p => ({
+    id: p.id, name: p.name, subject: p.subject,
+    year: p.year || 'Unknown',
+    qCount: p.questions?.length || p.qCount || 0,
+    source: p.source || 'upload',
+    uploadedAt: p.uploadedAt,
+  }));
+  const totalQuestions = pastBarSummary.reduce((a,p) => a + p.qCount, 0);
   res.json({
     hasSyllabus:    !!(KB.syllabus?.subjects),
     syllabusTopics: [],  // legacy field (new format uses /api/syllabus/:subject)
     references:     KB.references.map(r => ({ id:r.id, name:r.name, subject:r.subject, type:r.type, size:r.size, uploadedAt:r.uploadedAt })),
-    pastBar:        KB.pastBar.map(p  => ({ id:p.id, name:p.name, subject:p.subject, year:p.year, qCount:p.questions?.length||0, uploadedAt:p.uploadedAt })),
+    pastBar:        pastBarSummary,
+    totalQuestions,
     contentTopics:  n,
     genState:       { running:GEN.running, done:GEN.done, total:GEN.total, current:GEN.current, finishedAt:GEN.finishedAt },
     customRefs:     KB.references.filter(r => r.subject === 'custom').length,
     customPastBar:  KB.pastBar.filter(p => p.subject === 'custom').length,
-    customQuestions:KB.pastBar.filter(p => p.subject === 'custom').reduce((a,p) => a + (p.questions?.length||0), 0),
+    customQuestions:KB.pastBar.filter(p => p.subject === 'custom').reduce((a,p) => a + (p.questions?.length||p.qCount||0), 0),
   });
 });
 
@@ -1178,6 +1245,55 @@ app.get('/api/job/:jobId', adminOnly, (req, res) => {
   const job = JOB_MAP.get(req.params.jobId);
   if (!job) return res.status(404).json({ error: 'Job not found or expired' });
   res.json({ status: job.status, result: job.result, error: job.error });
+});
+
+// ── ADMIN: KB Diagnostic ─────────────────────────────────────
+app.get('/api/admin/debug/kb', adminOnly, (_req, res) => {
+  let rawKB = null, fileExists = false, fileSize = 0;
+  try {
+    fileExists = fs.existsSync(KB_PATH);
+    if (fileExists) { fileSize = fs.statSync(KB_PATH).size; rawKB = JSON.parse(fs.readFileSync(KB_PATH, 'utf8')); }
+  } catch(e) { return res.json({ error: e.message, kbPath: KB_PATH }); }
+
+  // Also scan alternate paths so we can see if data is hiding elsewhere
+  const altPaths = [
+    path.join('/data', 'uploads', 'kb.json'),
+    path.join('/data', 'kb.json'),
+    path.join(__dirname, 'uploads', 'kb.json'),
+  ].filter(p => p !== KB_PATH);
+  const altScan = altPaths.map(p => {
+    try {
+      const ex = fs.existsSync(p);
+      if (!ex) return { path: p, exists: false };
+      const sz = fs.statSync(p).size;
+      const d = JSON.parse(fs.readFileSync(p, 'utf8'));
+      return { path: p, exists: true, bytes: sz, pastBarCount: d?.pastBar?.length || 0 };
+    } catch(e) { return { path: p, exists: true, parseError: e.message }; }
+  });
+
+  res.json({
+    kbPath: KB_PATH,
+    fileExists,
+    fileSizeBytes: fileSize,
+    topLevelKeys: Object.keys(rawKB || {}),
+    pastBarCount: rawKB?.pastBar?.length || 0,
+    pastBarItems: (rawKB?.pastBar || []).map(pb => ({
+      id: pb.id, name: pb.name, subject: pb.subject, year: pb.year,
+      questionCount: pb.questions?.length || 0,
+      hasQuestions: Array.isArray(pb.questions),
+      source: pb.source || 'upload',
+      firstQ: pb.questions?.[0]?.q?.slice(0, 80) || '(none)',
+    })),
+    referenceCount: rawKB?.references?.length || 0,
+    syllabusSubjects: Object.keys(rawKB?.syllabus?.subjects || {}),
+    inMemoryKB: {
+      pastBarCount: KB?.pastBar?.length || 0,
+      pastBarSubjects: (KB?.pastBar || []).map(pb => pb.subject),
+      referenceCount: KB?.references?.length || 0,
+    },
+    memoryMatchesFile: (KB?.pastBar?.length || 0) === (rawKB?.pastBar?.length || 0),
+    alternatePaths: altScan,
+  });
 });
 
 // ── ADMIN: Storage info ──────────────────────────────────────
@@ -2227,4 +2343,18 @@ app.get('/api/status', async (req, res) => {
 });
 
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
-app.listen(PORT, () => console.log(`BarBuddy v3 on port ${PORT}`));
+
+app.listen(PORT, () => {
+  const totalQ    = (KB.pastBar || []).reduce((a, pb) => a + (pb.questions?.length || pb.qCount || 0), 0);
+  const subjsWithData = [...new Set((KB.pastBar || []).map(pb => pb.subject))].join(', ') || 'none';
+  console.log('\n═══ BarBuddy v3 Startup ═══════════════');
+  console.log(`  Port:          ${PORT}`);
+  console.log(`  KB Path:       ${KB_PATH}`);
+  console.log(`  KB exists:     ${fs.existsSync(KB_PATH)}`);
+  console.log(`  Past bar:      ${KB.pastBar?.length || 0} items`);
+  console.log(`  Total Q:       ${totalQ}`);
+  console.log(`  Manual:        ${(KB.pastBar || []).filter(pb => pb.source === 'manual').length} batches`);
+  console.log(`  References:    ${KB.references?.length || 0}`);
+  console.log(`  Subjects:      ${subjsWithData}`);
+  console.log('════════════════════════════════════════\n');
+});
