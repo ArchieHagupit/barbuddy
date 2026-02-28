@@ -380,6 +380,7 @@ app.get('/api/admin/users', adminOnly, (_req, res) => {
   const list = Object.values(USERS).map(u => ({
     id: u.id, name: u.name, email: u.email, role: u.role,
     active: u.active, createdAt: u.createdAt, stats: u.stats,
+    tabSettings: u.tabSettings || null,
   })).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
   res.json(list);
 });
@@ -442,6 +443,45 @@ app.post('/api/admin/tab-settings', adminOnly, (req, res) => {
   TAB_SETTINGS = deepMerge(JSON.parse(JSON.stringify(DEFAULT_TAB_SETTINGS)), incoming);
   saveTabSettings();
   res.json({ success: true, settings: TAB_SETTINGS });
+});
+
+// ── Per-user tab settings (admin-managed, merged with global) ─
+app.get('/api/user/tab-settings', requireAuth, (req, res) => {
+  const userTS = req.user.tabSettings || null;
+  // Start from global settings, then apply personal restrictions (AND logic — global disabled always wins)
+  const merged = JSON.parse(JSON.stringify(TAB_SETTINGS));
+  if (userTS) {
+    for (const subj of Object.keys(merged.subjects || {})) {
+      for (const mode of Object.keys(merged.subjects[subj] || {})) {
+        const personalVal = userTS.subjects?.[subj]?.[mode];
+        if (personalVal === false) merged.subjects[subj][mode] = false;
+      }
+    }
+    if (userTS.overview === false) merged.overview = false;
+  }
+  res.json(merged);
+});
+
+app.get('/api/admin/users/:userId/tab-settings', adminOnly, (req, res) => {
+  const user = USERS[req.params.userId];
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  res.json({ tabSettings: user.tabSettings || null });
+});
+
+app.patch('/api/admin/users/:userId/tab-settings', adminOnly, (req, res) => {
+  const user = USERS[req.params.userId];
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  user.tabSettings = req.body.tabSettings || null;
+  saveUsers();
+  res.json({ ok: true });
+});
+
+app.delete('/api/admin/users/:userId/tab-settings', adminOnly, (req, res) => {
+  const user = USERS[req.params.userId];
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  delete user.tabSettings;
+  saveUsers();
+  res.json({ ok: true });
 });
 
 // ── GET KB state (public — browser caches) ─────────────────

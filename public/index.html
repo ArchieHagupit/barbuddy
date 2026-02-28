@@ -584,6 +584,7 @@ select.form-input{cursor:pointer;}
 .ur-act.disable{color:#e07080;border-color:rgba(155,35,53,.4);background:rgba(155,35,53,.1);}
 .ur-act.del{color:#e07080;border-color:rgba(155,35,53,.4);background:transparent;}
 .ur-act.view{color:var(--gold);border-color:rgba(201,168,76,.4);background:rgba(201,168,76,.1);}
+.ur-act.access{color:#7ab8ff;border-color:rgba(122,184,255,.35);background:rgba(122,184,255,.08);}
 .admin-locked{text-align:center;padding:48px;color:var(--muted);}
 /* Gen progress panel */
 .gen-prog-panel{background:linear-gradient(135deg,#0a1000,#141800);border:1px solid rgba(255,140,66,.25);border-radius:14px;padding:18px;margin-top:14px;}
@@ -3179,6 +3180,9 @@ async function sendEmailResults(){
 // TAB ACCESS CONTROL
 // ══════════════════════════════════
 let pendingTabSettings = null;
+let currentAccessUserId = null;
+let currentAccessUserName = '';
+let pendingUserTabSettings = null;
 
 function getDefaultTabSettings() {
   return {
@@ -3199,7 +3203,11 @@ function getDefaultTabSettings() {
 
 async function applyTabSettings() {
   try {
-    const r = await fetch('/api/tab-settings');
+    // Admins use global settings; students use their personal-merged settings
+    const isAdm = !!adminKey;
+    const url     = (!isAdm && sessionToken) ? '/api/user/tab-settings' : '/api/tab-settings';
+    const headers = (!isAdm && sessionToken) ? {'x-session-token': sessionToken} : {};
+    const r = await fetch(url, { headers });
     const settings = await r.json();
     window.TAB_SETTINGS = settings;
     const isAdmin = !!adminKey;
@@ -3825,6 +3833,8 @@ function onAuthSuccess(token, user) {
   localStorage.setItem('bb_user', JSON.stringify(user));
   document.getElementById('authWall').style.display = 'none';
   updateUserDisplay();
+  // Refresh tab settings so per-user restrictions apply immediately
+  applyTabSettings().catch(() => {});
 }
 
 function updateUserDisplay() {
@@ -3994,10 +4004,12 @@ async function loadAdminUsers() {
     if (!users.length) { el.innerHTML = resetHtml + '<div style="font-size:12px;color:var(--muted);">No registered users yet.</div>'; return; }
     el.innerHTML = resetHtml + users.map(u => {
       const avg = u.stats.totalAttempts ? (u.stats.totalScore / u.stats.totalAttempts).toFixed(2) : '—';
+      const restrictSummary = getUserAccessSummary(u);
       return `<div class="ur-row">
-        <div><div class="ur-name">${h(u.name)}</div><div class="ur-meta">${h(u.email)} &nbsp;·&nbsp; Joined ${u.createdAt.slice(0,10)} &nbsp;·&nbsp; ${u.stats.totalAttempts} attempt(s), avg ${avg}/10</div></div>
+        <div><div class="ur-name">${h(u.name)}${restrictSummary}</div><div class="ur-meta">${h(u.email)} &nbsp;·&nbsp; Joined ${u.createdAt.slice(0,10)} &nbsp;·&nbsp; ${u.stats.totalAttempts} attempt(s), avg ${avg}/10</div></div>
         <span class="ur-badge${u.active?'':' off'}">${u.active?'Active':'Disabled'}</span>
         <button class="ur-act view" onclick="viewUserResults('${u.id}','${h(u.name)}')">Results</button>
+        <button class="ur-act access" onclick="openUserAccessModal('${u.id}','${h(u.name)}')">⚙ Access</button>
         <button class="ur-act ${u.active?'disable':'enable'}" onclick="toggleUserAccess('${u.id}',${!u.active})">${u.active?'Disable':'Enable'}</button>
         <button class="ur-act del" onclick="deleteUser('${u.id}','${h(u.name)}')">Delete</button>
       </div>`;
@@ -4087,6 +4099,160 @@ async function deleteResult(resultId) {
   loadAdminResults();
 }
 
+// ══════════════════════════════════
+// PER-USER TAB ACCESS CONTROL
+// ══════════════════════════════════
+function getDefaultUserTabSettings() {
+  return {
+    overview: true,
+    subjects: {
+      civil:      { learn: true, quiz: true, mockbar: true },
+      criminal:   { learn: true, quiz: true, mockbar: true },
+      political:  { learn: true, quiz: true, mockbar: true },
+      labor:      { learn: true, quiz: true, mockbar: true },
+      commercial: { learn: true, quiz: true, mockbar: true },
+      taxation:   { learn: true, quiz: true, mockbar: true },
+      remedial:   { learn: true, quiz: true, mockbar: true },
+      ethics:     { learn: true, quiz: true, mockbar: true },
+      custom:     { mockbar: true },
+    },
+  };
+}
+
+function getUserAccessSummary(u) {
+  if (!u.tabSettings) return '';
+  const s = u.tabSettings;
+  let restrictions = 0;
+  (SUBJS || []).forEach(subj => {
+    ['learn','quiz','mockbar'].forEach(mode => {
+      if (s.subjects?.[subj.key]?.[mode] === false) restrictions++;
+    });
+  });
+  if (s.overview === false) restrictions++;
+  if (!restrictions) return '';
+  return `<span style="font-size:10px;background:rgba(155,35,53,.18);color:#e07080;border-radius:4px;padding:1px 7px;margin-left:7px;font-weight:600;">${restrictions} restricted</span>`;
+}
+
+async function openUserAccessModal(userId, userName) {
+  currentAccessUserId = userId;
+  currentAccessUserName = userName;
+  const modal = document.getElementById('userAccessModal');
+  modal.style.display = 'flex';
+  document.getElementById('userAccessModalTitle').textContent = 'User: ' + userName;
+  document.getElementById('userAccessGrid').innerHTML = '<div style="color:var(--muted);font-size:12px;padding:12px 0;">Loading…</div>';
+  const saveBtn = document.getElementById('saveUserAccessBtn');
+  if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = '💾 Save Access'; }
+  try {
+    const r = await fetch(`/api/admin/users/${userId}/tab-settings`, { headers: {'x-admin-key': window._adminKey||''} });
+    const d = await r.json();
+    pendingUserTabSettings = d.tabSettings || getDefaultUserTabSettings();
+    renderUserAccessGrid();
+  } catch(e) {
+    document.getElementById('userAccessGrid').innerHTML = '<div style="color:#e07080;font-size:12px;">Failed to load settings.</div>';
+  }
+}
+
+function closeUserAccessModal() {
+  document.getElementById('userAccessModal').style.display = 'none';
+  currentAccessUserId = null;
+  currentAccessUserName = '';
+  pendingUserTabSettings = null;
+}
+
+function renderUserAccessGrid() {
+  const container = document.getElementById('userAccessGrid');
+  if (!container) return;
+  const s = pendingUserTabSettings || getDefaultUserTabSettings();
+  const globalS = window.TAB_SETTINGS || {};
+  const modeLabels = { learn: '📖 Learn', quiz: '✏️ Quiz', mockbar: '⏱ Mock Bar' };
+  let html = '';
+  SUBJS.forEach(subj => {
+    const modes = subj.key === 'custom' ? ['mockbar'] : ['learn', 'quiz', 'mockbar'];
+    const pillsHtml = modes.map(mode => {
+      const globalLocked = globalS.subjects?.[subj.key]?.[mode] === false;
+      const personalEnabled = s.subjects?.[subj.key]?.[mode] !== false;
+      const enabled = personalEnabled && !globalLocked;
+      const lockTip = globalLocked ? ' title="Disabled globally — cannot override"' : '';
+      return `<label style="display:flex;align-items:center;gap:5px;font-size:12px;color:${enabled ? 'var(--text,var(--white))' : 'var(--muted)'};cursor:${globalLocked ? 'not-allowed' : 'pointer'};background:${enabled ? 'rgba(255,255,255,.05)' : 'transparent'};border:1px solid ${enabled ? 'var(--bdr2)' : 'transparent'};border-radius:6px;padding:4px 9px;transition:all .15s;"${lockTip}>
+        <input type="checkbox" ${enabled ? 'checked' : ''} ${globalLocked ? 'disabled' : ''} onchange="toggleUserSubjTab('${subj.key}','${mode}',this.checked)" style="accent-color:var(--gold);cursor:${globalLocked ? 'not-allowed' : 'pointer'};">
+        ${modeLabels[mode]}${globalLocked ? ' 🔒' : ''}
+      </label>`;
+    }).join('');
+    html += `<div style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:10px;background:rgba(255,255,255,.025);border:1px solid var(--bdr2);margin-bottom:6px;flex-wrap:wrap;">
+      <div style="flex:1;min-width:120px;font-size:13px;font-weight:600;color:var(--text,var(--white));">${subj.name}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">${pillsHtml}</div>
+    </div>`;
+  });
+  container.innerHTML = html;
+}
+
+function toggleUserSubjTab(subj, mode, value) {
+  if (!pendingUserTabSettings) pendingUserTabSettings = getDefaultUserTabSettings();
+  if (!pendingUserTabSettings.subjects) pendingUserTabSettings.subjects = {};
+  if (!pendingUserTabSettings.subjects[subj]) pendingUserTabSettings.subjects[subj] = {};
+  pendingUserTabSettings.subjects[subj][mode] = value;
+  renderUserAccessGrid();
+}
+
+function setAllUserTabs(val) {
+  pendingUserTabSettings = getDefaultUserTabSettings();
+  if (!val) {
+    SUBJS.forEach(subj => {
+      const modes = subj.key === 'custom' ? ['mockbar'] : ['learn', 'quiz', 'mockbar'];
+      modes.forEach(mode => { pendingUserTabSettings.subjects[subj.key][mode] = false; });
+    });
+    pendingUserTabSettings.overview = false;
+  }
+  renderUserAccessGrid();
+}
+
+function setAllUserMode(mode, val) {
+  if (!pendingUserTabSettings) pendingUserTabSettings = getDefaultUserTabSettings();
+  SUBJS.forEach(subj => {
+    if (subj.key === 'custom' && mode !== 'mockbar') return;
+    if (!pendingUserTabSettings.subjects[subj.key]) pendingUserTabSettings.subjects[subj.key] = {};
+    pendingUserTabSettings.subjects[subj.key][mode] = val;
+  });
+  renderUserAccessGrid();
+}
+
+async function saveUserAccess() {
+  if (!currentAccessUserId) return;
+  const btn = document.getElementById('saveUserAccessBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  try {
+    const r = await fetch(`/api/admin/users/${currentAccessUserId}/tab-settings`, {
+      method: 'PATCH',
+      headers: {'Content-Type':'application/json','x-admin-key': window._adminKey||''},
+      body: JSON.stringify({ tabSettings: pendingUserTabSettings }),
+    });
+    if (!r.ok) throw new Error('Save failed');
+    if (btn) { btn.textContent = '✅ Saved!'; setTimeout(() => { btn.disabled = false; btn.textContent = '💾 Save Access'; }, 2000); }
+    // Refresh user list in background to update restriction badge
+    loadAdminUsers();
+  } catch(e) {
+    if (btn) { btn.textContent = '⚠️ Error'; btn.disabled = false; }
+  }
+}
+
+async function resetUserAccess() {
+  if (!currentAccessUserId || !confirm(`Reset "${currentAccessUserName}" to global defaults? This removes all personal tab restrictions.`)) return;
+  const btn = document.getElementById('saveUserAccessBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Resetting…'; }
+  try {
+    await fetch(`/api/admin/users/${currentAccessUserId}/tab-settings`, {
+      method: 'DELETE',
+      headers: {'x-admin-key': window._adminKey||''},
+    });
+    pendingUserTabSettings = getDefaultUserTabSettings();
+    renderUserAccessGrid();
+    if (btn) { btn.textContent = '✅ Reset!'; setTimeout(() => { btn.disabled = false; btn.textContent = '💾 Save Access'; }, 2000); }
+    loadAdminUsers();
+  } catch(e) {
+    if (btn) { btn.disabled = false; }
+  }
+}
+
 async function exportResultsCSV() {
   const r    = await fetch('/api/admin/results', { headers:{'x-admin-key': window._adminKey||''} });
   const rows = await r.json();
@@ -4096,5 +4262,35 @@ async function exportResultsCSV() {
   const a    = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'barbuddy_results.csv'; a.click();
 }
 </script>
+
+<!-- PER-USER TAB ACCESS MODAL -->
+<div id="userAccessModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:9999;align-items:center;justify-content:center;">
+  <div style="background:var(--card2);border:1px solid var(--bdr-gold,rgba(201,168,76,.25));border-radius:18px;width:min(680px,95vw);max-height:88vh;overflow-y:auto;padding:28px 32px;position:relative;box-shadow:0 24px 80px rgba(0,0,0,.6);">
+    <button onclick="closeUserAccessModal()" style="position:absolute;top:14px;right:16px;background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;line-height:1;">✕</button>
+    <div style="font-family:var(--fd);font-size:22px;font-weight:700;color:var(--gold-l);margin-bottom:3px;">⚙️ Tab Access Control</div>
+    <div id="userAccessModalTitle" style="font-size:13px;color:var(--muted);margin-bottom:10px;"></div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:16px;line-height:1.6;background:rgba(255,255,255,.03);border-radius:8px;padding:10px 12px;border:1px solid var(--bdr2);">
+      Restrict which tabs this user can access. <strong style="color:var(--text,var(--white));">Global restrictions always apply</strong> — personal settings here add additional per-user restrictions on top of global ones. Locked items (🔒) are already disabled globally and cannot be unlocked here.
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;">
+      <button class="tab-global-btn" onclick="setAllUserTabs(true)">✅ Enable All</button>
+      <button class="tab-global-btn" onclick="setAllUserTabs(false)">🔒 Disable All</button>
+      <button class="tab-global-btn" onclick="setAllUserMode('learn',false)">Hide Learn</button>
+      <button class="tab-global-btn" onclick="setAllUserMode('quiz',false)">Hide Quiz</button>
+      <button class="tab-global-btn" onclick="setAllUserMode('mockbar',false)">Hide Mock Bar</button>
+      <button class="tab-global-btn" onclick="setAllUserMode('learn',true)">Show Learn</button>
+      <button class="tab-global-btn" onclick="setAllUserMode('quiz',true)">Show Quiz</button>
+      <button class="tab-global-btn" onclick="setAllUserMode('mockbar',true)">Show Mock Bar</button>
+    </div>
+    <div id="userAccessGrid" style="margin-bottom:18px;"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding-top:16px;border-top:1px solid var(--bdr2);flex-wrap:wrap;">
+      <button class="tab-global-btn" style="color:var(--crim-l,#e07080);" onclick="resetUserAccess()">↺ Reset to Global Defaults</button>
+      <div style="display:flex;gap:10px;">
+        <button class="btn-ghost" onclick="closeUserAccessModal()">Cancel</button>
+        <button class="btn-gold" id="saveUserAccessBtn" onclick="saveUserAccess()">💾 Save Access</button>
+      </div>
+    </div>
+  </div>
+</div>
 </body>
 </html>
