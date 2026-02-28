@@ -32,7 +32,8 @@ function makeSyllabusUpload() {
 const app       = express();
 const PORT      = process.env.PORT || 3000;
 const API_KEY   = process.env.ANTHROPIC_API_KEY;
-const ADMIN_KEY = process.env.ADMIN_KEY || 'barbuddy-admin-2025';
+const ADMIN_KEY   = process.env.ADMIN_KEY   || 'barbuddy-admin-2025';
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || null;
 
 const VALID_SUBJECTS = ['civil','criminal','political','labor','commercial','taxation','remedial','ethics','custom'];
 const SUBJECT_MAP_FALLBACK = {
@@ -405,9 +406,21 @@ app.use(express.json({ limit: '80mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 function adminOnly(req, res, next) {
+  // Method 1: ADMIN_KEY header (backward compat)
   const key = req.headers['x-admin-key'] || req.body?.adminKey;
-  if (key !== ADMIN_KEY) return res.status(401).json({ error: 'Unauthorized' });
-  next();
+  if (key && key === ADMIN_KEY) return next();
+
+  // Method 2: Session token from an isAdmin user
+  const token = req.headers['x-session-token'];
+  if (token && SESSIONS[token]) {
+    const sess = SESSIONS[token];
+    if (sess.expiresAt > Date.now()) {
+      const user = USERS[sess.userId];
+      if (user?.isAdmin) { req.userId = user.id; req.user = user; return next(); }
+    }
+  }
+
+  return res.status(401).json({ error: 'Unauthorized' });
 }
 
 function authOrAdmin(req, res, next) {
@@ -432,10 +445,15 @@ app.post('/api/auth/register', (req, res) => {
   const existing = Object.values(USERS).find(u => u.email === email.toLowerCase());
   if (existing) return res.status(409).json({ error: 'Email already registered' });
   const id = 'u_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+  const emailLower = email.toLowerCase();
+  const isFirstUser = Object.keys(USERS).length === 0;
+  const isAdminEmail = ADMIN_EMAIL && emailLower === ADMIN_EMAIL.toLowerCase();
   USERS[id] = {
-    id, name: name.trim(), email: email.toLowerCase(),
+    id, name: name.trim(), email: emailLower,
     passwordHash: hashPassword(password),
-    role: 'student', active: true,
+    role: isFirstUser ? 'admin' : 'student',
+    isAdmin: isFirstUser || !!isAdminEmail,
+    active: true,
     createdAt: new Date().toISOString(),
     stats: { totalAttempts: 0, totalScore: 0, totalQuestions: 0 },
   };
@@ -443,7 +461,8 @@ app.post('/api/auth/register', (req, res) => {
   const token = generateToken();
   SESSIONS[token] = { userId: id, createdAt: Date.now(), expiresAt: Date.now() + 86400000 };
   saveSessions();
-  res.json({ token, user: { id, name: USERS[id].name, email: USERS[id].email, role: USERS[id].role } });
+  const u = USERS[id];
+  res.json({ token, user: { id, name: u.name, email: u.email, role: u.role, isAdmin: u.isAdmin || false } });
 });
 
 app.post('/api/auth/login', (req, res) => {
@@ -455,7 +474,7 @@ app.post('/api/auth/login', (req, res) => {
   const token = generateToken();
   SESSIONS[token] = { userId: user.id, createdAt: Date.now(), expiresAt: Date.now() + 86400000 };
   saveSessions();
-  res.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
+  res.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role, isAdmin: user.isAdmin || false } });
 });
 
 app.post('/api/auth/logout', requireAuth, (req, res) => {
@@ -467,7 +486,7 @@ app.post('/api/auth/logout', requireAuth, (req, res) => {
 
 app.get('/api/auth/me', requireAuth, (req, res) => {
   const u = req.user;
-  res.json({ id: u.id, name: u.name, email: u.email, role: u.role });
+  res.json({ id: u.id, name: u.name, email: u.email, role: u.role, isAdmin: u.isAdmin || false });
 });
 
 // ── Password reset routes ─────────────────────────────────────
@@ -575,6 +594,7 @@ app.delete('/api/admin/results/:resultId', adminOnly, (req, res) => {
 app.get('/api/admin/users', adminOnly, (_req, res) => {
   const list = Object.values(USERS).map(u => ({
     id: u.id, name: u.name, email: u.email, role: u.role,
+    isAdmin: u.isAdmin || false,
     active: u.active, createdAt: u.createdAt, stats: u.stats,
     tabSettings: u.tabSettings || null,
   })).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
@@ -584,11 +604,24 @@ app.get('/api/admin/users', adminOnly, (_req, res) => {
 app.patch('/api/admin/users/:userId', adminOnly, (req, res) => {
   const user = USERS[req.params.userId];
   if (!user) return res.status(404).json({ error: 'User not found' });
-  const { active, role } = req.body || {};
-  if (active !== undefined) user.active = !!active;
-  if (role   !== undefined) user.role   = role;
+  const { active, role, isAdmin } = req.body || {};
+  if (active  !== undefined) user.active  = !!active;
+  if (role    !== undefined) user.role    = role;
+  if (isAdmin !== undefined) user.isAdmin = !!isAdmin;
   saveUsers();
   res.json({ ok: true });
+});
+
+app.patch('/api/admin/users/:userId/role', adminOnly, (req, res) => {
+  const user = USERS[req.params.userId];
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  const { isAdmin } = req.body || {};
+  // Prevent admins from removing their own admin access
+  if (user.id === req.userId && !isAdmin) return res.status(400).json({ error: 'Cannot remove your own admin access' });
+  user.isAdmin = !!isAdmin;
+  if (isAdmin) user.role = 'admin'; else if (user.role === 'admin') user.role = 'student';
+  saveUsers();
+  res.json({ success: true, userId: user.id, isAdmin: user.isAdmin });
 });
 
 app.delete('/api/admin/users/:userId', adminOnly, (req, res) => {

@@ -622,6 +622,12 @@ select.form-input{cursor:pointer;}
 .ur-act.del{color:#e07080;border-color:rgba(155,35,53,.4);background:transparent;}
 .ur-act.view{color:var(--gold);border-color:rgba(201,168,76,.4);background:rgba(201,168,76,.1);}
 .ur-act.access{color:#7ab8ff;border-color:rgba(122,184,255,.35);background:rgba(122,184,255,.08);}
+.badge-admin{display:inline-block;font-size:10px;font-weight:700;padding:2px 7px;border-radius:5px;background:rgba(201,168,76,.15);border:1px solid rgba(201,168,76,.35);color:var(--gold-l);vertical-align:middle;}
+.ur-act-admin-grant{font-size:11px;padding:4px 9px;border-radius:7px;cursor:pointer;border:1px solid rgba(201,168,76,.35);background:transparent;color:var(--gold);font-family:var(--fm);font-weight:700;transition:all .18s;}
+.ur-act-admin-grant:hover{background:rgba(201,168,76,.12);}
+.ur-act-admin-revoke{font-size:11px;padding:4px 9px;border-radius:7px;cursor:pointer;border:1px solid rgba(224,80,96,.35);background:transparent;color:#e05060;font-family:var(--fm);font-weight:700;transition:all .18s;}
+.ur-act-admin-revoke:hover{background:rgba(224,80,96,.08);}
+.ur-act-admin-grant:disabled,.ur-act-admin-revoke:disabled{opacity:.35;cursor:not-allowed;}
 /* Syllabus Builder */
 .sb-section{margin-bottom:16px;border:1px solid rgba(201,168,76,.15);border-radius:12px;overflow:hidden;}
 .sb-section-header{display:flex;align-items:center;gap:8px;padding:10px 14px;background:rgba(201,168,76,.05);border-bottom:1px solid rgba(201,168,76,.1);}
@@ -1284,6 +1290,14 @@ select.form-input{cursor:pointer;}
 
 <script>
 // ══════════════════════════════════
+// DOM SAFE HELPERS
+// ══════════════════════════════════
+function safeSetHTML(id, html)         { const el=document.getElementById(id); if(el) el.innerHTML=html; }
+function safeSetText(id, text)         { const el=document.getElementById(id); if(el) el.textContent=text; }
+function safeSetStyle(id, prop, val)   { const el=document.getElementById(id); if(el) el.style[prop]=val; }
+function safeSetDisabled(id, val)      { const el=document.getElementById(id); if(el) el.disabled=val; }
+
+// ══════════════════════════════════
 // STATE
 // ══════════════════════════════════
 let KB = { hasSyllabus:false, syllabusTopics:[], references:[], pastBar:[], contentTopics:0, genState:{} };
@@ -1350,15 +1364,14 @@ function getMotivationalQuote() {
 // ══════════════════════════════════
 async function init() {
   loadLocalCache();
-  renderSidebar();       // build subject list in sidebar
-  updateSidebarAdminVisibility(); // show admin link if key was restored
+  renderSidebar();
+  updateSidebarAdminVisibility();
   renderSubjectTracker();
   await loadKB();
   await applyTabSettings();
-  navToOverview();       // start on overview
+  // navToOverview() called by DOMContentLoaded after await init()
   subscribeToProgress();
   checkAPIStatus();
-  // Load syllabus data for all subjects in background so progress bars are accurate
   preloadAllSyllabuses().catch(() => {});
 }
 
@@ -1381,7 +1394,9 @@ window.addEventListener('DOMContentLoaded', async () => {
     // Auth wall stays visible; app boots once user logs in
     document.getElementById('authWall').style.display = 'flex';
   }
-  init();
+  await init();
+  // After init, always land on overview
+  navToOverview();
 });
 
 // ══════════════════════════════════
@@ -1434,7 +1449,10 @@ async function syncCacheFromServer(subject) {
 async function loadKB() {
   try {
     const r = await fetch('/api/kb');
-    KB = await r.json();
+    const kbData = await r.json();
+    kbData._loaded = true;
+    KB = kbData;
+    window.kbState = KB; // keep window.kbState in sync
     updateKBIndicator();
     renderSyllabusTree();
     buildQuizPool();
@@ -1446,14 +1464,32 @@ async function loadKB() {
   } catch(e) { console.warn('KB load:', e.message); }
 }
 
+async function refreshKBState() {
+  try {
+    const r = await fetch('/api/kb', { headers: { 'x-session-token': sessionToken || '' } });
+    if (!r.ok) { window.kbState = { pastBar: [], references: [], totalQuestions: 0 }; return; }
+    const data = await r.json();
+    data._loaded = true;
+    KB = data;
+    window.kbState = data;
+    updateKBIndicator();
+    refreshSidebarDots();
+  } catch(e) {
+    console.warn('refreshKBState failed:', e.message);
+    if (!window.kbState) window.kbState = { pastBar: [], references: [], totalQuestions: 0 };
+  }
+}
+
 function updateKBIndicator() {
   const ind = document.getElementById('kbInd'), txt = document.getElementById('kbIndTxt');
   const gs = KB.genState;
   const n = Object.values(CACHE).reduce((a,s)=>a+Object.keys(s).length, 0);
-  if (gs?.running) { ind.className='kb-ind generating'; txt.textContent=`Generating ${gs.done||0}/${gs.total||0}`; }
-  else if (n > 0) { ind.className='kb-ind loaded'; txt.textContent=`${n} topics ready`; }
-  else if (KB.hasSyllabus) { ind.className='kb-ind generating'; txt.textContent='Generating…'; }
-  else { ind.className='kb-ind empty'; txt.textContent='No KB'; }
+  if (ind && txt) {
+    if (gs?.running) { ind.className='kb-ind generating'; txt.textContent=`Generating ${gs.done||0}/${gs.total||0}`; }
+    else if (n > 0) { ind.className='kb-ind loaded'; txt.textContent=`${n} topics ready`; }
+    else if (KB.hasSyllabus) { ind.className='kb-ind generating'; txt.textContent='Generating…'; }
+    else { ind.className='kb-ind empty'; txt.textContent='No KB'; }
+  }
 
   // Mock source stats (null-safe — elements may not exist in new overview layout)
   const pbTotal = KB.pastBar?.reduce((a,p)=>a+(p.qCount||0),0)||0;
@@ -1546,6 +1582,36 @@ function navToAdmin() {
   document.getElementById('sb-admin')?.classList.add('active');
   showPage('admin');
   updateBreadcrumb(null, null);
+  // Auto-unlock admin panel for users with server-granted isAdmin flag
+  if (currentUser?.isAdmin && document.getElementById('adminLocked')?.style.display !== 'none') {
+    autoUnlockAdminUI();
+  }
+}
+
+function autoUnlockAdminUI() {
+  const locked   = document.getElementById('adminLocked');
+  const unlocked = document.getElementById('adminUnlocked');
+  const status   = document.getElementById('adminStatus');
+  if (locked)   locked.style.display   = 'none';
+  if (unlocked) unlocked.style.display = 'block';
+  if (status)   status.textContent     = '✓ Admin Access';
+  refreshAdminKB();
+  updateSyllabusStatus();
+  initTabControls();
+  updateSidebarAdminVisibility();
+  const sovGrid = document.getElementById('subjectOverviewGrid');
+  if (sovGrid) { sovGrid.style.display = ''; renderSubjectOverview(); }
+  document.getElementById('adminUserPanel').style.display  = 'block';
+  document.getElementById('adminResultsPanel').style.display = 'block';
+  loadAdminUsers();
+  loadAdminResults();
+  loadSyllabusBuilder();
+  fetch('/api/settings').then(r => r.json()).then(s => {
+    const btn = document.getElementById('regToggleBtn');
+    if (btn) btn.textContent = s.registrationOpen ? 'Close Registration' : 'Open Registration';
+  }).catch(() => {});
+  if (KB.genState?.running) { const p = document.getElementById('adminGenPanel'); if(p) p.style.display='block'; }
+  else if (KB.genState?.finishedAt) { const d = document.getElementById('adminGenDone'); if(d) d.style.display='block'; }
 }
 
 function navToCustom() {
@@ -1739,7 +1805,13 @@ function renderQuizTab(subj, container) {
   buildQuizPool(subj);
 }
 
-function renderMockBarTab(subj, container) {
+async function renderMockBarTab(subj, container) {
+  if (!container) return;
+  // Ensure KB is loaded before rendering sources
+  if (!KB.pastBar || (KB.pastBar.length === 0 && !KB._loaded)) {
+    container.innerHTML = `<div style="text-align:center;padding:32px;color:var(--muted)"><div style="font-size:24px;margin-bottom:10px;">⏳</div>Loading materials…</div>`;
+    await refreshKBState();
+  }
   const s = SUBJS.find(x => x.key === subj);
   const presets = [[5,'5'],[10,'10'],[20,'20']];
   const timeOpts = [[0,'No limit'],[30,'30 min'],[60,'1 hr'],[120,'2 hr'],[180,'3 hr']];
@@ -2958,9 +3030,11 @@ function updateDash(){
   renderSubjectTracker();
 }
 function renderSubjectTracker(){
+  const el=document.getElementById('sub-tracker');
+  if(!el) return;
   const cachedBySubj={};
   Object.entries(CACHE).forEach(([k,v])=>cachedBySubj[k]=Object.keys(v).length);
-  document.getElementById('sub-tracker').innerHTML=SUBJS.map((s,i)=>{
+  el.innerHTML=SUBJS.map((s,i)=>{
     const total=(KB.syllabusTopics||[]).find(st=>st.key===s.key)?.topics?.length||0;
     const cached=cachedBySubj[s.key]||0;
     const pct=total?Math.round(cached/total*100):0;
@@ -3749,10 +3823,24 @@ function quickAddPastBar(subjKey) {
   }, 150);
 }
 
+// Sends both session token and legacy admin key for backward compat
+function adminFetch(url, options = {}) {
+  return fetch(url, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+      'x-session-token': sessionToken || '',
+      'x-admin-key': window._adminKey || '',
+    }
+  });
+}
+
 function updateSidebarAdminVisibility() {
   const sbAdmin = document.getElementById('sb-admin');
   if (!sbAdmin) return;
-  sbAdmin.style.display = window._adminKey ? '' : 'none';
+  // Show admin button if user has isAdmin flag OR legacy key is set
+  sbAdmin.style.display = (currentUser?.isAdmin || window._adminKey) ? '' : 'none';
 }
 
 async function unlockAdmin(){
@@ -4164,17 +4252,21 @@ async function doRegister() {
   finally { btn.disabled = false; btn.textContent = 'Create Account'; }
 }
 
-function onAuthSuccess(token, user) {
+async function onAuthSuccess(token, user) {
   sessionToken = token;
   currentUser  = user;
   localStorage.setItem('bb_token', token);
   localStorage.setItem('bb_user', JSON.stringify(user));
   document.getElementById('authWall').style.display = 'none';
   updateUserDisplay();
-  // Refresh tab settings and sync progress from server
-  applyTabSettings().catch(() => {});
-  syncProgressFromServer().catch(() => {});
-  // Navigate to overview so the page isn't blank after login
+  updateSidebarAdminVisibility();
+  // Prefetch KB and progress in parallel before rendering
+  await Promise.allSettled([
+    refreshKBState(),
+    applyTabSettings(),
+    syncProgressFromServer(),
+  ]);
+  // Navigate to overview — always
   navToOverview();
 }
 
@@ -4215,6 +4307,7 @@ async function checkExistingSession() {
     localStorage.setItem('bb_user', JSON.stringify(user));
     document.getElementById('authWall').style.display = 'none';
     updateUserDisplay();
+    updateSidebarAdminVisibility();
     return true;
   } catch(e) { return false; }
 }
@@ -4346,27 +4439,44 @@ async function loadAdminUsers() {
     el.innerHTML = resetHtml + users.map(u => {
       const avg = u.stats.totalAttempts ? (u.stats.totalScore / u.stats.totalAttempts).toFixed(2) : '—';
       const restrictSummary = getUserAccessSummary(u);
+      const isSelf = u.id === currentUser?.id;
+      const adminBadge = u.isAdmin ? `<span class="badge-admin">👑 Admin</span>` : '';
       return `<div class="ur-row">
-        <div><div class="ur-name">${h(u.name)}${restrictSummary}</div><div class="ur-meta">${h(u.email)} &nbsp;·&nbsp; Joined ${u.createdAt.slice(0,10)} &nbsp;·&nbsp; ${u.stats.totalAttempts} attempt(s), avg ${avg}/10</div></div>
+        <div><div class="ur-name">${h(u.name)}${restrictSummary} ${adminBadge}</div><div class="ur-meta">${h(u.email)} &nbsp;·&nbsp; Joined ${u.createdAt.slice(0,10)} &nbsp;·&nbsp; ${u.stats.totalAttempts} attempt(s), avg ${avg}/10</div></div>
         <span class="ur-badge${u.active?'':' off'}">${u.active?'Active':'Disabled'}</span>
-        <button class="ur-act view" onclick="viewUserResults('${u.id}','${h(u.name)}')">Results</button>
+        <button class="ur-act view"   onclick="viewUserResults('${u.id}','${h(u.name)}')">Results</button>
         <button class="ur-act access" onclick="openUserAccessModal('${u.id}','${h(u.name)}')">⚙ Access</button>
+        <button class="${u.isAdmin?'ur-act-admin-revoke':'ur-act-admin-grant'}"
+          onclick="toggleUserAdmin('${u.id}',${!u.isAdmin})"
+          ${isSelf?'disabled title="Cannot change own role"':''}>
+          ${u.isAdmin?'Revoke Admin':'Grant Admin'}
+        </button>
         <button class="ur-act ${u.active?'disable':'enable'}" onclick="toggleUserAccess('${u.id}',${!u.active})">${u.active?'Disable':'Enable'}</button>
-        <button class="ur-act del" onclick="deleteUser('${u.id}','${h(u.name)}')">Delete</button>
+        <button class="ur-act del" onclick="deleteUser('${u.id}','${h(u.name)}')" ${isSelf?'disabled':''}>Delete</button>
       </div>`;
     }).join('');
   } catch(e) { el.innerHTML = '<div style="font-size:12px;color:#e07080;">Failed to load users.</div>'; }
 }
 
 async function toggleUserAccess(userId, active) {
-  if (!window._adminKey) return;
-  await fetch(`/api/admin/users/${userId}`, { method:'PATCH', headers:{'Content-Type':'application/json','x-admin-key':window._adminKey}, body:JSON.stringify({ active }) });
+  await adminFetch(`/api/admin/users/${userId}`, { method:'PATCH', body: JSON.stringify({ active }) });
   loadAdminUsers();
+}
+
+async function toggleUserAdmin(userId, grantAdmin) {
+  const action = grantAdmin ? 'grant admin access to' : 'revoke admin access from';
+  if (!confirm(`Are you sure you want to ${action} this user?`)) return;
+  try {
+    const r = await adminFetch(`/api/admin/users/${userId}/role`, { method:'PATCH', body: JSON.stringify({ isAdmin: grantAdmin }) });
+    const d = await r.json();
+    if (d.success) { loadAdminUsers(); }
+    else alert('Failed: ' + (d.error || 'Unknown error'));
+  } catch(e) { alert('Error: ' + e.message); }
 }
 
 async function deleteUser(userId, name) {
   if (!confirm(`Delete user "${name}"? This cannot be undone.`)) return;
-  await fetch(`/api/admin/users/${userId}`, { method:'DELETE', headers:{'x-admin-key':window._adminKey||''} });
+  await adminFetch(`/api/admin/users/${userId}`, { method:'DELETE' });
   loadAdminUsers();
 }
 
