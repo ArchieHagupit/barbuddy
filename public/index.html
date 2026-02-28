@@ -121,15 +121,41 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .source-ctrl-btn{padding:6px 14px;font-size:11px;font-weight:700;border-radius:8px;border:1px solid rgba(248,246,241,.1);background:rgba(255,255,255,.04);color:rgba(248,246,241,.45);cursor:pointer;font-family:var(--fb);transition:all .15s;user-select:none;}
 .source-ctrl-btn:hover{background:rgba(255,255,255,.09);color:rgba(248,246,241,.8);border-color:rgba(248,246,241,.18);}
 /* Overview grid */
+/* ── New Overview Layout ─────────────────────── */
+.overview-inner{max-width:900px;margin:0 auto;padding:8px 0 32px;}
+.ov-quote-bar{display:flex;align-items:center;gap:10px;padding:12px 18px;background:rgba(201,168,76,.07);border:1px solid rgba(201,168,76,.15);border-radius:12px;margin-bottom:16px;}
+.ov-quote-star{color:var(--gold);font-size:16px;flex-shrink:0;}
+.ov-quote-text{font-size:13px;color:var(--text-muted,var(--muted));font-style:italic;line-height:1.5;}
+.ov-welcome-card{background:var(--card);border:1px solid var(--bdr);border-radius:16px;padding:22px 26px;margin-bottom:20px;box-shadow:var(--shadow-sm,0 1px 6px rgba(0,0,0,.15));}
+.ov-greeting{font-family:var(--fd);font-size:22px;font-weight:800;color:var(--text,var(--white));margin:0 0 4px;}
+.ov-subtitle{font-size:13px;color:var(--text-muted,var(--muted));margin:0 0 18px;}
+.ov-overall-progress{max-width:500px;}
+.ov-progress-label{display:flex;justify-content:space-between;font-size:12px;color:var(--text-muted,var(--muted));margin-bottom:6px;font-weight:600;}
+.ov-progress-pct{color:var(--gold);font-weight:800;font-family:var(--fm,monospace);}
+.ov-progress-track{height:8px;background:rgba(255,255,255,.08);border-radius:4px;overflow:hidden;margin-bottom:6px;}
+.ov-progress-fill{height:100%;background:linear-gradient(90deg,var(--gold-d,#b8862a),var(--gold,#d4a843));border-radius:4px;transition:width .5s ease;}
+.ov-progress-sub{font-size:11px;color:var(--muted);}
+.ov-subjects-label{font-size:10px;font-weight:800;letter-spacing:.1em;color:var(--muted);margin-bottom:12px;text-transform:uppercase;}
+.ov-subjects-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;}
+.ov-subj-card{background:var(--card);border:1px solid var(--bdr);border-radius:14px;padding:16px;box-shadow:var(--shadow-sm,0 1px 6px rgba(0,0,0,.15));transition:all .2s;position:relative;overflow:hidden;}
+.ov-subj-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--subj-color);opacity:.8;}
+.ov-subj-card:hover{transform:translateY(-2px);box-shadow:var(--shadow-md,0 4px 16px rgba(0,0,0,.2));border-color:var(--bdr-gold,rgba(212,168,67,.25));}
+.ov-subj-top{display:flex;align-items:center;gap:8px;margin-bottom:12px;margin-top:4px;}
+.ov-subj-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+.ov-subj-name{font-family:var(--fd);font-size:13px;font-weight:700;color:var(--text,var(--white));line-height:1.3;}
+.ov-subj-prog-track{height:5px;background:rgba(255,255,255,.07);border-radius:3px;overflow:hidden;margin-bottom:8px;}
+.ov-subj-prog-fill{height:100%;border-radius:3px;transition:width .4s ease;}
+.ov-subj-stats{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);font-family:var(--fm,monospace);margin-bottom:12px;}
+.ov-subj-actions{display:flex;gap:6px;}
+.ov-btn-learn,.ov-btn-mock{flex:1;padding:7px 0;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;border:none;font-family:var(--fb);transition:all .15s;}
+.ov-btn-learn{background:rgba(201,168,76,.12);color:var(--gold);border:1px solid rgba(201,168,76,.25);}
+.ov-btn-learn:hover{background:rgba(201,168,76,.22);}
+.ov-btn-mock{background:rgba(255,255,255,.05);color:var(--text-muted,var(--muted));border:1px solid var(--bdr);}
+.ov-btn-mock:hover{background:rgba(255,255,255,.1);color:var(--text,var(--white));}
+/* Legacy overview classes (kept for any remaining references) */
 .overview-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;}
 @media(max-width:1100px){.overview-grid{grid-template-columns:repeat(2,1fr);}}
-@media(max-width:600px){.overview-grid{grid-template-columns:1fr;}}
-.ov-card{background:var(--card);border:1px solid var(--bdr2);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:8px;border-top:3px solid transparent;}
-.ov-card-name{font-family:var(--fd);font-size:16px;font-weight:700;color:rgba(248,246,241,.9);}
-.ov-card-stats{font-size:11px;color:var(--muted);line-height:1.7;}
-.ov-card-btns{display:flex;gap:5px;margin-top:4px;flex-wrap:wrap;}
-.ov-card-btn{padding:5px 10px;border-radius:7px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid rgba(248,246,241,.1);background:rgba(255,255,255,.04);color:rgba(248,246,241,.65);transition:all .15s;font-family:var(--fb);}
-.ov-card-btn:hover{background:rgba(255,255,255,.1);color:rgba(248,246,241,.95);}
+@media(max-width:600px){.overview-grid{grid-template-columns:1fr;}.ov-subjects-grid{grid-template-columns:1fr 1fr;}}
 /* Subject overview in admin */
 .subj-ov-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:18px;}
 @media(max-width:900px){.subj-ov-grid{grid-template-columns:repeat(2,1fr);}}
@@ -319,8 +345,19 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .tl-topic.tl-selected{color:var(--gold-l);background:rgba(201,168,76,.08);}
 .tl-topic.tl-selected::before{content:'';position:absolute;left:0;top:0;bottom:0;width:2px;background:var(--gold);}
 .tl-topic.tl-done .tl-topic-check{color:var(--teal);}
+.tl-topic.tl-done .tl-topic-name{color:var(--text-muted,var(--muted));text-decoration:line-through;text-decoration-color:rgba(255,255,255,.2);}
 .tl-topic-check{font-size:10px;flex-shrink:0;color:rgba(255,255,255,.15);}
 .tl-topic-name{flex:1;line-height:1.4;}
+/* Mark Done button */
+.btn-mark-done{padding:7px 16px;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer;border:1.5px solid var(--bdr2);background:transparent;color:var(--text-muted,var(--muted));font-family:var(--fb);transition:all .2s;white-space:nowrap;}
+.btn-mark-done:hover{border-color:var(--gold);color:var(--gold);}
+.btn-mark-done.is-done{background:rgba(20,180,160,.12);border-color:rgba(20,180,160,.35);color:var(--teal,#14b4a0);}
+.btn-mark-done.is-done:hover{background:rgba(20,180,160,.05);border-color:rgba(20,180,160,.2);color:var(--text-muted,var(--muted));}
+/* Subject progress bar (inside learn tab header) */
+.subj-progress-bar-wrap{display:flex;align-items:center;gap:10px;margin-top:8px;}
+.subj-progress-bar-track{flex:1;max-width:240px;height:6px;background:rgba(255,255,255,.08);border-radius:3px;overflow:hidden;}
+.subj-progress-bar-fill{height:100%;border-radius:3px;transition:width .4s ease;}
+.subj-progress-text{font-size:11px;color:var(--muted);font-family:var(--fm,monospace);white-space:nowrap;}
 .tl-cached-badge{font-size:9px;padding:1px 5px;border-radius:3px;font-family:var(--fm);flex-shrink:0;background:rgba(20,180,160,.15);color:var(--teal);}
 /* SYLLABUS WARNINGS PANEL */
 .syllabus-warnings{margin-top:10px;border:1px solid rgba(255,160,64,.25);border-radius:10px;overflow:hidden;}
@@ -627,10 +664,20 @@ select.form-input{cursor:pointer;}
 .sb-upload-pdf-btn{padding:10px 18px;background:rgba(255,255,255,.04);border:1px dashed var(--bdr2);color:var(--muted);border-radius:10px;cursor:pointer;font-size:13px;font-family:var(--fb);transition:all .15s;width:100%;box-sizing:border-box;}
 .sb-upload-pdf-btn:hover{background:rgba(201,168,76,.07);border-color:rgba(201,168,76,.3);color:var(--gold-l);}
 /* Lesson PDF Viewer */
-.lesson-pdf-viewer{display:flex;flex-direction:column;height:calc(100vh - 160px);min-height:580px;}
-.lesson-pdf-header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:var(--card,rgba(255,255,255,.03));border:1px solid var(--bdr2);border-radius:12px 12px 0 0;border-bottom:none;flex-wrap:wrap;gap:8px;flex-shrink:0;}
-.lesson-pdf-frame-wrap{flex:1;border:1px solid var(--bdr2);border-radius:0 0 12px 12px;overflow:hidden;}
-.lesson-pdf-iframe{width:100%;height:100%;border:none;display:block;background:#fff;}
+/* ── PDF Viewer shell + spinner ──────────────── */
+.pdf-viewer-shell{display:flex;flex-direction:column;height:calc(100vh - 180px);min-height:460px;}
+.pdf-viewer-header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:var(--card);border:1px solid var(--bdr);border-radius:12px 12px 0 0;border-bottom:none;flex-shrink:0;}
+.pdf-header-info{display:flex;align-items:center;gap:10px;}
+.pdf-topic-title{font-family:var(--fd);font-size:14px;font-weight:700;color:var(--text,var(--white));}
+.pdf-topic-sub{font-size:11px;color:var(--muted);margin-top:1px;}
+.pdf-frame-wrap{flex:1;border:1px solid var(--bdr);border-radius:0 0 12px 12px;overflow:hidden;background:#fff;position:relative;display:flex;align-items:center;justify-content:center;}
+.lesson-pdf-iframe{position:absolute;inset:0;width:100%;height:100%;border:none;display:block;}
+.pdf-loading-state{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--card,#1a2235);z-index:2;}
+.pdf-spinner{width:36px;height:36px;border:3px solid rgba(201,168,76,.2);border-top-color:var(--gold);border-radius:50%;animation:spin .8s linear infinite;}
+/* Legacy lesson-pdf aliases */
+.lesson-pdf-viewer{display:flex;flex-direction:column;height:calc(100vh - 180px);min-height:460px;}
+.lesson-pdf-header{display:flex;align-items:center;padding:12px 16px;background:var(--card);border:1px solid var(--bdr);border-radius:12px 12px 0 0;border-bottom:none;flex-shrink:0;}
+.lesson-pdf-frame-wrap{flex:1;border:1px solid var(--bdr);border-radius:0 0 12px 12px;overflow:hidden;position:relative;}
 .admin-locked{text-align:center;padding:48px;color:var(--muted);}
 /* Gen progress panel */
 .gen-prog-panel{background:linear-gradient(135deg,#0a1000,#141800);border:1px solid rgba(255,140,66,.25);border-radius:14px;padding:18px;margin-top:14px;}
@@ -750,7 +797,7 @@ select.form-input{cursor:pointer;}
     <div class="s-logo">⚖️</div>
     <div>
       <div class="sb-logo-title">BarBuddy</div>
-      <div class="sb-logo-sub">Philippine Bar 2025</div>
+      <div class="sb-logo-sub">Philippine Bar 2026</div>
     </div>
   </div>
 
@@ -787,7 +834,7 @@ select.form-input{cursor:pointer;}
   </div>
   <div class="tb-breadcrumb" id="breadcrumb"></div>
   <div class="tb-right">
-    <span class="exam-pill">PH BAR 2025</span>
+    <span class="exam-pill">PH BAR 2026</span>
     <div class="kb-ind empty" id="kbInd" onclick="navToAdmin()">
       <div class="kb-dot"></div><span id="kbIndTxt">No KB</span>
     </div>
@@ -810,58 +857,7 @@ select.form-input{cursor:pointer;}
 <!-- ═══ OVERVIEW ═══ -->
 <div class="page on" id="page-dashboard">
 <div class="pg-inner">
-  <div class="motivational-banner" id="motivationalBanner" style="display:none;">
-    <span style="font-size:24px;flex-shrink:0;">✨</span>
-    <div class="motivational-quote" id="motivationalQuote"></div>
-  </div>
-  <div class="hero fade" style="margin-bottom:20px;">
-    <div><div class="hero-txt">
-      <h2 id="overviewWelcome">Welcome back.</h2>
-      <p>Your Philippine Bar Exam study hub. Select a subject to begin learning, practice quizzes, or run a mock bar session.</p>
-    </div>
-    <div class="hero-btns">
-      <button class="btn-mock" onclick="navToSubject(null,'mockbar')">⏱ Mock Bar (All Subjects)</button>
-      <button class="btn-og" onclick="navToAdmin()">⚙️ Manage KB</button>
-    </div></div>
-    <div class="hero-stats">
-      <div class="hst"><div class="hst-n" id="h-ready">0</div><div class="hst-l">Ready Topics</div></div>
-      <div class="hst"><div class="hst-n" id="h-done">0</div><div class="hst-l">Qs Done</div></div>
-      <div class="hst"><div class="hst-n" id="h-mock">0</div><div class="hst-l">Mock Sessions</div></div>
-    </div>
-  </div>
-  <!-- Subject grid -->
-  <div id="overviewSubjectGrid" class="overview-grid"></div>
-  <!-- Quick stats + recent -->
-  <div class="two-col" style="margin-top:0;">
-    <div class="left-col">
-      <div class="stat-row fade">
-        <div class="stt"><div class="stt-ic ic-g">📚</div><div><div class="stt-n" id="st-topics">0</div><div class="stt-l">Pre-gen Topics</div></div></div>
-        <div class="stt"><div class="stt-ic ic-b">✍️</div><div><div class="stt-n" id="st-refs">0</div><div class="stt-l">References</div></div></div>
-        <div class="stt"><div class="stt-ic ic-r">⚖️</div><div><div class="stt-n" id="st-score">—</div><div class="stt-l">Avg Score</div></div></div>
-        <div class="stt"><div class="stt-ic ic-t">📜</div><div><div class="stt-n" id="st-pb">0</div><div class="stt-l">Past Bar Qs</div></div></div>
-      </div>
-      <div class="card fade">
-        <div class="card-h"><div class="card-title">📖 Recently Studied</div></div>
-        <div class="card-b" id="recent-list">
-          <div style="text-align:center;padding:24px 0;color:var(--muted);">
-            <div style="font-size:28px;margin-bottom:8px;opacity:.4;">📖</div>
-            <div style="font-size:12px;">Select a subject from the sidebar to start studying.</div>
-          </div>
-        </div>
-      </div>
-    </div>
-    <div class="right-col">
-      <div class="kb-card" id="kb-dash-card">
-        <div style="font-family:var(--fd);font-size:16px;font-weight:700;color:var(--teal);margin-bottom:10px;">📚 Knowledge Base</div>
-        <div id="kb-dash-list"><div style="font-size:12px;color:var(--muted);">No materials loaded.</div></div>
-        <button class="btn-og" style="width:100%;justify-content:center;margin-top:10px;font-size:11px;" onclick="navToAdmin()">⚙️ Manage KB</button>
-      </div>
-      <div class="card fade">
-        <div class="card-h"><div class="card-title">🏛 Bar Subjects Coverage</div></div>
-        <div class="card-b" id="sub-tracker"></div>
-      </div>
-    </div>
-  </div>
+  <div id="overviewContainer"><!-- rendered by renderOverview() --></div>
 </div>
 </div>
 
@@ -1359,6 +1355,8 @@ async function init() {
   navToOverview();       // start on overview
   subscribeToProgress();
   checkAPIStatus();
+  // Load syllabus data for all subjects in background so progress bars are accurate
+  preloadAllSyllabuses().catch(() => {});
 }
 
 async function checkAPIStatus(){
@@ -1448,28 +1446,11 @@ function updateKBIndicator() {
   else if (KB.hasSyllabus) { ind.className='kb-ind generating'; txt.textContent='Generating…'; }
   else { ind.className='kb-ind empty'; txt.textContent='No KB'; }
 
-  // Update stat cards
-  document.getElementById('st-topics').textContent = n;
-  document.getElementById('st-refs').textContent   = KB.references?.length || 0;
-  document.getElementById('st-pb').textContent     = KB.pastBar?.reduce((a,p)=>a+(p.qCount||0),0) || 0;
-  document.getElementById('h-ready').textContent   = n;
-
-  // KB dash card
-  const all = [
-    ...(KB.hasSyllabus ? [{name:KB.syllabusName||'Syllabus',type:'syllabus',subject:'all'}] : []),
-    ...(KB.references||[]),
-    ...(KB.pastBar||[]),
-  ];
-  document.getElementById('kb-dash-list').innerHTML = all.length
-    ? all.slice(0,6).map(i=>`<div class="kb-item"><span>${i.type==='syllabus'?'📋':i.qCount!==undefined?'📜':'📂'}</span><div><div style="font-size:12px;font-weight:600;">${h(i.name)}</div><div style="font-size:10px;color:var(--muted);">${i.subject||''} ${i.year?'·'+i.year:''} ${i.qCount!==undefined?'·'+i.qCount+' Qs':''}</div></div></div>`).join('')
-    : '<div style="font-size:12px;color:var(--muted);">No materials loaded.</div>';
-
-  // Mock source stats
+  // Mock source stats (null-safe — elements may not exist in new overview layout)
   const pbTotal = KB.pastBar?.reduce((a,p)=>a+(p.qCount||0),0)||0;
   const pgTotal = Object.values(CACHE).reduce((a,s)=>a+Object.keys(s).length,0);
-  document.getElementById('mockSourceStats').innerHTML = `
-    <span class="src-badge sb-real">📜 ${pbTotal} Past Bar Qs</span>
-    <span class="src-badge sb-pregen">📚 ${pgTotal} Pre-gen Topics</span>`;
+  const mss = document.getElementById('mockSourceStats');
+  if (mss) mss.innerHTML = `<span class="src-badge sb-real">📜 ${pbTotal} Past Bar Qs</span>`;
 }
 
 // ══════════════════════════════════
@@ -1547,12 +1528,7 @@ function navToOverview() {
   document.getElementById('sb-overview')?.classList.add('active');
   showPage('dashboard');
   updateBreadcrumb(null, null);
-  renderOverviewGrid();
-  // Show motivational quote banner
-  const qEl = document.getElementById('motivationalQuote');
-  const qBanner = document.getElementById('motivationalBanner');
-  if (qEl) qEl.textContent = '\u201c' + getMotivationalQuote() + '\u201d';
-  if (qBanner) qBanner.style.display = 'flex';
+  renderOverview();
 }
 
 function navToAdmin() {
@@ -1673,6 +1649,10 @@ function switchSubjectTab(subj, mode) {
 }
 
 function renderLearnTab(subj, container) {
+  const subjInfo = SUBJS.find(s => s.key === subj);
+  const prog = getSubjectProgress(subj);
+  const pct  = prog.total > 0 ? Math.round((prog.done / prog.total) * 100) : 0;
+  const subjColor = subjInfo?.color || 'var(--gold)';
   container.innerHTML = `
     <div class="split-layout">
       <aside class="panel-l">
@@ -1680,19 +1660,24 @@ function renderLearnTab(subj, container) {
           <h3>📖 Topics</h3>
           <input class="sp-search" type="text" placeholder="Search topics…" oninput="filterTopics(this.value)" id="topicSearch">
         </div>
+        <div class="subj-progress-bar-wrap" style="padding:0 12px 10px;">
+          <div class="subj-progress-bar-track">
+            <div class="subj-progress-bar-fill" id="subj-progress-fill-${subj}" style="width:${pct}%;background:${subjColor};"></div>
+          </div>
+          <span class="subj-progress-text" id="subj-progress-text-${subj}">${prog.done}/${prog.total} topics · ${pct}%</span>
+        </div>
         <div class="tree" id="syllabusTree"></div>
-        <div class="up-btn" onclick="navToAdmin()">⚙️ Manage KB</div>
       </aside>
       <div class="panel-r">
         <div class="pr-top" id="lpTopbar" style="display:none;">
           <div class="pr-bc" id="lpBC"></div>
-          <div style="display:flex;gap:7px;">
-            <button class="btn-og" style="font-size:11px;" onclick="markDone()">✓ Mark Done</button>
+          <div style="display:flex;gap:7px;align-items:center;">
+            <button class="btn-mark-done" id="mark-done-btn" onclick="markDone()">○ Mark as Done</button>
             <button class="btn-og" style="font-size:11px;" onclick="switchSubjectTab(currentSubject,'quiz')">Take Quiz →</button>
           </div>
         </div>
         <div class="pr-content" id="lpContent">
-          <div class="welcome-st"><div class="big-ic">📖</div><h3>${h(SUBJS.find(s=>s.key===subj)?.name||subj)}</h3><p>Click a topic on the left to view its lesson content.</p></div>
+          <div class="welcome-st"><div class="big-ic">📖</div><h3>${h(subjInfo?.name||subj)}</h3><p>Click a topic on the left to view its lesson content.</p></div>
         </div>
         <div id="lpFooter" style="display:none;" class="pr-foot">
           <div style="font-size:12px;color:var(--muted);font-family:var(--fm);" id="lpPgInfo">Page 1 of 1</div>
@@ -2086,27 +2071,70 @@ function refreshSidebarDots() {
 // ══════════════════════════════════
 // OVERVIEW GRID
 // ══════════════════════════════════
-function renderOverviewGrid() {
-  const grid = document.getElementById('overviewSubjectGrid');
-  if (!grid) return;
-  const cacheCount = subj => Object.keys(CACHE[subj] || {}).length;
-  const pbCount = subj => (KB.pastBar||[]).filter(p=>p.subject===subj).reduce((a,p)=>a+(p.qCount||0),0);
-  const topicCount = subj => (KB.syllabusTopics||[]).find(s=>s.key===subj)?.topics?.length || 0;
-  grid.innerHTML = SUBJS.map(s => `
-    <div class="ov-card" style="border-top-color:${s.color};">
-      <div class="ov-card-name" style="color:${s.color};">${h(s.name)}</div>
-      <div class="ov-card-stats">
-        ${topicCount(s.key)} topics · ${cacheCount(s.key)} pre-gen · ${pbCount(s.key)} past bar Qs
+function renderOverviewGrid() { renderOverview(); } // legacy alias
+
+function renderOverview() {
+  const container = document.getElementById('overviewContainer');
+  if (!container) return;
+
+  const progress = getUserProgress();
+  const pbCount  = subj => (KB.pastBar||[]).filter(p=>p.subject===subj).reduce((a,p)=>a+(p.qCount||0),0);
+
+  const totalDone   = SUBJS.reduce((a,s) => a + (getSubjectProgress(s.key).done  || 0), 0);
+  const totalTopics = SUBJS.reduce((a,s) => a + (getSubjectProgress(s.key).total || 0), 0);
+  const overallPct  = totalTopics > 0 ? Math.round((totalDone / totalTopics) * 100) : 0;
+  const userName    = currentUser?.name?.split(' ')[0] || 'Counselor';
+  const quote       = getMotivationalQuote();
+
+  container.innerHTML = `
+    <div class="overview-inner">
+      <div class="ov-quote-bar">
+        <span class="ov-quote-star">✦</span>
+        <span class="ov-quote-text">"${h(quote)}"</span>
       </div>
-      <div class="ov-card-btns">
-        <button class="ov-card-btn" onclick="navToSubject('${s.key}','learn')">📖 Learn</button>
-        <button class="ov-card-btn" onclick="navToSubject('${s.key}','quiz')">✏️ Quiz</button>
-        <button class="ov-card-btn" onclick="navToSubject('${s.key}','mockbar')">⏱ Mock</button>
+
+      <div class="ov-welcome-card">
+        <h2 class="ov-greeting">Welcome back, ${h(userName)}.</h2>
+        <p class="ov-subtitle">Philippine Bar Exam 2026 · Study Hub</p>
+        <div class="ov-overall-progress">
+          <div class="ov-progress-label">
+            <span>Overall Coverage</span>
+            <span class="ov-progress-pct">${overallPct}%</span>
+          </div>
+          <div class="ov-progress-track">
+            <div class="ov-progress-fill" style="width:${overallPct}%;${overallPct===0?'min-width:0':''}" id="ov-overall-fill"></div>
+          </div>
+          <div class="ov-progress-sub">${totalDone} of ${totalTopics} topics completed</div>
+        </div>
       </div>
-    </div>`).join('');
-  // Also update welcome message
-  const wc = document.getElementById('overviewWelcome');
-  if (wc && currentUser) wc.textContent = `Welcome back, ${currentUser.name.split(' ')[0]}.`;
+
+      <div class="ov-subjects-label">SUBJECTS</div>
+      <div class="ov-subjects-grid">
+        ${SUBJS.filter(s => s.key !== 'custom').map(s => {
+          const prog = getSubjectProgress(s.key);
+          const pct  = prog.total > 0 ? Math.round((prog.done / prog.total) * 100) : 0;
+          const pb   = pbCount(s.key);
+          return `
+            <div class="ov-subj-card" data-subj="${s.key}" style="--subj-color:${s.color}">
+              <div class="ov-subj-top">
+                <div class="ov-subj-dot" style="background:${s.color}"></div>
+                <div class="ov-subj-name">${h(s.name)}</div>
+              </div>
+              <div class="ov-subj-prog-track">
+                <div class="ov-subj-prog-fill" style="width:${pct}%;background:${s.color}"></div>
+              </div>
+              <div class="ov-subj-stats">
+                <span>${prog.done}/${prog.total} topics</span>
+                ${pb > 0 ? `<span>${pb} past Qs</span>` : ''}
+              </div>
+              <div class="ov-subj-actions">
+                <button class="ov-btn-learn" onclick="navToSubject('${s.key}','learn')">📖 Learn</button>
+                ${pb > 0 ? `<button class="ov-btn-mock" onclick="navToSubject('${s.key}','mockbar')">⏱ Mock</button>` : ''}
+              </div>
+            </div>`;
+        }).join('')}
+      </div>
+    </div>`;
 }
 const openModal  = id => document.getElementById(id).classList.add('on');
 const closeModal = id => document.getElementById(id).classList.remove('on');
@@ -2221,16 +2249,17 @@ function renderTopicTree(nodes, container, subj, depth) {
 
     } else {
       // Learnable topic — clickable leaf
-      const cached = !node.pdfId && isTopicCached(subj, displayName);
-      const genNow = !node.pdfId && KB.genState?.running && KB.genState?.current?.includes(displayName);
+      const cached  = !node.pdfId && isTopicCached(subj, displayName);
+      const done    = node.id ? isTopicDone(subj, node.id) : false;
+      const genNow  = !node.pdfId && KB.genState?.running && KB.genState?.current?.includes(displayName);
       const topicEl = document.createElement('div');
-      topicEl.className = 'tl-topic' + (cached ? ' tl-done' : '') + (node.pdfId ? ' tl-has-pdf' : '');
+      topicEl.className = 'tl-topic' + ((done || cached) ? ' tl-done' : '') + (node.pdfId ? ' tl-has-pdf' : '');
       topicEl.setAttribute('data-node-id', node.id || '');
       topicEl.setAttribute('data-subj-key', subj);
       topicEl.setAttribute('data-topic-name', displayName);
       const checkEl = document.createElement('span');
       checkEl.className = 'tl-topic-check';
-      checkEl.textContent = node.pdfId ? '📄' : cached ? '✓' : '○';
+      checkEl.textContent = node.pdfId ? '📄' : (done || cached) ? '✓' : '○';
       const nameEl = document.createElement('span');
       nameEl.className = 'tl-topic-name';
       nameEl.textContent = (node.label ? node.label + '. ' : '') + displayName;
@@ -2360,6 +2389,16 @@ async function clickSyllabusNode(subjKey, node) {
   if (lpBC) lpBC.innerHTML = `<span class="sbg ${sub.cls}">${h(sub.name)}</span> &nbsp;›&nbsp; <strong>${h((node.label ? node.label + '. ' : '') + displayName)}</strong>`;
   const lpTB = document.getElementById('lpTopbar');
   if (lpTB) lpTB.style.display = 'flex';
+  // Sync Mark Done button state
+  if (node.id) {
+    const btn = document.getElementById('mark-done-btn');
+    if (btn) {
+      const done = isTopicDone(subjKey, node.id);
+      btn.textContent = done ? '✓ Completed' : '○ Mark as Done';
+      btn.classList.toggle('is-done', done);
+      btn.onclick = () => handleMarkDone(subjKey, node.id);
+    }
+  }
   // If node has a PDF — show PDF viewer (token-authenticated, no download)
   if (node.pdfId) {
     currentTopic = node;
@@ -2374,65 +2413,57 @@ async function clickSyllabusNode(subjKey, node) {
 }
 
 async function renderTopicPDFViewer(node, container) {
-  const displayName = node.title || node.name || '';
-  // Show loading state immediately
+  const displayName = h(node.title || node.name || '');
+  // STEP 1: Show skeleton with spinner immediately — no waiting
   container.innerHTML = `
-    <div class="lesson-pdf-viewer">
-      <div class="lesson-pdf-header">
-        <div style="display:flex;align-items:center;gap:10px;">
-          <span style="font-size:22px;">📄</span>
+    <div class="pdf-viewer-shell">
+      <div class="pdf-viewer-header">
+        <div class="pdf-header-info">
+          <span style="font-size:16px;">📄</span>
           <div>
-            <div style="font-family:var(--fd);font-size:15px;font-weight:700;color:var(--text,var(--white));">${h(displayName)}</div>
-            <div style="font-size:11px;color:var(--muted);">Review Material · ${h(node.pdfName || 'Document')}</div>
+            <div class="pdf-topic-title">${displayName}</div>
+            <div class="pdf-topic-sub">Review Material · ${h(node.pdfName || 'Document')}</div>
           </div>
         </div>
       </div>
-      <div class="lesson-pdf-frame-wrap" style="display:flex;align-items:center;justify-content:center;">
-        <span style="color:var(--muted);font-size:13px;">Loading PDF…</span>
+      <div class="pdf-frame-wrap" id="pdf-frame-wrap-${node.id}">
+        <div class="pdf-loading-state" id="pdf-loading-${node.id}">
+          <div class="pdf-spinner"></div>
+          <div style="font-size:13px;color:var(--muted);margin-top:12px;">Loading PDF…</div>
+        </div>
       </div>
     </div>`;
-  // Fetch a short-lived token for iframe use
-  let pdfUrl;
+
   try {
+    // STEP 2: Fetch auth token
     const headers = sessionToken ? { 'x-session-token': sessionToken } : {};
     const r = await fetch(`/api/syllabus/pdf-token/${node.id}`, { headers });
-    if (!r.ok) throw new Error('Token fetch failed: ' + r.status);
+    if (!r.ok) throw new Error('Authentication failed (' + r.status + ')');
     const { token } = await r.json();
-    pdfUrl = `/api/syllabus/pdf/${node.id}?token=${encodeURIComponent(token)}`;
-  } catch (err) {
-    // If currentTopic changed while we awaited, discard stale render
+    const pdfUrl = `/api/syllabus/pdf/${node.id}?token=${encodeURIComponent(token)}`;
+
+    // Guard: user navigated away while token was being fetched
     if (currentTopic?.id !== node.id) return;
-    container.innerHTML = `
-      <div class="lesson-pdf-viewer">
-        <div class="lesson-pdf-frame-wrap" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;">
-          <span style="font-size:32px;">⚠️</span>
-          <span style="color:var(--muted);font-size:13px;">Could not load PDF — session may have expired.</span>
-          <button class="btn-ghost" onclick="renderTopicPDFViewer(currentTopic, document.getElementById('lpContent'))" style="font-size:12px;padding:6px 14px;">Retry</button>
-        </div>
+
+    // STEP 3: Inject iframe — browser starts streaming PDF immediately
+    const wrap = document.getElementById('pdf-frame-wrap-' + node.id);
+    if (!wrap) return;
+    wrap.innerHTML = `<iframe src="${pdfUrl}" class="lesson-pdf-iframe" title="${displayName}" type="application/pdf"></iframe>`;
+
+  } catch(e) {
+    if (currentTopic?.id !== node.id) return;
+    const wrap = document.getElementById('pdf-frame-wrap-' + node.id);
+    if (wrap) wrap.innerHTML = `
+      <div style="text-align:center;padding:48px 24px;">
+        <div style="font-size:40px;margin-bottom:14px;">⚠️</div>
+        <div style="font-family:var(--fd);font-size:16px;font-weight:700;color:var(--text,var(--white));margin-bottom:8px;">Could Not Load PDF</div>
+        <div style="font-size:13px;color:var(--muted);margin-bottom:16px;">${h(e.message || 'Please try again.')}</div>
+        <button onclick="renderTopicPDFViewer(currentTopic, document.getElementById('lpContent'))"
+          style="padding:8px 18px;border-radius:10px;background:rgba(201,168,76,.1);border:1px solid rgba(201,168,76,.25);color:var(--gold);font-weight:700;font-size:13px;cursor:pointer;">
+          ↺ Retry
+        </button>
       </div>`;
-    return;
   }
-  // Guard: if the user already navigated away, don't overwrite
-  if (currentTopic?.id !== node.id) return;
-  container.innerHTML = `
-    <div class="lesson-pdf-viewer">
-      <div class="lesson-pdf-header">
-        <div style="display:flex;align-items:center;gap:10px;">
-          <span style="font-size:22px;">📄</span>
-          <div>
-            <div style="font-family:var(--fd);font-size:15px;font-weight:700;color:var(--text,var(--white));">${h(displayName)}</div>
-            <div style="font-size:11px;color:var(--muted);">Review Material · ${h(node.pdfName || 'Document')}</div>
-          </div>
-        </div>
-      </div>
-      <div class="lesson-pdf-frame-wrap">
-        <iframe src="${pdfUrl}" class="lesson-pdf-iframe" title="${h(displayName)}" type="application/pdf">
-          <div style="text-align:center;padding:40px;color:var(--muted);">
-            Your browser cannot display PDFs inline.
-          </div>
-        </iframe>
-      </div>
-    </div>`;
 }
 
 function renderNoMaterials(subjKey, topicName) {
@@ -2531,9 +2562,122 @@ function chgPage(d){
   const data=getCached(curSubj,curTopic);if(!data)return;
   curPage+=d;renderLesson(data,curTopic,curSubj,'cache');
 }
+// ══════════════════════════════════
+// PROGRESS TRACKING
+// ══════════════════════════════════
+
+function getUserProgress() {
+  const userId = currentUser?.id || 'guest';
+  try { return JSON.parse(localStorage.getItem('bb_progress_' + userId) || '{}'); } catch { return {}; }
+}
+
+function setTopicDone(subject, topicId, done) {
+  const userId = currentUser?.id || 'guest';
+  const key = 'bb_progress_' + userId;
+  const progress = getUserProgress();
+  if (!progress[subject]) progress[subject] = {};
+  if (done) progress[subject][topicId] = true;
+  else delete progress[subject][topicId];
+  localStorage.setItem(key, JSON.stringify(progress));
+  // Persist to server (fire-and-forget)
+  if (sessionToken) {
+    fetch('/api/user/progress', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-session-token': sessionToken },
+      body: JSON.stringify({ subject, topicId, done })
+    }).catch(() => {});
+  }
+  updateProgressUI(subject);
+}
+
+function isTopicDone(subject, topicId) {
+  return !!getUserProgress()[subject]?.[topicId];
+}
+
+function getSubjectProgress(subject) {
+  // syllabusData is populated by admin load; syllabusCache by per-subject lazy loads
+  const subjectSyllabus = syllabusData[subject] || syllabusCache[subject];
+  const sections = subjectSyllabus?.sections || [];
+  if (!sections.length) return { done: 0, total: 0 };
+  const subjectProgress = getUserProgress()[subject] || {};
+  let total = 0, done = 0;
+  function countNodes(arr) {
+    for (const node of (arr || [])) {
+      if (!node.children?.length) { total++; if (subjectProgress[node.id]) done++; }
+      else countNodes(node.children);
+    }
+  }
+  for (const sec of sections) countNodes(sec.children || []);
+  return { done, total };
+}
+
+// Load all subject syllabuses in background so overview progress bars are accurate
+async function preloadAllSyllabuses() {
+  const subjects = ['civil','criminal','political','labor','commercial','taxation','remedial','ethics'];
+  await Promise.all(subjects.map(s => loadSubjectSyllabus(s)));
+  // If overview is currently visible, re-render with updated data
+  if (document.getElementById('page-dashboard')?.classList.contains('on')) renderOverview();
+}
+
+async function syncProgressFromServer() {
+  if (!sessionToken) return;
+  try {
+    const r = await fetch('/api/user/progress', { headers: { 'x-session-token': sessionToken } });
+    if (!r.ok) return;
+    const d = await r.json();
+    if (d.progress && currentUser?.id) {
+      localStorage.setItem('bb_progress_' + currentUser.id, JSON.stringify(d.progress));
+    }
+  } catch(e) {}
+}
+
+function handleMarkDone(subject, topicId) {
+  const newDone = !isTopicDone(subject, topicId);
+  setTopicDone(subject, topicId, newDone);
+  // Update button state
+  const btn = document.getElementById('mark-done-btn');
+  if (btn) {
+    btn.textContent = newDone ? '✓ Completed' : '○ Mark as Done';
+    btn.classList.toggle('is-done', newDone);
+    if (newDone) { btn.style.transform = 'scale(1.05)'; setTimeout(() => { btn.style.transform = ''; }, 200); }
+  }
+  // Update the topic list item check icon
+  if (topicId) {
+    const topicEl = document.querySelector(`.tl-topic[data-node-id="${topicId}"]`);
+    if (topicEl) {
+      const icon = topicEl.querySelector('.tl-topic-check');
+      if (icon && !topicEl.classList.contains('tl-has-pdf')) icon.textContent = newDone ? '✓' : '○';
+      topicEl.classList.toggle('tl-done', newDone);
+    }
+  }
+  // Re-render overview if visible
+  if (document.getElementById('page-dashboard')?.classList.contains('on')) renderOverview();
+}
+
+function updateProgressUI(subject) {
+  const prog = getSubjectProgress(subject);
+  const pct  = prog.total > 0 ? Math.round((prog.done / prog.total) * 100) : 0;
+  const fill = document.getElementById('subj-progress-fill-' + subject);
+  const txt  = document.getElementById('subj-progress-text-' + subject);
+  if (fill) fill.style.width = pct + '%';
+  if (txt)  txt.textContent  = `${prog.done}/${prog.total} topics · ${pct}%`;
+  // Update overview card if rendered
+  const ovCard = document.querySelector(`.ov-subj-card[data-subj="${subject}"]`);
+  if (ovCard) {
+    const fill2 = ovCard.querySelector('.ov-subj-prog-fill');
+    const stats = ovCard.querySelector('.ov-subj-stats span:first-child');
+    if (fill2) fill2.style.width = pct + '%';
+    if (stats) stats.textContent = `${prog.done}/${prog.total} topics`;
+  }
+}
+
+// Legacy shim — kept so existing lesson footer "Mark Done" button still works
 function markDone(){
-  document.querySelector('.topic-item.active,.topic-leaf-item.active,.topic-parent-row.active')?.classList.add('done');
-  document.querySelector('.tl-topic.tl-selected')?.classList.add('tl-done');
+  if (currentTopic?.id && currentSubject) {
+    handleMarkDone(currentSubject, currentTopic.id);
+  } else {
+    document.querySelector('.tl-topic.tl-selected')?.classList.add('tl-done');
+  }
 }
 function goToPractice(){
   if (currentSubject) {
@@ -3974,8 +4118,9 @@ function onAuthSuccess(token, user) {
   localStorage.setItem('bb_user', JSON.stringify(user));
   document.getElementById('authWall').style.display = 'none';
   updateUserDisplay();
-  // Refresh tab settings so per-user restrictions apply immediately
+  // Refresh tab settings and sync progress from server
   applyTabSettings().catch(() => {});
+  syncProgressFromServer().catch(() => {});
 }
 
 function updateUserDisplay() {

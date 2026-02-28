@@ -583,6 +583,24 @@ app.post('/api/admin/tab-settings', adminOnly, (req, res) => {
   res.json({ success: true, settings: TAB_SETTINGS });
 });
 
+// ── Per-user topic progress ──────────────────────────────────
+app.get('/api/user/progress', requireAuth, (req, res) => {
+  res.json({ progress: req.user.progress || {} });
+});
+
+app.post('/api/user/progress', requireAuth, (req, res) => {
+  const { subject, topicId, done } = req.body;
+  if (!subject || !topicId) return res.status(400).json({ error: 'subject and topicId required' });
+  const user = USERS[req.userId];
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  if (!user.progress) user.progress = {};
+  if (!user.progress[subject]) user.progress[subject] = {};
+  if (done) user.progress[subject][topicId] = true;
+  else delete user.progress[subject][topicId];
+  saveUsers();
+  res.json({ success: true });
+});
+
 // ── Per-user tab settings (admin-managed, merged with global) ─
 app.get('/api/user/tab-settings', requireAuth, (req, res) => {
   const userTS = req.user.tabSettings || null;
