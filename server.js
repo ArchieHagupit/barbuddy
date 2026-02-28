@@ -9,6 +9,25 @@ const nodemailer = require('nodemailer');
 const crypto     = require('crypto');
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
+// Disk-storage multer for syllabus PDFs — files saved directly to SYLLABUS_PDFS_DIR
+// (SYLLABUS_PDFS_DIR is defined below; multer is configured lazily via a factory)
+function makeSyllabusUpload() {
+  const storage = multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, SYLLABUS_PDFS_DIR),
+    filename: (req, file, cb) => {
+      const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
+      cb(null, req.params.nodeId + '_' + safeName);
+    },
+  });
+  return multer({
+    storage,
+    fileFilter: (_req, file, cb) => {
+      if (file.mimetype === 'application/pdf' || file.originalname.toLowerCase().endsWith('.pdf')) cb(null, true);
+      else cb(new Error('Only PDF files are allowed'));
+    },
+    limits: { fileSize: 50 * 1024 * 1024 },
+  });
+}
 
 const app       = express();
 const PORT      = process.env.PORT || 3000;
@@ -796,23 +815,75 @@ ${content.slice(0, 14000)}`;
   return await callClaudeJSON([{ role:'user', content:prompt }], 4000);
 }
 
-// ── SYLLABUS: Manual builder read routes ─────────────────────
-// NOTE: /api/syllabus/pdf/:nodeId must come BEFORE /api/syllabus/:subject to avoid routing conflict
-app.get('/api/syllabus/pdf/:nodeId', authOrAdmin, (req, res) => {
+// ── SYLLABUS: PDF token (for iframe auth — iframes can't send custom headers) ─
+app.get('/api/syllabus/pdf-token/:nodeId', requireAuth, (req, res) => {
   const { nodeId } = req.params;
-  const subjKeys = getAllSubjectsWithSections();
+  // Verify the node exists and has a PDF
+  let found = null;
+  for (const subjData of Object.values(KB.syllabus?.subjects || {})) {
+    const r = findNodeById(subjData.sections || [], nodeId);
+    if (r) { found = r.node; break; }
+  }
+  if (!found || !found.pdfId) return res.status(404).json({ error: 'No PDF for this topic' });
+  const tokenData = { nodeId, userId: req.userId, exp: Date.now() + 10 * 60 * 1000 };
+  const token = Buffer.from(JSON.stringify(tokenData)).toString('base64url');
+  if (!global.pdfTokens) global.pdfTokens = {};
+  global.pdfTokens[token] = tokenData;
+  // Prune expired tokens
+  const now = Date.now();
+  for (const t of Object.keys(global.pdfTokens)) {
+    if (global.pdfTokens[t].exp < now) delete global.pdfTokens[t];
+  }
+  res.json({ token, nodeId });
+});
+
+// ── SYLLABUS: PDF file serving ────────────────────────────────
+// NOTE: must come BEFORE /api/syllabus/:subject to avoid routing conflict
+// Auth: header session token (direct), query ?token (iframes), or admin key
+app.get('/api/syllabus/pdf/:nodeId', (req, res) => {
+  const { nodeId } = req.params;
+  const { token } = req.query;
+  let authenticated = false;
+
+  // Method 1: admin key header
+  const aKey = req.headers['x-admin-key'];
+  if (aKey === ADMIN_KEY) authenticated = true;
+
+  // Method 2: standard session token header (direct API calls)
+  if (!authenticated) {
+    const headerToken = req.headers['x-session-token'];
+    if (headerToken && SESSIONS[headerToken] && SESSIONS[headerToken].expiresAt > Date.now()) {
+      authenticated = true;
+    }
+  }
+
+  // Method 3: short-lived query param token (for iframes)
+  if (!authenticated && token) {
+    const td = global.pdfTokens?.[token];
+    if (td && td.exp > Date.now() && td.nodeId === nodeId) authenticated = true;
+  }
+
+  if (!authenticated) return res.status(401).json({ error: 'Not authenticated' });
+
+  // Find the node
   let targetNode = null;
-  for (const key of subjKeys) {
-    const sections = KB.syllabus?.subjects?.[key]?.sections || [];
-    const found = findNodeById(sections, nodeId);
-    if (found) { targetNode = found.node; break; }
+  for (const subjData of Object.values(KB.syllabus?.subjects || {})) {
+    const r = findNodeById(subjData.sections || [], nodeId);
+    if (r) { targetNode = r.node; break; }
   }
   if (!targetNode || !targetNode.pdfId) return res.status(404).json({ error: 'No PDF attached to this node' });
   const filePath = path.join(SYLLABUS_PDFS_DIR, targetNode.pdfId);
   if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'PDF file not found on disk' });
+
+  const stat = fs.statSync(filePath);
   res.setHeader('Content-Type', 'application/pdf');
-  res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(targetNode.pdfName || 'document.pdf')}"`);
-  fs.createReadStream(filePath).pipe(res);
+  res.setHeader('Content-Length', stat.size);
+  res.setHeader('Content-Disposition', `inline; filename="${(targetNode.pdfName || 'document.pdf').replace(/"/g, '')}"`);
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('Content-Security-Policy', "frame-ancestors 'self'");
+  const stream = fs.createReadStream(filePath);
+  stream.pipe(res);
+  stream.on('error', err => { console.error('PDF stream error:', err.message); if (!res.headersSent) res.status(500).end(); });
 });
 
 app.get('/api/syllabus', authOrAdmin, (req, res) => {
@@ -879,26 +950,29 @@ app.delete('/api/admin/syllabus/:subject/node/:nodeId', adminOnly, (req, res) =>
   res.json(KB.syllabus.subjects[subj]);
 });
 
-app.post('/api/admin/syllabus/:subject/node/:nodeId/pdf', adminOnly, upload.single('pdf'), (req, res) => {
-  const subj = req.params.subject;
-  if (!getAllSubjectsWithSections().includes(subj)) return res.status(400).json({ error: 'Invalid subject' });
-  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
-  if (!req.file.originalname.toLowerCase().endsWith('.pdf')) return res.status(400).json({ error: 'Only PDF files allowed' });
-  const sections = KB.syllabus.subjects[subj].sections;
-  const found = findNodeById(sections, req.params.nodeId);
-  if (!found) return res.status(404).json({ error: 'Node not found' });
-  // Delete old PDF if exists
-  if (found.node.pdfId) {
-    const oldPath = path.join(SYLLABUS_PDFS_DIR, found.node.pdfId);
-    if (fs.existsSync(oldPath)) { try { fs.unlinkSync(oldPath); } catch(e) {} }
-  }
-  const pdfId = `${req.params.nodeId}_${Date.now()}_${req.file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
-  const filePath = path.join(SYLLABUS_PDFS_DIR, pdfId);
-  fs.writeFileSync(filePath, req.file.buffer);
-  found.node.pdfId   = pdfId;
-  found.node.pdfName = req.file.originalname;
-  saveKB();
-  res.json({ pdfId, pdfName: req.file.originalname });
+app.post('/api/admin/syllabus/:subject/node/:nodeId/pdf', adminOnly, (req, res) => {
+  makeSyllabusUpload().single('pdf')(req, res, (err) => {
+    if (err) return res.status(400).json({ error: err.message });
+    const subj = req.params.subject;
+    if (!getAllSubjectsWithSections().includes(subj)) return res.status(400).json({ error: 'Invalid subject' });
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+    const sections = KB.syllabus.subjects[subj].sections;
+    const found = findNodeById(sections, req.params.nodeId);
+    if (!found) {
+      // Cleanup orphan file
+      try { fs.unlinkSync(req.file.path); } catch(e) {}
+      return res.status(404).json({ error: 'Node not found' });
+    }
+    // Delete old PDF file if it exists
+    if (found.node.pdfId) {
+      const oldPath = path.join(SYLLABUS_PDFS_DIR, found.node.pdfId);
+      if (fs.existsSync(oldPath)) { try { fs.unlinkSync(oldPath); } catch(e) {} }
+    }
+    found.node.pdfId   = req.file.filename;
+    found.node.pdfName = req.file.originalname;
+    saveKB();
+    res.json({ pdfId: req.file.filename, pdfName: req.file.originalname });
+  });
 });
 
 app.delete('/api/admin/syllabus/:subject/node/:nodeId/pdf', adminOnly, (req, res) => {
