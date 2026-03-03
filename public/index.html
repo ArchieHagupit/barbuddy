@@ -4817,19 +4817,31 @@ async function toggleRegistration() {
 // ══════════════════════════════════
 // ADMIN: RESULTS
 // ══════════════════════════════════
+function _normalizeResult(row) {
+  const userId     = row.userId     || row.user_id     || '';
+  const score      = row.score      || 0;
+  const total      = row.totalQuestions || row.total_questions || row.total || 0;
+  const passed     = row.passed     ?? (total > 0 && score / total >= 0.7);
+  const subject    = row.subject    || 'Unknown';
+  const finishedAt = row.finishedAt || row.finished_at || row.completedAt || row.submittedAt || '';
+  const userName   = row.userName   || row.user_name   || row.users?.name || userId;
+  const pct        = total > 0 ? Math.round(score / total * 100) : 0;
+  return { userId, score, total, passed, subject, finishedAt, userName, pct };
+}
+
 async function loadAdminResults() {
   const el = document.getElementById('adminResultsList');
   if (!el) return;
   try {
     const r    = await fetch('/api/admin/results', { headers:{'x-admin-key': window._adminKey||''} });
     const rows = await r.json();
-    if (!rows.length) { el.innerHTML = '<div style="font-size:12px;color:var(--muted);">No results saved yet.</div>'; return; }
+    if (!Array.isArray(rows) || !rows.length) { el.innerHTML = '<div style="font-size:12px;color:var(--muted);">No results saved yet.</div>'; return; }
     el.innerHTML = rows.map(row => {
-      const pct   = ((row.score / 10) * 100).toFixed(0);
-      const passed = row.score >= 7;
+      const { userName, finishedAt, total, score, pct, passed } = _normalizeResult(row);
+      const dateStr = finishedAt ? finishedAt.slice(0,10) : '—';
       return `<div class="ur-row">
-        <div><div class="ur-name">${h(row.userName)}</div><div class="ur-meta">${row.completedAt.slice(0,10)} &nbsp;·&nbsp; ${row.total} questions</div></div>
-        <span class="ur-badge${passed?'':' off'}">${row.score}/10 (${pct}%)</span>
+        <div><div class="ur-name">${h(userName)}</div><div class="ur-meta">${dateStr} &nbsp;·&nbsp; ${total} questions</div></div>
+        <span class="ur-badge${passed?'':' off'}">${score}/${total} (${pct}%)</span>
         <button class="ur-act view" onclick="viewResult('${row.id}')">View</button>
         <button class="ur-act del" onclick="deleteResult('${row.id}')">Delete</button>
       </div>`;
@@ -4840,13 +4852,15 @@ async function loadAdminResults() {
 async function viewUserResults(userId, name) {
   const r    = await fetch(`/api/admin/results/${userId}`, { headers:{'x-admin-key': window._adminKey||''} });
   const rows = await r.json();
+  const norm = (Array.isArray(rows) ? rows : []).map(_normalizeResult);
   document.getElementById('resultDetailTitle').textContent = `📊 ${name} — Results`;
+  const avgPct = norm.length ? Math.round(norm.reduce((a,r)=>a+r.pct,0)/norm.length) : 0;
   document.getElementById('resultDetailStats').innerHTML = `
-    <div class="res-dstat"><div class="res-dstat-val">${rows.length}</div><div class="res-dstat-lbl">Attempts</div></div>
-    <div class="res-dstat"><div class="res-dstat-val">${rows.length ? (rows.reduce((a,r)=>a+r.score,0)/rows.length).toFixed(2) : '—'}</div><div class="res-dstat-lbl">Avg Score</div></div>
-    <div class="res-dstat"><div class="res-dstat-val">${rows.filter(r=>r.score>=7).length}</div><div class="res-dstat-lbl">Passed</div></div>`;
-  document.getElementById('resultDetailBody').innerHTML = rows.map(r =>
-    `<div style="padding:8px 0;border-bottom:1px solid var(--bdr2);font-size:12px;">${r.completedAt.slice(0,10)} &nbsp; <strong>${r.score}/10</strong> &nbsp; ${r.total} questions</div>`
+    <div class="res-dstat"><div class="res-dstat-val">${norm.length}</div><div class="res-dstat-lbl">Attempts</div></div>
+    <div class="res-dstat"><div class="res-dstat-val">${norm.length ? avgPct+'%' : '—'}</div><div class="res-dstat-lbl">Avg Score</div></div>
+    <div class="res-dstat"><div class="res-dstat-val">${norm.filter(r=>r.passed).length}</div><div class="res-dstat-lbl">Passed</div></div>`;
+  document.getElementById('resultDetailBody').innerHTML = norm.map(r =>
+    `<div style="padding:8px 0;border-bottom:1px solid var(--bdr2);font-size:12px;">${r.finishedAt?r.finishedAt.slice(0,10):'—'} &nbsp; <strong>${r.score}/${r.total} (${r.pct}%)</strong></div>`
   ).join('') || '<div style="color:var(--muted);">No results.</div>';
   document.getElementById('resultDetailOverlay').classList.add('on');
 }
@@ -4854,16 +4868,17 @@ async function viewUserResults(userId, name) {
 async function viewResult(resultId) {
   const r    = await fetch('/api/admin/results', { headers:{'x-admin-key': window._adminKey||''} });
   const rows = await r.json();
-  const row  = rows.find(x => x.id === resultId);
+  const row  = (Array.isArray(rows) ? rows : []).find(x => x.id === resultId);
   if (!row) return;
-  document.getElementById('resultDetailTitle').textContent = `📊 ${row.userName} — ${row.completedAt.slice(0,10)}`;
-  const pct = ((row.score/10)*100).toFixed(0);
+  const { userName, finishedAt, total, score, pct } = _normalizeResult(row);
+  const dateStr = finishedAt ? finishedAt.slice(0,10) : '—';
+  document.getElementById('resultDetailTitle').textContent = `📊 ${userName} — ${dateStr}`;
   document.getElementById('resultDetailStats').innerHTML = `
-    <div class="res-dstat"><div class="res-dstat-val">${row.score}/10</div><div class="res-dstat-lbl">Score</div></div>
+    <div class="res-dstat"><div class="res-dstat-val">${score}/${total}</div><div class="res-dstat-lbl">Score</div></div>
     <div class="res-dstat"><div class="res-dstat-val">${pct}%</div><div class="res-dstat-lbl">Percentage</div></div>
-    <div class="res-dstat"><div class="res-dstat-val">${row.total}</div><div class="res-dstat-lbl">Questions</div></div>`;
+    <div class="res-dstat"><div class="res-dstat-val">${total}</div><div class="res-dstat-lbl">Questions</div></div>`;
   document.getElementById('resultDetailBody').innerHTML = (row.questions||[]).map((q,i)=>
-    `<div style="padding:7px 0;border-bottom:1px solid var(--bdr2);font-size:12px;"><strong>Q${i+1}:</strong> ${h((q.q||'').slice(0,120))} &nbsp;<span style="color:var(--gold);">${q.score}/${q.max||10}</span></div>`
+    `<div style="padding:7px 0;border-bottom:1px solid var(--bdr2);font-size:12px;"><strong>Q${i+1}:</strong> ${h((q.q||'').slice(0,120))} &nbsp;<span style="color:var(--gold);">${q.score||'—'}/${q.max||'—'}</span></div>`
   ).join('') || '<div style="color:var(--muted);">No question detail.</div>';
   document.getElementById('resultDetailOverlay').classList.add('on');
 }
@@ -5294,8 +5309,11 @@ async function resetUserAccess() {
 async function exportResultsCSV() {
   const r    = await fetch('/api/admin/results', { headers:{'x-admin-key': window._adminKey||''} });
   const rows = await r.json();
-  const lines = ['Name,Email,Date,Score,Total,Questions'];
-  rows.forEach(row => lines.push(`"${row.userName}","","${row.completedAt.slice(0,10)}","${row.score}","${row.total}","${row.total}"`));
+  const lines = ['Name,Date,Subject,Score,Total,Pct,Passed'];
+  (Array.isArray(rows) ? rows : []).forEach(row => {
+    const { userName, finishedAt, subject, score, total, pct, passed } = _normalizeResult(row);
+    lines.push(`"${userName}","${finishedAt?finishedAt.slice(0,10):''}","${subject}","${score}","${total}","${pct}%","${passed?'Yes':'No'}"`);
+  });
   const blob = new Blob([lines.join('\n')], { type:'text/csv' });
   const a    = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'barbuddy_results.csv'; a.click();
 }
