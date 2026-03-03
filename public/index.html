@@ -4817,14 +4817,21 @@ async function toggleRegistration() {
 // ══════════════════════════════════
 // ADMIN: RESULTS
 // ══════════════════════════════════
+const _SUBJECT_NAMES = {
+  civil:'Civil Law', criminal:'Criminal Law', political:'Political Law',
+  labor:'Labor & Social Leg.', commercial:'Commercial Law',
+  taxation:'Taxation', remedial:'Remedial Law',
+  ethics:'Legal Ethics', custom:'Custom'
+};
 function _normalizeResult(row) {
-  const userId     = row.userId     || row.user_id     || '';
-  const score      = row.score      || 0;
+  const userId     = row.userId       || row.user_id       || '';
+  const score      = row.score        || 0;
   const total      = row.totalQuestions || row.total_questions || row.total || 0;
-  const passed     = row.passed     ?? (total > 0 && score / total >= 0.7);
-  const subject    = row.subject    || 'Unknown';
-  const finishedAt = row.finishedAt || row.finished_at || row.completedAt || row.submittedAt || '';
-  const userName   = row.userName   || row.user_name   || row.users?.name || userId;
+  const passed     = row.passed       ?? (total > 0 && score / total >= 0.7);
+  const subjectKey = row.subject      || '';
+  const subject    = _SUBJECT_NAMES[subjectKey] || subjectKey || 'Mock Bar';
+  const finishedAt = row.finishedAt   || row.finished_at   || row.completedAt || row.submittedAt || '';
+  const userName   = row.users?.name  || row.userName      || row.user_name   || row.name || userId || 'Unknown User';
   const pct        = total > 0 ? Math.round(score / total * 100) : 0;
   return { userId, score, total, passed, subject, finishedAt, userName, pct };
 }
