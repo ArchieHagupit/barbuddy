@@ -7,6 +7,14 @@ const pdfParse   = require('pdf-parse');
 const mammoth    = require('mammoth');
 const nodemailer = require('nodemailer');
 const crypto     = require('crypto');
+const bcrypt     = require('bcryptjs');
+const { createClient } = require('@supabase/supabase-js');
+
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_KEY,
+  { auth: { persistSession: false } }
+);
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 // Disk-storage multer for syllabus PDFs — files saved directly to SYLLABUS_PDFS_DIR
@@ -56,20 +64,10 @@ ABSOLUTE RULES — never break these:
 - If the uploaded materials do not have enough content to generate a section, write exactly: [Not covered in uploaded materials]
 - You are an analyst and organizer, not a content creator`;
 
-// ── Persistence ─────────────────────────────────────────────
-// On Railway: set PERSISTENT_STORAGE_PATH to your Volume mount path (e.g. /data)
-// so that KB survives redeploys. Falls back to local uploads/ for dev.
-const UPLOADS_DIR  = process.env.PERSISTENT_STORAGE_PATH
+// ── File system paths (PDF files only — all data now in Supabase) ──────────
+const UPLOADS_DIR = process.env.PERSISTENT_STORAGE_PATH
   ? path.join(process.env.PERSISTENT_STORAGE_PATH, 'uploads')
   : path.join(__dirname, 'uploads');
-let KB_PATH             = path.join(UPLOADS_DIR, 'kb.json'); // let — updated if found at alternate path
-const CONTENT_PATH      = path.join(UPLOADS_DIR, 'content.json');
-const TAB_SETTINGS_PATH = path.join(UPLOADS_DIR, 'tab_settings.json');
-const USERS_PATH         = path.join(UPLOADS_DIR, 'users.json');
-const SESSIONS_PATH      = path.join(UPLOADS_DIR, 'sessions.json');
-const RESULTS_PATH       = path.join(UPLOADS_DIR, 'results.json');
-const SETTINGS_PATH      = path.join(UPLOADS_DIR, 'settings.json');
-const RESET_REQUESTS_PATH = path.join(UPLOADS_DIR, 'reset_requests.json');
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 const SYLLABUS_PDFS_DIR = path.join(UPLOADS_DIR, 'syllabus-pdfs');
 if (!fs.existsSync(SYLLABUS_PDFS_DIR)) fs.mkdirSync(SYLLABUS_PDFS_DIR, { recursive: true });
@@ -151,12 +149,46 @@ function extractJSON(raw) {
   return null;
 }
 
-// User auth state
-let USERS          = {};   // { [userId]: { id, name, email, passwordHash, role, active, createdAt, stats } }
-let SESSIONS       = {};   // { [token]: { userId, createdAt, expiresAt } }
-let RESULTS_DB     = [];   // [{ id, userId, userName, score, total, subject, questions, completedAt }]
-let RESET_REQUESTS = [];   // [{ id, userId, name, email, requestedAt, status }]
+// Auth/settings state — loaded from Supabase at startup, users+sessions live in DB
+let RESET_REQUESTS = [];
 const SETTINGS = { registrationOpen: true, mockBarPublic: true };
+
+// ── Field mappers: Supabase snake_case → camelCase for frontend ─────────────
+function mapUser(u) {
+  if (!u) return null;
+  return {
+    id:                u.id,
+    name:              u.name,
+    email:             u.email,
+    passwordHash:      u.password_hash,
+    isAdmin:           u.is_admin || false,
+    isActive:          u.is_active !== false,
+    role:              u.is_admin ? 'admin' : 'student',
+    active:            u.is_active !== false,
+    joinedAt:          u.joined_at,
+    createdAt:         u.joined_at,
+    tabSettings:       u.tab_settings || {},
+    progress:          u.progress || {},
+    activeExamSession: u.active_exam_session || null,
+    mockBarCount:      u.mock_bar_count || 0,
+    avgScore:          u.avg_score || 0,
+    stats: { totalAttempts: u.mock_bar_count || 0, totalScore: 0, totalQuestions: 0 },
+  };
+}
+
+function mapPastBar(pb) {
+  if (!pb) return null;
+  return {
+    id:         pb.id,
+    name:       pb.name,
+    subject:    pb.subject,
+    year:       pb.year,
+    source:     pb.source,
+    questions:  pb.questions || [],
+    qCount:     pb.q_count || 0,
+    uploadedAt: pb.uploaded_at,
+  };
+}
 
 // Pre-generated content per topic
 // { [subject_key]: { [topic_name]: { lesson, mcq, essay, generatedAt } } }
@@ -225,7 +257,6 @@ function migrateSyllabusIfNeeded() {
   if (!KB.syllabus) {
     KB.syllabus = { subjects: {} };
     getAllSubjectsWithSections().forEach(s => { KB.syllabus.subjects[s] = { sections: [] }; });
-    saveKB();
     return;
   }
   if (!KB.syllabus.subjects) {
@@ -239,8 +270,7 @@ function migrateSyllabusIfNeeded() {
       newSubjects[key].sections = convertOldTopicsToSections(subjEntry.topics || []);
     });
     KB.syllabus = { subjects: newSubjects };
-    saveKB();
-    console.log('[syllabus] Migrated to manual builder format');
+    console.log('[syllabus] Migrated to manual builder format (in-memory only)');
   } else {
     // Ensure all subjects exist
     getAllSubjectsWithSections().forEach(s => {
@@ -276,212 +306,191 @@ function convertOldTopicsToSections(topics) {
   }];
 }
 
-function loadKBFromDisk() {
-  // Build a prioritised list of paths to try (deduplicated)
-  const candidates = [
-    KB_PATH,
-    path.join('/data', 'uploads', 'kb.json'),
-    path.join('/data', 'kb.json'),
-    path.join(__dirname, 'uploads', 'kb.json'),
-  ].filter((p, i, a) => a.indexOf(p) === i);
-
-  console.log('🔍 Searching for kb.json:');
-  for (const tryPath of candidates) {
-    const exists = fs.existsSync(tryPath);
-    const size   = exists ? fs.statSync(tryPath).size : 0;
-    console.log(`  ${exists ? '✓' : '✗'} ${tryPath}${exists ? ' (' + size + ' bytes)' : ''}`);
-    if (!exists) continue;
-    try {
-      const parsed = JSON.parse(fs.readFileSync(tryPath, 'utf8'));
-      if (!parsed || typeof parsed !== 'object') { console.warn(`  ⚠️  ${tryPath} parsed but is not an object`); continue; }
-      Object.assign(KB, {
-        ...parsed,
-        pastBar:    Array.isArray(parsed.pastBar)    ? parsed.pastBar    : [],
-        references: Array.isArray(parsed.references) ? parsed.references : [],
-      });
-      console.log(`✅ KB loaded from ${tryPath}: ${KB.pastBar.length} past bar items, ${KB.references.length} refs`);
-      if (tryPath !== KB_PATH) {
-        console.log(`  ↳ Updating KB_PATH to ${tryPath} so saves go to the right place`);
-        KB_PATH = tryPath;
-      }
-      return tryPath;
-    } catch(e) { console.error(`  ❌ Failed to parse ${tryPath}: ${e.message}`); }
-  }
-  console.warn('⚠️  No valid kb.json found — starting with empty KB');
-  return null;
+// ── Supabase DB helpers ──────────────────────────────────────
+async function getSetting(key) {
+  const { data } = await supabase.from('settings').select('value').eq('key', key).single();
+  return data ? data.value : null;
+}
+async function saveSetting(key, value) {
+  await supabase.from('settings').upsert([{ key, value, updated_at: new Date().toISOString() }], { onConflict: 'key' });
 }
 
-function loadData() {
-  const persistent = !!process.env.PERSISTENT_STORAGE_PATH;
-  console.log(`Storage: ${persistent ? '✅ Persistent (Railway Volume)' : '⚠️  Ephemeral (local)'} → ${UPLOADS_DIR}`);
-
-  // KB — multi-path search with explicit error reporting
-  loadKBFromDisk();
-
-  // content.json
-  try {
-    if (fs.existsSync(CONTENT_PATH)) CONTENT = JSON.parse(fs.readFileSync(CONTENT_PATH, 'utf8'));
-  } catch(e) { console.error('content.json load error:', e.message); }
-
-  // tab_settings.json
-  try {
-    if (fs.existsSync(TAB_SETTINGS_PATH)) {
-      const saved = JSON.parse(fs.readFileSync(TAB_SETTINGS_PATH, 'utf8'));
-      TAB_SETTINGS = deepMerge(JSON.parse(JSON.stringify(DEFAULT_TAB_SETTINGS)), saved);
-    }
-  } catch(e) { console.error('tab_settings.json load error:', e.message); }
-
-  const n = Object.values(CONTENT).reduce((a,s) => a+Object.keys(s).length, 0);
-  console.log(`Content: ${n} topics | Tab settings: overview=${TAB_SETTINGS.overview}`);
+async function createSession(userId) {
+  const token = crypto.randomBytes(32).toString('hex');
+  const expires = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+  await supabase.from('sessions').insert([{ token, user_id: userId, expires_at: expires }]);
+  return token;
 }
-function saveKB()          { try { fs.writeFileSync(KB_PATH, JSON.stringify(KB)); } catch(e) { console.error('KB save:', e.message); } }
-function saveContent()     { try { fs.writeFileSync(CONTENT_PATH, JSON.stringify(CONTENT)); } catch(e) { console.error('Content save:', e.message); } }
-function saveTabSettings() { try { fs.writeFileSync(TAB_SETTINGS_PATH, JSON.stringify(TAB_SETTINGS)); } catch(e) { console.error('Tab settings save:', e.message); } }
-function saveUsers()         { try { fs.writeFileSync(USERS_PATH,          JSON.stringify(USERS));          } catch(e) { console.error('Users save:', e.message); } }
-function saveSessions()      { try { fs.writeFileSync(SESSIONS_PATH,       JSON.stringify(SESSIONS));       } catch(e) { console.error('Sessions save:', e.message); } }
-function saveResults()       { try { fs.writeFileSync(RESULTS_PATH,        JSON.stringify(RESULTS_DB));     } catch(e) { console.error('Results save:', e.message); } }
-function saveSettings()      { try { fs.writeFileSync(SETTINGS_PATH,       JSON.stringify(SETTINGS));       } catch(e) { console.error('Settings save:', e.message); } }
-function saveResetRequests() { try { fs.writeFileSync(RESET_REQUESTS_PATH, JSON.stringify(RESET_REQUESTS)); } catch(e) { console.error('ResetReqs save:', e.message); } }
+async function verifySession(token) {
+  const { data } = await supabase
+    .from('sessions')
+    .select('*, users(*)')
+    .eq('token', token)
+    .gt('expires_at', new Date().toISOString())
+    .single();
+  return data || null;
+}
+async function deleteSession(token) {
+  await supabase.from('sessions').delete().eq('token', token);
+}
+async function cleanupSessions() {
+  await supabase.from('sessions').delete().lt('expires_at', new Date().toISOString());
+}
+setInterval(cleanupSessions, 60 * 60 * 1000);
 
-function loadUserData() {
-  try {
-    if (fs.existsSync(USERS_PATH))          USERS          = JSON.parse(fs.readFileSync(USERS_PATH, 'utf8'));
-    if (fs.existsSync(SESSIONS_PATH))       SESSIONS       = JSON.parse(fs.readFileSync(SESSIONS_PATH, 'utf8'));
-    if (fs.existsSync(RESULTS_PATH))        RESULTS_DB     = JSON.parse(fs.readFileSync(RESULTS_PATH, 'utf8'));
-    if (fs.existsSync(RESET_REQUESTS_PATH)) RESET_REQUESTS = JSON.parse(fs.readFileSync(RESET_REQUESTS_PATH, 'utf8'));
-    if (fs.existsSync(SETTINGS_PATH)) Object.assign(SETTINGS, JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8')));
-    // Clean expired sessions on startup
-    const now = Date.now();
-    let cleaned = 0;
-    for (const token of Object.keys(SESSIONS)) {
-      if (SESSIONS[token].expiresAt < now) { delete SESSIONS[token]; cleaned++; }
-    }
-    if (cleaned > 0) saveSessions();
-    console.log(`Users: ${Object.keys(USERS).length}, Sessions: ${Object.keys(SESSIONS).length}, Results: ${RESULTS_DB.length}`);
-  } catch(e) { console.error('loadUserData error:', e.message); }
+async function saveSyllabusSubject(subject, sections) {
+  await supabase.from('syllabus').upsert(
+    [{ subject, sections, updated_at: new Date().toISOString() }],
+    { onConflict: 'subject' }
+  );
+}
+async function savePastBarEntry(entry) {
+  await supabase.from('past_bar').upsert([{
+    id: entry.id, name: entry.name, subject: entry.subject,
+    year: entry.year || 'Unknown', source: entry.source || 'upload',
+    questions: entry.questions || [], q_count: entry.questions?.length || entry.qCount || 0,
+    uploaded_at: entry.uploadedAt || new Date().toISOString(),
+  }], { onConflict: 'id' });
+}
+async function deletePastBarEntry(id) {
+  await supabase.from('past_bar').delete().eq('id', id);
 }
 
-// ── Auth helpers ─────────────────────────────────────────────
-function hashPassword(pw) {
-  return crypto.createHash('sha256').update('barbuddy_salt_2025' + pw).digest('hex');
-}
-function generateToken() {
-  return crypto.randomBytes(32).toString('hex');
-}
-function requireAuth(req, res, next) {
-  const token = req.headers['x-session-token'];
-  if (!token || !SESSIONS[token]) return res.status(401).json({ error: 'Not authenticated' });
-  if (SESSIONS[token].expiresAt < Date.now()) {
-    delete SESSIONS[token];
-    saveSessions();
-    return res.status(401).json({ error: 'Session expired' });
-  }
-  req.userId = SESSIONS[token].userId;
-  req.user   = USERS[req.userId];
-  next();
-}
+// ── App initialisation — loads all data from Supabase at startup ─────────────
+async function initializeApp() {
+  console.log('Loading from Supabase...');
 
-loadData();
-loadUserData();
-migrateSyllabusIfNeeded();
+  // Past bar
+  const { data: pbRows } = await supabase.from('past_bar').select('*');
+  KB.pastBar = (pbRows || []).map(mapPastBar);
 
-// Migrate any KB.manual entries that aren't in KB.pastBar yet (safety net)
-(function migrateManualToPastBar() {
-  const manual = KB.manual;
-  if (!Array.isArray(manual) || !manual.length) return;
-  let migrated = 0;
-  manual.forEach(batch => {
-    const exists = (KB.pastBar || []).find(pb => pb.id === batch.id);
-    if (!exists && batch.questions?.length) {
-      KB.pastBar.push({ ...batch, source: 'manual' });
-      migrated++;
-    }
+  // Syllabus
+  const { data: syllRows } = await supabase.from('syllabus').select('*');
+  KB.syllabus = { subjects: {} };
+  getAllSubjectsWithSections().forEach(s => { KB.syllabus.subjects[s] = { sections: [] }; });
+  (syllRows || []).forEach(row => {
+    KB.syllabus.subjects[row.subject] = { sections: row.sections || [] };
   });
-  if (migrated > 0) { console.log(`Migrated ${migrated} KB.manual batch(es) to pastBar`); saveKB(); }
-})();
+
+  // References
+  const refs = await getSetting('kb_references');
+  KB.references = Array.isArray(refs) ? refs : [];
+
+  // Tab settings
+  const savedTS = await getSetting('tab_settings');
+  if (savedTS) TAB_SETTINGS = deepMerge(JSON.parse(JSON.stringify(DEFAULT_TAB_SETTINGS)), savedTS);
+
+  // App settings
+  const regOpen = await getSetting('registration_open');
+  const mbPublic = await getSetting('mock_bar_public');
+  if (regOpen  !== null) SETTINGS.registrationOpen = !!regOpen;
+  if (mbPublic !== null) SETTINGS.mockBarPublic    = !!mbPublic;
+
+  // Reset requests
+  const rr = await getSetting('reset_requests');
+  RESET_REQUESTS = Array.isArray(rr) ? rr : [];
+
+  await cleanupSessions();
+
+  const totalQ = KB.pastBar.reduce((a, pb) => a + (pb.questions?.length || pb.qCount || 0), 0);
+  console.log(`✅ Supabase loaded — ${KB.pastBar.length} past bar batches, ${totalQ} questions, ${KB.references.length} refs`);
+}
 
 // ── Middleware ──────────────────────────────────────────────
 app.use(cors());
 app.use(express.json({ limit: '80mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-function adminOnly(req, res, next) {
-  // Method 1: ADMIN_KEY header (backward compat)
-  const key = req.headers['x-admin-key'] || req.body?.adminKey;
-  if (key && key === ADMIN_KEY) return next();
-
-  // Method 2: Session token from an isAdmin user
-  const token = req.headers['x-session-token'];
-  if (token && SESSIONS[token]) {
-    const sess = SESSIONS[token];
-    if (sess.expiresAt > Date.now()) {
-      const user = USERS[sess.userId];
-      if (user?.isAdmin) { req.userId = user.id; req.user = user; return next(); }
-    }
-  }
-
-  return res.status(401).json({ error: 'Unauthorized' });
+async function requireAuth(req, res, next) {
+  try {
+    const token = req.headers['x-session-token'];
+    if (!token) return res.status(401).json({ error: 'Not authenticated' });
+    const session = await verifySession(token);
+    if (!session) return res.status(401).json({ error: 'Session expired' });
+    req.userId = session.user_id;
+    req.user   = mapUser(session.users);
+    next();
+  } catch(e) { res.status(500).json({ error: 'Auth error' }); }
 }
 
-function authOrAdmin(req, res, next) {
-  const adminKey = req.headers['x-admin-key'] || req.body?.adminKey;
-  if (adminKey === ADMIN_KEY) return next();
-  const token = req.headers['x-session-token'];
-  if (!token || !SESSIONS[token]) return res.status(401).json({ error: 'Not authenticated' });
-  if (SESSIONS[token].expiresAt < Date.now()) {
-    delete SESSIONS[token]; saveSessions();
-    return res.status(401).json({ error: 'Session expired' });
-  }
-  req.userId = SESSIONS[token].userId;
-  req.user   = USERS[req.userId];
-  next();
+async function adminOnly(req, res, next) {
+  try {
+    const key = req.headers['x-admin-key'] || req.body?.adminKey;
+    if (key && key === ADMIN_KEY) return next();
+    const token = req.headers['x-session-token'];
+    if (token) {
+      const session = await verifySession(token);
+      if (session?.users?.is_admin) {
+        req.userId = session.user_id;
+        req.user   = mapUser(session.users);
+        return next();
+      }
+    }
+    return res.status(401).json({ error: 'Unauthorized' });
+  } catch(e) { res.status(500).json({ error: 'Auth error' }); }
+}
+
+async function authOrAdmin(req, res, next) {
+  try {
+    const adminKey = req.headers['x-admin-key'] || req.body?.adminKey;
+    if (adminKey === ADMIN_KEY) return next();
+    const token = req.headers['x-session-token'];
+    if (!token) return res.status(401).json({ error: 'Not authenticated' });
+    const session = await verifySession(token);
+    if (!session) return res.status(401).json({ error: 'Session expired' });
+    req.userId = session.user_id;
+    req.user   = mapUser(session.users);
+    next();
+  } catch(e) { res.status(500).json({ error: 'Auth error' }); }
 }
 
 // ── Auth routes ──────────────────────────────────────────────
-app.post('/api/auth/register', (req, res) => {
-  if (!SETTINGS.registrationOpen) return res.status(403).json({ error: 'Registration is currently closed' });
-  const { name, email, password } = req.body || {};
-  if (!name || !email || !password) return res.status(400).json({ error: 'Name, email, and password required' });
-  const existing = Object.values(USERS).find(u => u.email === email.toLowerCase());
-  if (existing) return res.status(409).json({ error: 'Email already registered' });
-  const id = 'u_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
-  const emailLower = email.toLowerCase();
-  const isFirstUser = Object.keys(USERS).length === 0;
-  const isAdminEmail = ADMIN_EMAIL && emailLower === ADMIN_EMAIL.toLowerCase();
-  USERS[id] = {
-    id, name: name.trim(), email: emailLower,
-    passwordHash: hashPassword(password),
-    role: isFirstUser ? 'admin' : 'student',
-    isAdmin: isFirstUser || !!isAdminEmail,
-    active: true,
-    createdAt: new Date().toISOString(),
-    stats: { totalAttempts: 0, totalScore: 0, totalQuestions: 0 },
-  };
-  saveUsers();
-  const token = generateToken();
-  SESSIONS[token] = { userId: id, createdAt: Date.now(), expiresAt: Date.now() + 86400000 };
-  saveSessions();
-  const u = USERS[id];
-  res.json({ token, user: { id, name: u.name, email: u.email, role: u.role, isAdmin: u.isAdmin || false } });
+app.post('/api/auth/register', async (req, res) => {
+  try {
+    if (!SETTINGS.registrationOpen) return res.status(403).json({ error: 'Registration is currently closed' });
+    const { name, email, password } = req.body || {};
+    if (!name || !email || !password) return res.status(400).json({ error: 'Name, email, and password required' });
+    const emailLower = email.toLowerCase().trim();
+    const { data: existing } = await supabase.from('users').select('id').eq('email', emailLower).single();
+    if (existing) return res.status(409).json({ error: 'Email already registered' });
+    const { count } = await supabase.from('users').select('*', { count: 'exact', head: true });
+    const isFirstUser  = (count || 0) === 0;
+    const isAdminEmail = ADMIN_EMAIL && emailLower === ADMIN_EMAIL.toLowerCase();
+    const id = 'u_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+    const passwordHash = await bcrypt.hash(password, 10);
+    const { error: insertErr } = await supabase.from('users').insert([{
+      id, name: name.trim(), email: emailLower, password_hash: passwordHash,
+      is_admin: isFirstUser || !!isAdminEmail, is_active: true,
+      joined_at: new Date().toISOString(), progress: {}, tab_settings: {},
+    }]);
+    if (insertErr) throw insertErr;
+    const token = await createSession(id);
+    res.json({ token, user: { id, name: name.trim(), email: emailLower,
+      role: isFirstUser || isAdminEmail ? 'admin' : 'student',
+      isAdmin: isFirstUser || !!isAdminEmail } });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/auth/login', (req, res) => {
-  const { email, password } = req.body || {};
-  if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
-  const user = Object.values(USERS).find(u => u.email === email.toLowerCase());
-  if (!user || user.passwordHash !== hashPassword(password)) return res.status(401).json({ error: 'Invalid email or password' });
-  if (!user.active) return res.status(403).json({ error: 'Account is disabled' });
-  const token = generateToken();
-  SESSIONS[token] = { userId: user.id, createdAt: Date.now(), expiresAt: Date.now() + 86400000 };
-  saveSessions();
-  res.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role, isAdmin: user.isAdmin || false } });
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { email, password } = req.body || {};
+    if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
+    const { data: user } = await supabase.from('users').select('*').eq('email', email.toLowerCase().trim()).single();
+    if (!user) return res.status(401).json({ error: 'Invalid email or password' });
+    const ok = await bcrypt.compare(password, user.password_hash);
+    if (!ok) return res.status(401).json({ error: 'Invalid email or password' });
+    if (!user.is_active) return res.status(403).json({ error: 'Account is disabled' });
+    const token = await createSession(user.id);
+    const u = mapUser(user);
+    res.json({ token, user: { id: u.id, name: u.name, email: u.email, role: u.role, isAdmin: u.isAdmin } });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/auth/logout', requireAuth, (req, res) => {
-  const token = req.headers['x-session-token'];
-  delete SESSIONS[token];
-  saveSessions();
-  res.json({ ok: true });
+app.post('/api/auth/logout', requireAuth, async (req, res) => {
+  try {
+    await deleteSession(req.headers['x-session-token']);
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 app.get('/api/auth/me', requireAuth, (req, res) => {
@@ -523,25 +532,20 @@ app.get('/api/admin/export/users', (req, res) => {
 });
 
 // ── Password reset routes ─────────────────────────────────────
-app.post('/api/auth/forgot-password', (req, res) => {
-  const { email } = req.body || {};
-  if (!email) return res.status(400).json({ error: 'Email required' });
-  const user = Object.values(USERS).find(u => u.email === email.toLowerCase());
-  if (user) {
-    const existing = RESET_REQUESTS.find(r => r.email === user.email && r.status === 'pending');
-    if (!existing) {
-      RESET_REQUESTS.unshift({
-        id: 'reset_' + Date.now(),
-        userId: user.id,
-        name: user.name,
-        email: user.email,
-        requestedAt: new Date().toISOString(),
-        status: 'pending',
-      });
-      saveResetRequests();
+app.post('/api/auth/forgot-password', async (req, res) => {
+  try {
+    const { email } = req.body || {};
+    if (!email) return res.status(400).json({ error: 'Email required' });
+    const { data: user } = await supabase.from('users').select('id,name,email').eq('email', email.toLowerCase().trim()).single();
+    if (user) {
+      const existing = RESET_REQUESTS.find(r => r.email === user.email && r.status === 'pending');
+      if (!existing) {
+        RESET_REQUESTS.unshift({ id: 'reset_' + Date.now(), userId: user.id, name: user.name, email: user.email, requestedAt: new Date().toISOString(), status: 'pending' });
+        saveSetting('reset_requests', RESET_REQUESTS).catch(() => {});
+      }
     }
-  }
-  res.json({ success: true }); // always success — don't reveal if email exists
+    res.json({ success: true }); // always success — don't reveal if email exists
+  } catch(e) { res.json({ success: true }); }
 });
 
 app.get('/api/admin/reset-requests', adminOnly, (_req, res) => {
@@ -549,124 +553,127 @@ app.get('/api/admin/reset-requests', adminOnly, (_req, res) => {
   res.json(sorted);
 });
 
-app.post('/api/admin/reset-password', adminOnly, (req, res) => {
-  const { userId, newPassword, requestId } = req.body || {};
-  if (!userId || !newPassword) return res.status(400).json({ error: 'userId and newPassword required' });
-  const user = USERS[userId];
-  if (!user) return res.status(404).json({ error: 'User not found' });
-  user.passwordHash = hashPassword(newPassword);
-  saveUsers();
-  if (requestId) {
-    const req_ = RESET_REQUESTS.find(r => r.id === requestId);
-    if (req_) { req_.status = 'resolved'; req_.resolvedAt = new Date().toISOString(); }
-    saveResetRequests();
-  }
-  res.json({ success: true });
+app.post('/api/admin/reset-password', adminOnly, async (req, res) => {
+  try {
+    const { userId, newPassword, requestId } = req.body || {};
+    if (!userId || !newPassword) return res.status(400).json({ error: 'userId and newPassword required' });
+    const { data: user } = await supabase.from('users').select('id').eq('id', userId).single();
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    await supabase.from('users').update({ password_hash: passwordHash }).eq('id', userId);
+    if (requestId) {
+      const r = RESET_REQUESTS.find(r => r.id === requestId);
+      if (r) { r.status = 'resolved'; r.resolvedAt = new Date().toISOString(); }
+      saveSetting('reset_requests', RESET_REQUESTS).catch(() => {});
+    }
+    res.json({ success: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-app.delete('/api/admin/reset-requests/:id', adminOnly, (req, res) => {
+app.delete('/api/admin/reset-requests/:id', adminOnly, async (req, res) => {
   const item = RESET_REQUESTS.find(r => r.id === req.params.id);
-  if (item) { item.status = 'dismissed'; saveResetRequests(); }
+  if (item) { item.status = 'dismissed'; saveSetting('reset_requests', RESET_REQUESTS).catch(() => {}); }
   res.json({ ok: true });
 });
 
 // ── Settings routes ───────────────────────────────────────────
 app.get('/api/settings', (_req, res) => res.json(SETTINGS));
 
-app.post('/api/admin/settings', adminOnly, (req, res) => {
+app.post('/api/admin/settings', adminOnly, async (req, res) => {
   const { registrationOpen, mockBarPublic } = req.body || {};
   if (registrationOpen !== undefined) SETTINGS.registrationOpen = !!registrationOpen;
-  if (mockBarPublic     !== undefined) SETTINGS.mockBarPublic     = !!mockBarPublic;
-  saveSettings();
+  if (mockBarPublic     !== undefined) SETTINGS.mockBarPublic    = !!mockBarPublic;
+  await Promise.all([
+    saveSetting('registration_open', SETTINGS.registrationOpen),
+    saveSetting('mock_bar_public',   SETTINGS.mockBarPublic),
+  ]);
   res.json(SETTINGS);
 });
 
 // ── Results routes ────────────────────────────────────────────
-app.post('/api/results/save', requireAuth, (req, res) => {
-  const { score, total, subject, questions, timeTakenMs } = req.body || {};
-  if (score === undefined || !total) return res.status(400).json({ error: 'score and total required' });
-  const id = 'r_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
-  const result = {
-    id, userId: req.userId, userName: req.user.name,
-    score, total, subject: subject || 'Mixed',
-    questions: questions || [],
-    timeTakenMs: timeTakenMs || null,
-    completedAt: new Date().toISOString(),
-  };
-  RESULTS_DB.push(result);
-  saveResults();
-  // Update user stats
-  const u = USERS[req.userId];
-  u.stats.totalAttempts++;
-  u.stats.totalScore     += score;
-  u.stats.totalQuestions += total;
-  saveUsers();
-  res.json({ ok: true, id });
+app.post('/api/results/save', requireAuth, async (req, res) => {
+  try {
+    const { score, total, subject, questions, timeTakenMs } = req.body || {};
+    if (score === undefined || !total) return res.status(400).json({ error: 'score and total required' });
+    const id = 'r_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+    const { error } = await supabase.from('results').insert([{
+      id, user_id: req.userId, subject: subject || 'Mixed',
+      score, total_questions: total, passed: score / total >= 0.7,
+      finished_at: new Date().toISOString(),
+      questions: questions || [], answers: {}, evaluations: [], sources: [],
+    }]);
+    if (error) throw error;
+    // Increment mock_bar_count on user
+    const { data: uData } = await supabase.from('users').select('mock_bar_count').eq('id', req.userId).single();
+    await supabase.from('users').update({ mock_bar_count: (uData?.mock_bar_count || 0) + 1 }).eq('id', req.userId);
+    res.json({ ok: true, id });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-app.get('/api/admin/results', adminOnly, (_req, res) => {
-  const sorted = [...RESULTS_DB].sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt));
-  res.json(sorted);
+app.get('/api/admin/results', adminOnly, async (_req, res) => {
+  try {
+    const { data } = await supabase.from('results').select('*').order('finished_at', { ascending: false });
+    res.json(data || []);
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-app.get('/api/admin/results/:userId', adminOnly, (req, res) => {
-  const results = RESULTS_DB.filter(r => r.userId === req.params.userId)
-    .sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt));
-  res.json(results);
+app.get('/api/admin/results/:userId', adminOnly, async (req, res) => {
+  try {
+    const { data } = await supabase.from('results').select('*').eq('user_id', req.params.userId).order('finished_at', { ascending: false });
+    res.json(data || []);
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-app.delete('/api/admin/results/:resultId', adminOnly, (req, res) => {
-  const idx = RESULTS_DB.findIndex(r => r.id === req.params.resultId);
-  if (idx === -1) return res.status(404).json({ error: 'Result not found' });
-  RESULTS_DB.splice(idx, 1);
-  saveResults();
-  res.json({ ok: true });
+app.delete('/api/admin/results/:resultId', adminOnly, async (req, res) => {
+  try {
+    const { error } = await supabase.from('results').delete().eq('id', req.params.resultId);
+    if (error) throw error;
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 // ── Admin user-management routes ──────────────────────────────
-app.get('/api/admin/users', adminOnly, (_req, res) => {
-  const list = Object.values(USERS).map(u => ({
-    id: u.id, name: u.name, email: u.email, role: u.role,
-    isAdmin: u.isAdmin || false,
-    active: u.active, createdAt: u.createdAt, stats: u.stats,
-    tabSettings: u.tabSettings || null,
-  })).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-  res.json(list);
+app.get('/api/admin/users', adminOnly, async (_req, res) => {
+  try {
+    const { data } = await supabase.from('users').select('*').order('joined_at', { ascending: false });
+    res.json((data || []).map(u => {
+      const m = mapUser(u);
+      return { id: m.id, name: m.name, email: m.email, role: m.role, isAdmin: m.isAdmin,
+               active: m.active, createdAt: m.createdAt, stats: m.stats, tabSettings: m.tabSettings || null };
+    }));
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-app.patch('/api/admin/users/:userId', adminOnly, (req, res) => {
-  const user = USERS[req.params.userId];
-  if (!user) return res.status(404).json({ error: 'User not found' });
-  const { active, role, isAdmin } = req.body || {};
-  if (active  !== undefined) user.active  = !!active;
-  if (role    !== undefined) user.role    = role;
-  if (isAdmin !== undefined) user.isAdmin = !!isAdmin;
-  saveUsers();
-  res.json({ ok: true });
+app.patch('/api/admin/users/:userId', adminOnly, async (req, res) => {
+  try {
+    const { active, isAdmin } = req.body || {};
+    const updates = {};
+    if (active  !== undefined) updates.is_active = !!active;
+    if (isAdmin !== undefined) updates.is_admin  = !!isAdmin;
+    const { error } = await supabase.from('users').update(updates).eq('id', req.params.userId);
+    if (error) throw error;
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-app.patch('/api/admin/users/:userId/role', adminOnly, (req, res) => {
-  const user = USERS[req.params.userId];
-  if (!user) return res.status(404).json({ error: 'User not found' });
-  const { isAdmin } = req.body || {};
-  // Prevent admins from removing their own admin access
-  if (user.id === req.userId && !isAdmin) return res.status(400).json({ error: 'Cannot remove your own admin access' });
-  user.isAdmin = !!isAdmin;
-  if (isAdmin) user.role = 'admin'; else if (user.role === 'admin') user.role = 'student';
-  saveUsers();
-  res.json({ success: true, userId: user.id, isAdmin: user.isAdmin });
+app.patch('/api/admin/users/:userId/role', adminOnly, async (req, res) => {
+  try {
+    const { isAdmin } = req.body || {};
+    if (req.params.userId === req.userId && !isAdmin)
+      return res.status(400).json({ error: 'Cannot remove your own admin access' });
+    const { error } = await supabase.from('users').update({ is_admin: !!isAdmin }).eq('id', req.params.userId);
+    if (error) throw error;
+    res.json({ success: true, userId: req.params.userId, isAdmin: !!isAdmin });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-app.delete('/api/admin/users/:userId', adminOnly, (req, res) => {
-  if (!USERS[req.params.userId]) return res.status(404).json({ error: 'User not found' });
-  delete USERS[req.params.userId];
-  // Also remove their sessions
-  for (const [token, s] of Object.entries(SESSIONS)) {
-    if (s.userId === req.params.userId) delete SESSIONS[token];
-  }
-  saveUsers();
-  saveSessions();
-  res.json({ ok: true });
+app.delete('/api/admin/users/:userId', adminOnly, async (req, res) => {
+  try {
+    await supabase.from('sessions').delete().eq('user_id', req.params.userId);
+    const { error } = await supabase.from('users').delete().eq('id', req.params.userId);
+    if (error) throw error;
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 // ── ADMIN: Parse uploaded file to text ─────────────────────
@@ -699,12 +706,14 @@ app.get('/api/health', (req, res) => {
 // ── Tab settings (public read, admin write) ──────────────────
 app.get('/api/tab-settings', (_req, res) => res.json({ ...TAB_SETTINGS }));
 
-app.post('/api/admin/tab-settings', adminOnly, (req, res) => {
-  const incoming = req.body;
-  if (!incoming || typeof incoming !== 'object') return res.status(400).json({ error: 'Invalid settings object' });
-  TAB_SETTINGS = deepMerge(JSON.parse(JSON.stringify(DEFAULT_TAB_SETTINGS)), incoming);
-  saveTabSettings();
-  res.json({ success: true, settings: TAB_SETTINGS });
+app.post('/api/admin/tab-settings', adminOnly, async (req, res) => {
+  try {
+    const incoming = req.body;
+    if (!incoming || typeof incoming !== 'object') return res.status(400).json({ error: 'Invalid settings object' });
+    TAB_SETTINGS = deepMerge(JSON.parse(JSON.stringify(DEFAULT_TAB_SETTINGS)), incoming);
+    await saveSetting('tab_settings', TAB_SETTINGS);
+    res.json({ success: true, settings: TAB_SETTINGS });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 // ── Per-user topic progress ──────────────────────────────────
@@ -713,49 +722,54 @@ app.get('/api/user/progress', requireAuth, (req, res) => {
 });
 
 // ── Exam session auto-save ────────────────────────────────────
-app.post('/api/exam-session/save', requireAuth, (req, res) => {
-  const { session } = req.body || {};
-  if (!session) return res.status(400).json({ error: 'No session data' });
-  const user = USERS[req.userId];
-  if (!user) return res.status(404).json({ error: 'User not found' });
-  user.activeExamSession = { ...session, userId: req.userId, lastSavedAt: new Date().toISOString() };
-  saveUsers();
-  res.json({ success: true, savedAt: user.activeExamSession.lastSavedAt });
+app.post('/api/exam-session/save', requireAuth, async (req, res) => {
+  try {
+    const { session } = req.body || {};
+    if (!session) return res.status(400).json({ error: 'No session data' });
+    const savedAt = new Date().toISOString();
+    const { error } = await supabase.from('users').update({
+      active_exam_session: { ...session, userId: req.userId, lastSavedAt: savedAt }
+    }).eq('id', req.userId);
+    if (error) throw error;
+    res.json({ success: true, savedAt });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-app.get('/api/exam-session/active', requireAuth, (req, res) => {
-  const user = USERS[req.userId];
-  if (!user) return res.status(404).json({ error: 'User not found' });
-  const session = user.activeExamSession;
-  if (!session) return res.json({ session: null });
-  const ageMs = Date.now() - new Date(session.lastSavedAt).getTime();
-  if (ageMs > 24 * 60 * 60 * 1000) {
-    user.activeExamSession = null;
-    saveUsers();
-    return res.json({ session: null });
-  }
-  res.json({ session });
+app.get('/api/exam-session/active', requireAuth, async (req, res) => {
+  try {
+    const { data } = await supabase.from('users').select('active_exam_session').eq('id', req.userId).single();
+    const session = data?.active_exam_session;
+    if (!session) return res.json({ session: null });
+    const ageMs = Date.now() - new Date(session.lastSavedAt).getTime();
+    if (ageMs > 24 * 60 * 60 * 1000) {
+      await supabase.from('users').update({ active_exam_session: null }).eq('id', req.userId);
+      return res.json({ session: null });
+    }
+    res.json({ session });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-app.delete('/api/exam-session/clear', requireAuth, (req, res) => {
-  const user = USERS[req.userId];
-  if (!user) return res.status(404).json({ error: 'User not found' });
-  user.activeExamSession = null;
-  saveUsers();
-  res.json({ success: true });
+app.delete('/api/exam-session/clear', requireAuth, async (req, res) => {
+  try {
+    const { error } = await supabase.from('users').update({ active_exam_session: null }).eq('id', req.userId);
+    if (error) throw error;
+    res.json({ success: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/user/progress', requireAuth, (req, res) => {
-  const { subject, topicId, done } = req.body;
-  if (!subject || !topicId) return res.status(400).json({ error: 'subject and topicId required' });
-  const user = USERS[req.userId];
-  if (!user) return res.status(404).json({ error: 'User not found' });
-  if (!user.progress) user.progress = {};
-  if (!user.progress[subject]) user.progress[subject] = {};
-  if (done) user.progress[subject][topicId] = true;
-  else delete user.progress[subject][topicId];
-  saveUsers();
-  res.json({ success: true });
+app.post('/api/user/progress', requireAuth, async (req, res) => {
+  try {
+    const { subject, topicId, done } = req.body;
+    if (!subject || !topicId) return res.status(400).json({ error: 'subject and topicId required' });
+    const { data } = await supabase.from('users').select('progress').eq('id', req.userId).single();
+    const progress = data?.progress || {};
+    if (!progress[subject]) progress[subject] = {};
+    if (done) progress[subject][topicId] = true;
+    else delete progress[subject][topicId];
+    const { error } = await supabase.from('users').update({ progress }).eq('id', req.userId);
+    if (error) throw error;
+    res.json({ success: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 // ── Per-user tab settings (admin-managed, merged with global) ─
@@ -775,26 +789,28 @@ app.get('/api/user/tab-settings', requireAuth, (req, res) => {
   res.json(merged);
 });
 
-app.get('/api/admin/users/:userId/tab-settings', adminOnly, (req, res) => {
-  const user = USERS[req.params.userId];
-  if (!user) return res.status(404).json({ error: 'User not found' });
-  res.json({ tabSettings: user.tabSettings || null });
+app.get('/api/admin/users/:userId/tab-settings', adminOnly, async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('users').select('tab_settings').eq('id', req.params.userId).single();
+    if (error || !data) return res.status(404).json({ error: 'User not found' });
+    res.json({ tabSettings: data.tab_settings || null });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-app.patch('/api/admin/users/:userId/tab-settings', adminOnly, (req, res) => {
-  const user = USERS[req.params.userId];
-  if (!user) return res.status(404).json({ error: 'User not found' });
-  user.tabSettings = req.body.tabSettings || null;
-  saveUsers();
-  res.json({ ok: true });
+app.patch('/api/admin/users/:userId/tab-settings', adminOnly, async (req, res) => {
+  try {
+    const { error } = await supabase.from('users').update({ tab_settings: req.body.tabSettings || null }).eq('id', req.params.userId);
+    if (error) throw error;
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-app.delete('/api/admin/users/:userId/tab-settings', adminOnly, (req, res) => {
-  const user = USERS[req.params.userId];
-  if (!user) return res.status(404).json({ error: 'User not found' });
-  delete user.tabSettings;
-  saveUsers();
-  res.json({ ok: true });
+app.delete('/api/admin/users/:userId/tab-settings', adminOnly, async (req, res) => {
+  try {
+    const { error } = await supabase.from('users').update({ tab_settings: null }).eq('id', req.params.userId);
+    if (error) throw error;
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 // ── GET KB state (public — browser caches) ─────────────────
@@ -1024,7 +1040,7 @@ app.get('/api/syllabus/pdf-token/:nodeId', requireAuth, (req, res) => {
 // ── SYLLABUS: PDF file serving ────────────────────────────────
 // NOTE: must come BEFORE /api/syllabus/:subject to avoid routing conflict
 // Auth: header session token (direct), query ?token (iframes), or admin key
-app.get('/api/syllabus/pdf/:nodeId', (req, res) => {
+app.get('/api/syllabus/pdf/:nodeId', async (req, res) => {
   const { nodeId } = req.params;
   const { token } = req.query;
   let authenticated = false;
@@ -1036,8 +1052,9 @@ app.get('/api/syllabus/pdf/:nodeId', (req, res) => {
   // Method 2: standard session token header (direct API calls)
   if (!authenticated) {
     const headerToken = req.headers['x-session-token'];
-    if (headerToken && SESSIONS[headerToken] && SESSIONS[headerToken].expiresAt > Date.now()) {
-      authenticated = true;
+    if (headerToken) {
+      const session = await verifySession(headerToken).catch(() => null);
+      if (session) authenticated = true;
     }
   }
 
@@ -1081,154 +1098,172 @@ app.get('/api/syllabus/:subject', authOrAdmin, (req, res) => {
 });
 
 // ── SYLLABUS: Admin write routes ──────────────────────────────
-app.post('/api/admin/syllabus/:subject/section', adminOnly, (req, res) => {
-  const subj = req.params.subject;
-  if (!getAllSubjectsWithSections().includes(subj)) return res.status(400).json({ error: 'Invalid subject' });
-  const { label, title } = req.body || {};
-  if (!label || !title) return res.status(400).json({ error: 'label and title required' });
-  const section = { id: generateId('sec'), type: 'section', label: label.toUpperCase(), title: title.toUpperCase(), children: [] };
-  KB.syllabus.subjects[subj].sections.push(section);
-  saveKB();
-  res.json(KB.syllabus.subjects[subj]);
+app.post('/api/admin/syllabus/:subject/section', adminOnly, async (req, res) => {
+  try {
+    const subj = req.params.subject;
+    if (!getAllSubjectsWithSections().includes(subj)) return res.status(400).json({ error: 'Invalid subject' });
+    const { label, title } = req.body || {};
+    if (!label || !title) return res.status(400).json({ error: 'label and title required' });
+    const section = { id: generateId('sec'), type: 'section', label: label.toUpperCase(), title: title.toUpperCase(), children: [] };
+    KB.syllabus.subjects[subj].sections.push(section);
+    await saveSyllabusSubject(subj, KB.syllabus.subjects[subj].sections);
+    res.json(KB.syllabus.subjects[subj]);
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/admin/syllabus/:subject/node', adminOnly, (req, res) => {
-  const subj = req.params.subject;
-  if (!getAllSubjectsWithSections().includes(subj)) return res.status(400).json({ error: 'Invalid subject' });
-  const { parentId, label, title } = req.body || {};
-  if (!parentId || !label || !title) return res.status(400).json({ error: 'parentId, label, and title required' });
-  const sections = KB.syllabus.subjects[subj].sections;
-  const found = findNodeById(sections, parentId);
-  if (!found) return res.status(404).json({ error: 'Parent node not found' });
-  const prefix = /^\d+$/.test(label) ? 'sub' : /^[a-z]$/.test(label) ? 'leaf' : 'top';
-  const newNode = { id: generateId(prefix), type: 'topic', label, title, pdfId: null, pdfName: null, children: [] };
-  if (!found.node.children) found.node.children = [];
-  found.node.children.push(newNode);
-  saveKB();
-  res.json(KB.syllabus.subjects[subj]);
+app.post('/api/admin/syllabus/:subject/node', adminOnly, async (req, res) => {
+  try {
+    const subj = req.params.subject;
+    if (!getAllSubjectsWithSections().includes(subj)) return res.status(400).json({ error: 'Invalid subject' });
+    const { parentId, label, title } = req.body || {};
+    if (!parentId || !label || !title) return res.status(400).json({ error: 'parentId, label, and title required' });
+    const sections = KB.syllabus.subjects[subj].sections;
+    const found = findNodeById(sections, parentId);
+    if (!found) return res.status(404).json({ error: 'Parent node not found' });
+    const prefix = /^\d+$/.test(label) ? 'sub' : /^[a-z]$/.test(label) ? 'leaf' : 'top';
+    const newNode = { id: generateId(prefix), type: 'topic', label, title, pdfId: null, pdfName: null, children: [] };
+    if (!found.node.children) found.node.children = [];
+    found.node.children.push(newNode);
+    await saveSyllabusSubject(subj, KB.syllabus.subjects[subj].sections);
+    res.json(KB.syllabus.subjects[subj]);
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-app.patch('/api/admin/syllabus/:subject/node/:nodeId', adminOnly, (req, res) => {
-  const subj = req.params.subject;
-  if (!getAllSubjectsWithSections().includes(subj)) return res.status(400).json({ error: 'Invalid subject' });
-  const sections = KB.syllabus.subjects[subj].sections;
-  const found = findNodeById(sections, req.params.nodeId);
-  if (!found) return res.status(404).json({ error: 'Node not found' });
-  const { label, title, type } = req.body || {};
-  if (label !== undefined) found.node.label = label;
-  if (title !== undefined) found.node.title = title;
-  if (type  !== undefined) found.node.type  = type;
-  saveKB();
-  res.json(KB.syllabus.subjects[subj]);
+app.patch('/api/admin/syllabus/:subject/node/:nodeId', adminOnly, async (req, res) => {
+  try {
+    const subj = req.params.subject;
+    if (!getAllSubjectsWithSections().includes(subj)) return res.status(400).json({ error: 'Invalid subject' });
+    const sections = KB.syllabus.subjects[subj].sections;
+    const found = findNodeById(sections, req.params.nodeId);
+    if (!found) return res.status(404).json({ error: 'Node not found' });
+    const { label, title, type } = req.body || {};
+    if (label !== undefined) found.node.label = label;
+    if (title !== undefined) found.node.title = title;
+    if (type  !== undefined) found.node.type  = type;
+    await saveSyllabusSubject(subj, KB.syllabus.subjects[subj].sections);
+    res.json(KB.syllabus.subjects[subj]);
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-app.delete('/api/admin/syllabus/:subject/node/:nodeId', adminOnly, (req, res) => {
-  const subj = req.params.subject;
-  if (!getAllSubjectsWithSections().includes(subj)) return res.status(400).json({ error: 'Invalid subject' });
-  const pdfsToDelete = removeNodeById(KB.syllabus.subjects[subj].sections, req.params.nodeId);
-  pdfsToDelete.forEach(pdfId => {
-    const filePath = path.join(SYLLABUS_PDFS_DIR, pdfId);
-    if (fs.existsSync(filePath)) { try { fs.unlinkSync(filePath); } catch(e) {} }
-  });
-  saveKB();
-  res.json(KB.syllabus.subjects[subj]);
+app.delete('/api/admin/syllabus/:subject/node/:nodeId', adminOnly, async (req, res) => {
+  try {
+    const subj = req.params.subject;
+    if (!getAllSubjectsWithSections().includes(subj)) return res.status(400).json({ error: 'Invalid subject' });
+    const pdfsToDelete = removeNodeById(KB.syllabus.subjects[subj].sections, req.params.nodeId);
+    pdfsToDelete.forEach(pdfId => {
+      const filePath = path.join(SYLLABUS_PDFS_DIR, pdfId);
+      if (fs.existsSync(filePath)) { try { fs.unlinkSync(filePath); } catch(e) {} }
+    });
+    await saveSyllabusSubject(subj, KB.syllabus.subjects[subj].sections);
+    res.json(KB.syllabus.subjects[subj]);
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 app.post('/api/admin/syllabus/:subject/node/:nodeId/pdf', adminOnly, (req, res) => {
-  makeSyllabusUpload().single('pdf')(req, res, (err) => {
+  makeSyllabusUpload().single('pdf')(req, res, async (err) => {
     if (err) return res.status(400).json({ error: err.message });
-    const subj = req.params.subject;
-    if (!getAllSubjectsWithSections().includes(subj)) return res.status(400).json({ error: 'Invalid subject' });
-    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
-    const sections = KB.syllabus.subjects[subj].sections;
-    const found = findNodeById(sections, req.params.nodeId);
-    if (!found) {
-      // Cleanup orphan file
-      try { fs.unlinkSync(req.file.path); } catch(e) {}
-      return res.status(404).json({ error: 'Node not found' });
-    }
-    // Delete old PDF file if it exists
-    if (found.node.pdfId) {
-      const oldPath = path.join(SYLLABUS_PDFS_DIR, found.node.pdfId);
-      if (fs.existsSync(oldPath)) { try { fs.unlinkSync(oldPath); } catch(e) {} }
-    }
-    found.node.pdfId   = req.file.filename;
-    found.node.pdfName = req.file.originalname;
-    saveKB();
-    res.json({ pdfId: req.file.filename, pdfName: req.file.originalname });
+    try {
+      const subj = req.params.subject;
+      if (!getAllSubjectsWithSections().includes(subj)) return res.status(400).json({ error: 'Invalid subject' });
+      if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+      const sections = KB.syllabus.subjects[subj].sections;
+      const found = findNodeById(sections, req.params.nodeId);
+      if (!found) {
+        try { fs.unlinkSync(req.file.path); } catch(e) {}
+        return res.status(404).json({ error: 'Node not found' });
+      }
+      if (found.node.pdfId) {
+        const oldPath = path.join(SYLLABUS_PDFS_DIR, found.node.pdfId);
+        if (fs.existsSync(oldPath)) { try { fs.unlinkSync(oldPath); } catch(e) {} }
+      }
+      found.node.pdfId   = req.file.filename;
+      found.node.pdfName = req.file.originalname;
+      await saveSyllabusSubject(subj, KB.syllabus.subjects[subj].sections);
+      res.json({ pdfId: req.file.filename, pdfName: req.file.originalname });
+    } catch(e) { res.status(500).json({ error: e.message }); }
   });
 });
 
-app.delete('/api/admin/syllabus/:subject/node/:nodeId/pdf', adminOnly, (req, res) => {
-  const subj = req.params.subject;
-  if (!getAllSubjectsWithSections().includes(subj)) return res.status(400).json({ error: 'Invalid subject' });
-  const sections = KB.syllabus.subjects[subj].sections;
-  const found = findNodeById(sections, req.params.nodeId);
-  if (!found) return res.status(404).json({ error: 'Node not found' });
-  if (found.node.pdfId) {
-    const filePath = path.join(SYLLABUS_PDFS_DIR, found.node.pdfId);
-    if (fs.existsSync(filePath)) { try { fs.unlinkSync(filePath); } catch(e) {} }
-    found.node.pdfId   = null;
-    found.node.pdfName = null;
-    saveKB();
-  }
-  res.json({ success: true });
+app.delete('/api/admin/syllabus/:subject/node/:nodeId/pdf', adminOnly, async (req, res) => {
+  try {
+    const subj = req.params.subject;
+    if (!getAllSubjectsWithSections().includes(subj)) return res.status(400).json({ error: 'Invalid subject' });
+    const sections = KB.syllabus.subjects[subj].sections;
+    const found = findNodeById(sections, req.params.nodeId);
+    if (!found) return res.status(404).json({ error: 'Node not found' });
+    if (found.node.pdfId) {
+      const filePath = path.join(SYLLABUS_PDFS_DIR, found.node.pdfId);
+      if (fs.existsSync(filePath)) { try { fs.unlinkSync(filePath); } catch(e) {} }
+      found.node.pdfId   = null;
+      found.node.pdfName = null;
+      await saveSyllabusSubject(subj, KB.syllabus.subjects[subj].sections);
+    }
+    res.json({ success: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/admin/syllabus/:subject/reorder', adminOnly, (req, res) => {
-  const subj = req.params.subject;
-  if (!getAllSubjectsWithSections().includes(subj)) return res.status(400).json({ error: 'Invalid subject' });
-  const { nodeId, direction } = req.body || {};
-  const sections = KB.syllabus.subjects[subj].sections;
-  function reorderIn(arr) {
-    const idx = arr.findIndex(n => n.id === nodeId);
-    if (idx !== -1) {
-      const newIdx = idx + (direction > 0 ? 1 : -1);
-      if (newIdx >= 0 && newIdx < arr.length) {
-        [arr[idx], arr[newIdx]] = [arr[newIdx], arr[idx]];
+app.post('/api/admin/syllabus/:subject/reorder', adminOnly, async (req, res) => {
+  try {
+    const subj = req.params.subject;
+    if (!getAllSubjectsWithSections().includes(subj)) return res.status(400).json({ error: 'Invalid subject' });
+    const { nodeId, direction } = req.body || {};
+    const sections = KB.syllabus.subjects[subj].sections;
+    function reorderIn(arr) {
+      const idx = arr.findIndex(n => n.id === nodeId);
+      if (idx !== -1) {
+        const newIdx = idx + (direction > 0 ? 1 : -1);
+        if (newIdx >= 0 && newIdx < arr.length) {
+          [arr[idx], arr[newIdx]] = [arr[newIdx], arr[idx]];
+        }
+        return true;
       }
-      return true;
+      for (const node of arr) {
+        if (node.children?.length && reorderIn(node.children)) return true;
+      }
+      return false;
     }
-    for (const node of arr) {
-      if (node.children?.length && reorderIn(node.children)) return true;
-    }
-    return false;
-  }
-  reorderIn(sections);
-  saveKB();
-  res.json(KB.syllabus.subjects[subj]);
+    reorderIn(sections);
+    await saveSyllabusSubject(subj, KB.syllabus.subjects[subj].sections);
+    res.json(KB.syllabus.subjects[subj]);
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 // ── ADMIN: Upload Reference — save instantly, summarise in background ──
-app.post('/api/admin/reference', adminOnly, (req, res) => {
-  const { name, subject, type, content } = req.body;
-  if (!content) return res.status(400).json({ error: 'content required' });
-  const id = `ref_${Date.now()}_${Math.random().toString(36).slice(2,7)}`;
-  KB.references.push({ id, name, subject:subject||'general', type:type||'other', text:content.slice(0,30000), summary:'processing', size:content.length, uploadedAt:new Date().toISOString() });
-  saveKB();
-  const jobId = enqueueJob(async () => {
-    const summary = await summarizeLargeDoc(content, name, subject||'general');
-    const ref = KB.references.find(r => r.id === id);
-    if (ref) { ref.summary = summary; saveKB(); }
-    if (KB.syllabus) triggerPreGenerationForSubject(subject);
-    return { id, name };
-  });
-  res.json({ success:true, id, name, jobId });
+app.post('/api/admin/reference', adminOnly, async (req, res) => {
+  try {
+    const { name, subject, type, content } = req.body;
+    if (!content) return res.status(400).json({ error: 'content required' });
+    const id = `ref_${Date.now()}_${Math.random().toString(36).slice(2,7)}`;
+    const ref = { id, name, subject:subject||'general', type:type||'other', text:content.slice(0,30000), summary:'processing', size:content.length, uploadedAt:new Date().toISOString() };
+    KB.references.push(ref);
+    await saveSetting('kb_references', KB.references);
+    const jobId = enqueueJob(async () => {
+      const summary = await summarizeLargeDoc(content, name, subject||'general');
+      const r = KB.references.find(r => r.id === id);
+      if (r) { r.summary = summary; await saveSetting('kb_references', KB.references); }
+      if (KB.syllabus) triggerPreGenerationForSubject(subject);
+      return { id, name };
+    });
+    res.json({ success:true, id, name, jobId });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 // ── ADMIN: Upload Past Bar — save instantly, extract via job queue ──
-app.post('/api/admin/pastbar', adminOnly, (req, res) => {
-  const { name, subject, year, content } = req.body;
-  if (!content) return res.status(400).json({ error: 'content required' });
-  const id = `pb_${Date.now()}_${Math.random().toString(36).slice(2,7)}`;
-  KB.pastBar.push({ id, name, subject:subject||'general', year:year||'Unknown', questions:[], rawText:content.slice(0,30000), extracting:true, uploadedAt:new Date().toISOString() });
-  saveKB();
-  const jobId = enqueueJob(async () => {
-    await extractPastBarInBackground(id, content, name, subject||'general', year);
-    const entry = KB.pastBar.find(p => p.id === id);
-    return { id, name, questionsExtracted: entry?.questions?.length || 0 };
-  });
-  res.json({ success:true, id, name, jobId });
+app.post('/api/admin/pastbar', adminOnly, async (req, res) => {
+  try {
+    const { name, subject, year, content } = req.body;
+    if (!content) return res.status(400).json({ error: 'content required' });
+    const id = `pb_${Date.now()}_${Math.random().toString(36).slice(2,7)}`;
+    const entry = { id, name, subject:subject||'general', year:year||'Unknown', questions:[], qCount:0, source:'upload', extracting:true, uploadedAt:new Date().toISOString() };
+    KB.pastBar.push(entry);
+    await savePastBarEntry(entry);
+    const jobId = enqueueJob(async () => {
+      await extractPastBarInBackground(id, content, name, subject||'general', year);
+      const e = KB.pastBar.find(p => p.id === id);
+      return { id, name, questionsExtracted: e?.questions?.length || 0 };
+    });
+    res.json({ success:true, id, name, jobId });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 // ── ADMIN: Download all past bar questions ───────────────────
@@ -1347,85 +1382,65 @@ app.get('/api/job/:jobId', adminOnly, (req, res) => {
 });
 
 // ── ADMIN: KB Diagnostic ─────────────────────────────────────
-app.get('/api/admin/debug/kb', adminOnly, (_req, res) => {
-  let rawKB = null, fileExists = false, fileSize = 0;
+app.get('/api/admin/debug/kb', adminOnly, async (_req, res) => {
   try {
-    fileExists = fs.existsSync(KB_PATH);
-    if (fileExists) { fileSize = fs.statSync(KB_PATH).size; rawKB = JSON.parse(fs.readFileSync(KB_PATH, 'utf8')); }
-  } catch(e) { return res.json({ error: e.message, kbPath: KB_PATH }); }
-
-  // Also scan alternate paths so we can see if data is hiding elsewhere
-  const altPaths = [
-    path.join('/data', 'uploads', 'kb.json'),
-    path.join('/data', 'kb.json'),
-    path.join(__dirname, 'uploads', 'kb.json'),
-  ].filter(p => p !== KB_PATH);
-  const altScan = altPaths.map(p => {
-    try {
-      const ex = fs.existsSync(p);
-      if (!ex) return { path: p, exists: false };
-      const sz = fs.statSync(p).size;
-      const d = JSON.parse(fs.readFileSync(p, 'utf8'));
-      return { path: p, exists: true, bytes: sz, pastBarCount: d?.pastBar?.length || 0 };
-    } catch(e) { return { path: p, exists: true, parseError: e.message }; }
-  });
-
-  res.json({
-    kbPath: KB_PATH,
-    fileExists,
-    fileSizeBytes: fileSize,
-    topLevelKeys: Object.keys(rawKB || {}),
-    pastBarCount: rawKB?.pastBar?.length || 0,
-    pastBarItems: (rawKB?.pastBar || []).map(pb => ({
-      id: pb.id, name: pb.name, subject: pb.subject, year: pb.year,
-      questionCount: pb.questions?.length || 0,
-      hasQuestions: Array.isArray(pb.questions),
-      source: pb.source || 'upload',
-      firstQ: pb.questions?.[0]?.q?.slice(0, 80) || '(none)',
-    })),
-    referenceCount: rawKB?.references?.length || 0,
-    syllabusSubjects: Object.keys(rawKB?.syllabus?.subjects || {}),
-    inMemoryKB: {
-      pastBarCount: KB?.pastBar?.length || 0,
-      pastBarSubjects: (KB?.pastBar || []).map(pb => pb.subject),
-      referenceCount: KB?.references?.length || 0,
-    },
-    memoryMatchesFile: (KB?.pastBar?.length || 0) === (rawKB?.pastBar?.length || 0),
-    alternatePaths: altScan,
-  });
+    const { data: pbRows } = await supabase.from('past_bar').select('id,name,subject,year,q_count,questions,source');
+    res.json({
+      source: 'supabase',
+      pastBarCount: pbRows?.length || 0,
+      pastBarItems: (pbRows || []).map(pb => ({
+        id: pb.id, name: pb.name, subject: pb.subject, year: pb.year,
+        questionCount: pb.questions?.length || pb.q_count || 0,
+        hasQuestions: Array.isArray(pb.questions),
+        source: pb.source || 'upload',
+        firstQ: pb.questions?.[0]?.q?.slice(0, 80) || '(none)',
+      })),
+      referenceCount: KB.references.length,
+      syllabusSubjects: Object.keys(KB.syllabus?.subjects || {}),
+      inMemoryKB: {
+        pastBarCount: KB.pastBar.length,
+        pastBarSubjects: KB.pastBar.map(pb => pb.subject),
+        referenceCount: KB.references.length,
+      },
+    });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 // ── ADMIN: Storage info ──────────────────────────────────────
-app.get('/api/storage-info', adminOnly, (_req, res) => {
-  const persistent = !!process.env.PERSISTENT_STORAGE_PATH;
-  let kbSize = 0, contentSize = 0;
-  try { kbSize = fs.existsSync(KB_PATH) ? fs.statSync(KB_PATH).size : 0; } catch(_) {}
-  try { contentSize = fs.existsSync(CONTENT_PATH) ? fs.statSync(CONTENT_PATH).size : 0; } catch(_) {}
+app.get('/api/storage-info', adminOnly, (_, res) => {
   res.json({
-    persistent,
+    persistent: !!process.env.PERSISTENT_STORAGE_PATH,
     storageDir: UPLOADS_DIR,
     envVar: process.env.PERSISTENT_STORAGE_PATH || null,
-    files: {
-      'kb.json':      { exists: fs.existsSync(KB_PATH),      bytes: kbSize },
-      'content.json': { exists: fs.existsSync(CONTENT_PATH), bytes: contentSize },
-    },
+    source: 'supabase',
   });
 });
 
 // ── ADMIN: Delete ───────────────────────────────────────────
-app.delete('/api/admin/reference/:id', adminOnly, (req, res) => {
-  KB.references = KB.references.filter(r => r.id !== req.params.id);
-  KB.pastBar    = KB.pastBar.filter(p => p.id !== req.params.id);
-  saveKB(); res.json({ success:true });
+app.delete('/api/admin/reference/:id', adminOnly, async (req, res) => {
+  try {
+    const id = req.params.id;
+    KB.references = KB.references.filter(r => r.id !== id);
+    await saveSetting('kb_references', KB.references);
+    const pbIdx = KB.pastBar.findIndex(p => p.id === id);
+    if (pbIdx !== -1) {
+      KB.pastBar.splice(pbIdx, 1);
+      await deletePastBarEntry(id);
+    }
+    res.json({ success:true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
-app.delete('/api/admin/syllabus', adminOnly, (req, res) => {
-  // Reset all subjects to empty sections (new format)
-  KB.syllabus = { subjects: {} };
-  getAllSubjectsWithSections().forEach(s => { KB.syllabus.subjects[s] = { sections: [] }; });
-  CONTENT = {}; saveKB(); saveContent(); res.json({ success: true });
+app.delete('/api/admin/syllabus', adminOnly, async (req, res) => {
+  try {
+    KB.syllabus = { subjects: {} };
+    getAllSubjectsWithSections().forEach(s => { KB.syllabus.subjects[s] = { sections: [] }; });
+    CONTENT = {};
+    await Promise.all(getAllSubjectsWithSections().map(s => saveSyllabusSubject(s, [])));
+    res.json({ success: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 app.delete('/api/admin/content', adminOnly, (req, res) => {
-  CONTENT = {}; saveContent(); res.json({ success:true });
+  CONTENT = {}; res.json({ success:true });
 });
 
 // ── ADMIN: Manually trigger generation ─────────────────────
@@ -2042,29 +2057,32 @@ app.post('/api/email-results', async (req, res) => {
 });
 
 // ── ADMIN: Manual past bar question entry (no AI) ────────────
-app.post('/api/admin/pastbar/manual', adminOnly, (req, res) => {
-  const { name, subject, year, questions } = req.body;
-  if (!name || !Array.isArray(questions) || !questions.length)
-    return res.status(400).json({ error: 'name and questions[] required' });
-  const id = `pb_${Date.now()}_${Math.random().toString(36).slice(2,7)}`;
-  const entry = {
-    id, name,
-    subject: subject || 'general',
-    year: year || 'Unknown',
-    questions: questions.map(q => ({
-      q: q.q || '',
-      context: q.context || '',
-      modelAnswer: q.modelAnswer || '',
-      keyPoints: Array.isArray(q.keyPoints) ? q.keyPoints : [],
-      type: q.type || 'situational',
-    })),
-    qCount: questions.length,
-    extracting: false,
-    uploadedAt: new Date().toISOString(),
-  };
-  KB.pastBar.push(entry);
-  saveKB();
-  res.json({ success: true, id, name, questionsAdded: questions.length });
+app.post('/api/admin/pastbar/manual', adminOnly, async (req, res) => {
+  try {
+    const { name, subject, year, questions } = req.body;
+    if (!name || !Array.isArray(questions) || !questions.length)
+      return res.status(400).json({ error: 'name and questions[] required' });
+    const id = `pb_${Date.now()}_${Math.random().toString(36).slice(2,7)}`;
+    const entry = {
+      id, name,
+      subject: subject || 'general',
+      year: year || 'Unknown',
+      source: 'manual',
+      questions: questions.map(q => ({
+        q: q.q || '',
+        context: q.context || '',
+        modelAnswer: q.modelAnswer || '',
+        keyPoints: Array.isArray(q.keyPoints) ? q.keyPoints : [],
+        type: q.type || 'situational',
+      })),
+      qCount: questions.length,
+      extracting: false,
+      uploadedAt: new Date().toISOString(),
+    };
+    KB.pastBar.push(entry);
+    await savePastBarEntry(entry);
+    res.json({ success: true, id, name, questionsAdded: questions.length });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 // ── HELPERS ─────────────────────────────────────────────────
@@ -2337,12 +2355,12 @@ async function extractPastBarInBackground(id, content, name, subject, year) {
     entry.questions  = dedupedQ;
     entry.extracting = false;
     entry.extractedAt = new Date().toISOString();
-    saveKB();
+    await savePastBarEntry(entry);
   } catch(err) {
     console.error(`pastbar bg [${name}] failed: ${err.message}`);
     entry.extracting  = false;
     entry.extractError = err.message;
-    saveKB();
+    await savePastBarEntry(entry).catch(() => {});
   }
 }
 
@@ -2441,19 +2459,26 @@ app.get('/api/status', async (req, res) => {
   }
 });
 
+// CONTENT is kept in-memory only (regenerable from KB); no disk persistence needed
+function saveContent() { /* no-op — CONTENT is in-memory only */ }
+
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
-app.listen(PORT, () => {
-  const totalQ    = (KB.pastBar || []).reduce((a, pb) => a + (pb.questions?.length || pb.qCount || 0), 0);
-  const subjsWithData = [...new Set((KB.pastBar || []).map(pb => pb.subject))].join(', ') || 'none';
-  console.log('\n═══ BarBuddy v3 Startup ═══════════════');
-  console.log(`  Port:          ${PORT}`);
-  console.log(`  KB Path:       ${KB_PATH}`);
-  console.log(`  KB exists:     ${fs.existsSync(KB_PATH)}`);
-  console.log(`  Past bar:      ${KB.pastBar?.length || 0} items`);
-  console.log(`  Total Q:       ${totalQ}`);
-  console.log(`  Manual:        ${(KB.pastBar || []).filter(pb => pb.source === 'manual').length} batches`);
-  console.log(`  References:    ${KB.references?.length || 0}`);
-  console.log(`  Subjects:      ${subjsWithData}`);
-  console.log('════════════════════════════════════════\n');
+initializeApp().then(() => {
+  app.listen(PORT, () => {
+    const totalQ        = KB.pastBar.reduce((a, pb) => a + (pb.questions?.length || pb.qCount || 0), 0);
+    const subjsWithData = [...new Set(KB.pastBar.map(pb => pb.subject))].join(', ') || 'none';
+    console.log('\n═══ BarBuddy v3 Startup ═══════════════');
+    console.log(`  Port:          ${PORT}`);
+    console.log(`  Storage:       Supabase`);
+    console.log(`  Past bar:      ${KB.pastBar.length} items`);
+    console.log(`  Total Q:       ${totalQ}`);
+    console.log(`  Manual:        ${KB.pastBar.filter(pb => pb.source === 'manual').length} batches`);
+    console.log(`  References:    ${KB.references.length}`);
+    console.log(`  Subjects:      ${subjsWithData}`);
+    console.log('════════════════════════════════════════\n');
+  });
+}).catch(err => {
+  console.error('❌ Failed to initialize from Supabase:', err.message);
+  process.exit(1);
 });
