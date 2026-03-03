@@ -679,6 +679,39 @@ app.get('/api/user/progress', requireAuth, (req, res) => {
   res.json({ progress: req.user.progress || {} });
 });
 
+// ── Exam session auto-save ────────────────────────────────────
+app.post('/api/exam-session/save', requireAuth, (req, res) => {
+  const { session } = req.body || {};
+  if (!session) return res.status(400).json({ error: 'No session data' });
+  const user = USERS[req.userId];
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  user.activeExamSession = { ...session, userId: req.userId, lastSavedAt: new Date().toISOString() };
+  saveUsers();
+  res.json({ success: true, savedAt: user.activeExamSession.lastSavedAt });
+});
+
+app.get('/api/exam-session/active', requireAuth, (req, res) => {
+  const user = USERS[req.userId];
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  const session = user.activeExamSession;
+  if (!session) return res.json({ session: null });
+  const ageMs = Date.now() - new Date(session.lastSavedAt).getTime();
+  if (ageMs > 24 * 60 * 60 * 1000) {
+    user.activeExamSession = null;
+    saveUsers();
+    return res.json({ session: null });
+  }
+  res.json({ session });
+});
+
+app.delete('/api/exam-session/clear', requireAuth, (req, res) => {
+  const user = USERS[req.userId];
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  user.activeExamSession = null;
+  saveUsers();
+  res.json({ success: true });
+});
+
 app.post('/api/user/progress', requireAuth, (req, res) => {
   const { subject, topicId, done } = req.body;
   if (!subject || !topicId) return res.status(400).json({ error: 'subject and topicId required' });

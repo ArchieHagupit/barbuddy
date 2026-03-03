@@ -707,6 +707,8 @@ select.form-input{cursor:pointer;}
 .fade{opacity:0;animation:fadeUp .4s ease forwards;}
 .fade:nth-child(1){animation-delay:.04s;}.fade:nth-child(2){animation-delay:.09s;}.fade:nth-child(3){animation-delay:.14s;}.fade:nth-child(4){animation-delay:.19s;}.fade:nth-child(5){animation-delay:.23s;}
 @keyframes fadeUp{from{opacity:0;transform:translateY(12px);}to{opacity:1;transform:translateY(0);}}
+@keyframes slideUp{from{opacity:0;transform:translateX(-50%) translateY(20px);}to{opacity:1;transform:translateX(-50%) translateY(0);}}
+@keyframes slideDown{from{opacity:0;transform:translateX(-50%) translateY(-10px);}to{opacity:1;transform:translateX(-50%) translateY(0);}}
 ::-webkit-scrollbar{width:6px;}::-webkit-scrollbar-track{background:transparent;}::-webkit-scrollbar-thumb{background:rgba(212,168,67,.14);border-radius:4px;}
 @media(max-width:900px){.two-col{grid-template-columns:1fr;}.right-col{display:none;}.stat-row{grid-template-columns:repeat(2,1fr);}.split-layout{grid-template-columns:1fr;}.panel-l{display:none;}.mock-config-grid{grid-template-columns:1fr;}.admin-grid{grid-template-columns:1fr;}.mr-stats{grid-template-columns:repeat(2,1fr);}}
 
@@ -985,7 +987,11 @@ select.form-input{cursor:pointer;}
       </div>
       <div id="ms-src"></div>
       <div class="ms-timer" id="ms-timer" style="display:none;">⏱ <span id="timer-val"></span></div>
-      <button class="btn-og" onclick="endMockSession()" style="font-size:11px;border-color:rgba(255,140,66,.4);color:#ff8c42;">End &amp; Score</button>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span id="exam-save-indicator" style="font-size:11px;font-family:var(--fm);color:var(--muted);opacity:0;transition:opacity .3s;">✓ Saved</span>
+        <button onclick="confirmAbandonExam()" style="padding:5px 10px;font-size:11px;border:1px solid var(--bdr);background:transparent;color:var(--muted);border-radius:7px;cursor:pointer;">Exit</button>
+        <button class="btn-og" onclick="endMockSession()" style="font-size:11px;border-color:rgba(255,140,66,.4);color:#ff8c42;">End &amp; Score</button>
+      </div>
     </div>
     <div class="q-markers" id="qMarkers"></div>
     <div id="mockQArea"></div>
@@ -1309,6 +1315,7 @@ let quizPool=[];         // flat list of {type,subject,topic,data} loaded from C
 let activeQuiz=null, qIdx=0, qScore=0, qMode='mcq';
 let mockQs=[], mockIdx=0, mockAnswers=[], mockTimer=null, mockLeft=0;
 let mockScores=[], mockSubjectsUsed=[], mockSessionDate=null;
+let mockTimeLimitSecs=0; // original time limit in seconds (0 = no limit)
 let manualBatch=[], manualQNum=1;
 let adminKey='', sseSource=null;
 let currentSubject = null;  // active subject key ('civil'|'labor'|...|'custom'|null)
@@ -1333,6 +1340,212 @@ const SUBJS=[
 ];
 const CUSTOM_SUBJ = {key:'custom', name:'Custom Subject', color:'#8899aa'};
 const ALL_SUBJS = [...SUBJS, CUSTOM_SUBJ];
+
+// ══════════════════════════════════
+// EXAM SESSION AUTO-SAVE
+// ══════════════════════════════════
+const ExamSession = {
+  _timer: null,
+  _saveIndicatorTimer: null,
+
+  // Save to localStorage immediately
+  saveLocal(session) {
+    if (!session || !currentUser?.id) return;
+    try {
+      const toSave = { ...session, lastSavedAt: new Date().toISOString() };
+      localStorage.setItem('bb_exam_session_' + currentUser.id, JSON.stringify(toSave));
+    } catch(e) { console.warn('Exam local save failed:', e); }
+  },
+
+  // Sync to server (called every 30 s)
+  async saveServer(session) {
+    if (!session || !sessionToken) return false;
+    try {
+      const r = await fetch('/api/exam-session/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-session-token': sessionToken },
+        body: JSON.stringify({ session }),
+      });
+      return r.ok;
+    } catch(e) { console.warn('Exam server save failed:', e); return false; }
+  },
+
+  loadLocal() {
+    if (!currentUser?.id) return null;
+    try {
+      const raw = localStorage.getItem('bb_exam_session_' + currentUser.id);
+      if (!raw) return null;
+      const s = JSON.parse(raw);
+      return (s?.status === 'in_progress' && s?.questions?.length > 0) ? s : null;
+    } catch(e) { return null; }
+  },
+
+  async loadServer() {
+    if (!sessionToken) return null;
+    try {
+      const r = await fetch('/api/exam-session/active', { headers: { 'x-session-token': sessionToken } });
+      const d = await r.json();
+      return d.session || null;
+    } catch(e) { return null; }
+  },
+
+  async getBestSession() {
+    const local = this.loadLocal();
+    const server = await this.loadServer();
+    if (!local && !server) return null;
+    if (local && !server) return local;
+    if (!local && server) return server;
+    return new Date(local.lastSavedAt).getTime() >= new Date(server.lastSavedAt).getTime() ? local : server;
+  },
+
+  clearLocal() {
+    if (!currentUser?.id) return;
+    localStorage.removeItem('bb_exam_session_' + currentUser.id);
+  },
+
+  async clearServer() {
+    try { await fetch('/api/exam-session/clear', { method: 'DELETE', headers: { 'x-session-token': sessionToken || '' } }); } catch(e) {}
+  },
+
+  async clearAll() {
+    this.clearLocal();
+    await this.clearServer();
+    window.activeExamSession = null;
+  },
+
+  startAutoSave(getSessionFn) {
+    this.stopAutoSave();
+    this._timer = setInterval(async () => {
+      const sess = getSessionFn();
+      if (!sess || sess.status !== 'in_progress') return;
+      const ok = await this.saveServer(sess);
+      this.showSaveIndicator(ok);
+    }, 30000);
+  },
+
+  stopAutoSave() {
+    if (this._timer) { clearInterval(this._timer); this._timer = null; }
+  },
+
+  showSaveIndicator(success) {
+    const el = document.getElementById('exam-save-indicator');
+    if (!el) return;
+    el.textContent = success ? '✓ Saved' : '⚠ Saved locally';
+    el.style.color  = success ? 'var(--teal)' : 'var(--og)';
+    el.style.opacity = '1';
+    clearTimeout(this._saveIndicatorTimer);
+    this._saveIndicatorTimer = setTimeout(() => { el.style.opacity = '0'; }, 2000);
+  }
+};
+
+// ── Toast notification ──────────────────────────────────────
+function showToast(message, type = 'info') {
+  const existing = document.getElementById('bb-toast');
+  if (existing) existing.remove();
+  const c = { success:{bg:'rgba(20,180,160,.15)',border:'rgba(20,180,160,.3)',color:'var(--teal)'},
+               error:  {bg:'rgba(224,80,96,.12)', border:'rgba(224,80,96,.25)', color:'#e05060'},
+               info:   {bg:'rgba(255,255,255,.07)',border:'var(--bdr2)',        color:'var(--muted)'},
+               warning:{bg:'rgba(232,144,74,.12)', border:'rgba(232,144,74,.25)',color:'var(--og)'} }[type] || {bg:'rgba(255,255,255,.07)',border:'var(--bdr2)',color:'var(--muted)'};
+  const toast = document.createElement('div');
+  toast.id = 'bb-toast';
+  toast.style.cssText = `position:fixed;top:72px;left:50%;transform:translateX(-50%);z-index:9999;background:${c.bg};border:1px solid ${c.border};color:${c.color};padding:10px 20px;border-radius:10px;font-size:13px;font-weight:600;font-family:var(--fb);box-shadow:0 4px 16px rgba(0,0,0,.2);animation:slideDown .2s ease;white-space:nowrap;max-width:calc(100vw - 48px);text-align:center;`;
+  toast.textContent = message;
+  document.body.appendChild(toast);
+  setTimeout(() => { toast.style.opacity='0'; toast.style.transition='opacity .3s'; setTimeout(() => toast.remove(), 300); }, 3000);
+}
+
+// ── Resume banner ───────────────────────────────────────────
+async function checkForInterruptedExam() {
+  const session = await ExamSession.getBestSession();
+  if (!session) return;
+  const minutesAgo = Math.round((Date.now() - new Date(session.lastSavedAt).getTime()) / 60000);
+  const timeStr = minutesAgo < 1 ? 'just now' : minutesAgo < 60 ? `${minutesAgo} minute${minutesAgo>1?'s':''} ago` : `${Math.round(minutesAgo/60)} hour${Math.round(minutesAgo/60)>1?'s':''} ago`;
+  const answeredCount = Object.values(session.answers || {}).filter(a => a.text?.trim()).length;
+  showResumeBanner({ session, timeStr, answeredCount });
+}
+
+function showResumeBanner({ session, timeStr, answeredCount }) {
+  document.getElementById('resume-banner')?.remove();
+  const pct = Math.round(answeredCount / session.totalQuestions * 100);
+  const banner = document.createElement('div');
+  banner.id = 'resume-banner';
+  banner.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:999;background:var(--card,#1a2235);border:1px solid rgba(201,168,76,.35);border-radius:16px;padding:18px 22px;box-shadow:0 8px 32px rgba(0,0,0,.4),0 0 0 1px rgba(201,168,76,.1);display:flex;align-items:center;gap:16px;max-width:520px;width:calc(100vw - 48px);animation:slideUp .3s ease;';
+  banner.innerHTML = `
+    <div style="font-size:28px;flex-shrink:0;">⚡</div>
+    <div style="flex:1;min-width:0;">
+      <div style="font-family:var(--fd);font-size:14px;font-weight:800;color:var(--gold-l);margin-bottom:3px;">Unfinished Exam Found</div>
+      <div style="font-size:12px;color:var(--text-muted,rgba(240,236,227,.55));line-height:1.5;">
+        <strong style="color:var(--white)">${h(session.subjectName || session.subject)}</strong> · ${answeredCount}/${session.totalQuestions} answered · Interrupted ${timeStr}
+      </div>
+      <div style="height:4px;background:rgba(255,255,255,.08);border-radius:2px;margin-top:8px;overflow:hidden;">
+        <div style="height:100%;background:var(--gold);border-radius:2px;width:${pct}%;"></div>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0;">
+      <button onclick="resumeExamSession()" style="padding:9px 18px;background:linear-gradient(135deg,var(--gold),var(--gold-d,#b8882a));color:#1a1200;font-weight:800;font-size:13px;border:none;border-radius:10px;cursor:pointer;font-family:var(--fd);white-space:nowrap;">▶ Resume Exam</button>
+      <button onclick="discardExamSession()" style="padding:7px 18px;background:transparent;color:var(--muted);font-size:11px;border:1px solid var(--bdr);border-radius:8px;cursor:pointer;font-family:var(--fb);">Discard</button>
+    </div>`;
+  document.body.appendChild(banner);
+  setTimeout(() => { if (banner.parentNode) { banner.style.opacity='0'; banner.style.transition='opacity .3s'; setTimeout(() => banner.remove(), 300); } }, 30000);
+}
+
+async function resumeExamSession() {
+  document.getElementById('resume-banner')?.remove();
+  const session = await ExamSession.getBestSession();
+  if (!session) { alert('Session data not found.'); return; }
+  // Restore global exam state
+  window.activeExamSession = session;
+  mockQs      = session.questions;
+  mockAnswers = mockQs.map(q => session.answers[q.id]?.text || '');
+  mockIdx     = session.currentQuestion || 0;
+  mockTimeLimitSecs = session.timeLimit || 0;
+  mockLeft    = mockTimeLimitSecs > 0 ? Math.max(0, mockTimeLimitSecs - (session.timeElapsed || 0)) : 0;
+  // Show mock session page
+  showPage('mockbar');
+  clearSidebarActive();
+  document.getElementById('mockConfig').style.display  = 'none';
+  document.getElementById('mockResults').style.display = 'none';
+  document.getElementById('mockSession').classList.add('on');
+  document.getElementById('ms-of').textContent = `of ${mockQs.length}`;
+  document.getElementById('qMarkers').innerHTML = mockQs.map((_,i) => `<div class="q-marker" id="qm${i}" onclick="jumpMock(${i})">${i+1}</div>`).join('');
+  if (mockTimeLimitSecs > 0) { document.getElementById('ms-timer').style.display = 'flex'; runTimer(); }
+  else document.getElementById('ms-timer').style.display = 'none';
+  renderMockQ();
+  ExamSession.startAutoSave(() => window.activeExamSession);
+  showToast('✓ Exam resumed — your answers are restored', 'success');
+}
+
+async function discardExamSession() {
+  document.getElementById('resume-banner')?.remove();
+  if (!confirm('Discard the unfinished exam? Your answers will be lost.')) {
+    const session = ExamSession.loadLocal();
+    if (session) {
+      const answeredCount = Object.values(session.answers||{}).filter(a=>a.text?.trim()).length;
+      showResumeBanner({ session, timeStr: 'recently', answeredCount });
+    }
+    return;
+  }
+  await ExamSession.clearAll();
+  showToast('Exam session discarded.', 'info');
+}
+
+function confirmAbandonExam() {
+  if (!confirm('Exit exam? Your progress is saved and you can resume later.')) return;
+  if (window.activeExamSession) {
+    ExamSession.saveLocal(window.activeExamSession);
+    ExamSession.saveServer(window.activeExamSession).catch(() => {});
+  }
+  ExamSession.stopAutoSave();
+  const subj = window.activeExamSession?.subject || 'civil';
+  navToSubject(subj, 'mockbar');
+  setTimeout(async () => {
+    const session = ExamSession.loadLocal();
+    if (session) {
+      const answeredCount = Object.values(session.answers||{}).filter(a=>a.text?.trim()).length;
+      showResumeBanner({ session, timeStr: 'just now', answeredCount });
+    }
+  }, 500);
+}
 
 const BAR_QUOTES = [
   "The law is reason, free from passion. — Aristotle",
@@ -1382,6 +1595,26 @@ async function checkAPIStatus(){
     document.getElementById('apiBanner').style.display=d.apiOk?'none':'block';
   }catch(e){}
 }
+// ── Save exam on tab switch / minimize ─────────────────────
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && window.activeExamSession?.status === 'in_progress') {
+    saveMock(); // capture latest text from textarea
+    ExamSession.saveLocal(window.activeExamSession);
+    ExamSession.saveServer(window.activeExamSession).catch(() => {});
+  }
+});
+
+// ── Warn before leaving page mid-exam ──────────────────────
+window.addEventListener('beforeunload', (e) => {
+  if (window.activeExamSession?.status === 'in_progress') {
+    saveMock();
+    ExamSession.saveLocal(window.activeExamSession);
+    e.preventDefault();
+    e.returnValue = 'Your exam is in progress. Your answers have been saved and you can resume when you return.';
+    return e.returnValue;
+  }
+});
+
 window.addEventListener('DOMContentLoaded', async () => {
   // Restore admin key from previous session so sidebar admin button shows
   const savedAdminKey = localStorage.getItem('bb_admin_key');
@@ -2060,7 +2293,7 @@ async function startSubjectMockBar(subj) {
       const warn = document.getElementById('stMbWarnBanner');
       if (warn) { warn.textContent = '⚠️ ' + d.warning; warn.style.display = ''; }
     }
-    startMockSession(d.questions, mbTimeMins);
+    startMockSession(d.questions, mbTimeMins, subj);
   } catch(e) {
     const s = SUBJS.find(x=>x.key===subj)?.name || subj;
     if (btn) { btn.disabled = false; btn.textContent = '⚡ Start ' + s + ' Mock Bar'; }
@@ -3222,10 +3455,11 @@ async function startMockBar(){
 }
 
 // Shared session launcher — used by both startMockBar and startSubjectMockBar
-function startMockSession(questions, timeMin) {
+function startMockSession(questions, timeMin, subjectKey) {
   if (!questions?.length) { alert('No questions available. Upload reference materials for this subject in Admin.'); return; }
   mockQs = questions; mockIdx = 0; mockAnswers = Array(mockQs.length).fill('');
   mockScores = []; mockSubjectsUsed = []; mockSessionDate = new Date().toISOString();
+  mockTimeLimitSecs = timeMin > 0 ? timeMin * 60 : 0;
   // Navigate to the mock bar page to show the session UI
   showPage('mockbar');
   clearSidebarActive();
@@ -3234,10 +3468,32 @@ function startMockSession(questions, timeMin) {
   document.getElementById('mockSession').classList.add('on');
   document.getElementById('ms-of').textContent = `of ${mockQs.length}`;
   document.getElementById('qMarkers').innerHTML = mockQs.map((_,i) => `<div class="q-marker" id="qm${i}" onclick="jumpMock(${i})">${i+1}</div>`).join('');
-  if (timeMin > 0) { mockLeft = timeMin * 60; document.getElementById('ms-timer').style.display = 'flex'; runTimer(); }
+  if (mockTimeLimitSecs > 0) { mockLeft = mockTimeLimitSecs; document.getElementById('ms-timer').style.display = 'flex'; runTimer(); }
   else document.getElementById('ms-timer').style.display = 'none';
   renderMockQ();
   mockSessions++; updateDash();
+  // ── Create and save exam session ──
+  const subj = subjectKey || mockQs[0]?.subject || 'all';
+  const subjName = SUBJS.find(s => s.key === subj)?.name || subj;
+  window.activeExamSession = {
+    sessionId: 'exam_' + Date.now(),
+    userId: currentUser?.id,
+    subject: subj,
+    subjectName: subjName,
+    startedAt: new Date().toISOString(),
+    lastSavedAt: new Date().toISOString(),
+    timeLimit: mockTimeLimitSecs || null,
+    timeElapsed: 0,
+    totalQuestions: mockQs.length,
+    currentQuestion: 0,
+    questions: mockQs,
+    answers: {},
+    difficulty: mbDifficulty || 'balanced',
+    status: 'in_progress',
+  };
+  ExamSession.saveLocal(window.activeExamSession);
+  ExamSession.saveServer(window.activeExamSession).catch(() => {});
+  ExamSession.startAutoSave(() => window.activeExamSession);
 }
 
 function runTimer(){
@@ -3247,6 +3503,14 @@ function runTimer(){
     const m=Math.floor(mockLeft/60),s=mockLeft%60;
     document.getElementById('timer-val').textContent=`${m}:${s.toString().padStart(2,'0')}`;
     document.getElementById('ms-timer').classList.toggle('warn',mockLeft<=300);
+    // Track elapsed time for session restore
+    if (window.activeExamSession) {
+      window.activeExamSession.timeElapsed = (mockTimeLimitSecs||0) - mockLeft;
+      // Save to localStorage every 10 seconds
+      if (window.activeExamSession.timeElapsed % 10 === 0) {
+        ExamSession.saveLocal(window.activeExamSession);
+      }
+    }
     if(mockLeft<=0){clearInterval(mockTimer);endMockSession();}
   },1000);
 }
@@ -3282,12 +3546,33 @@ function renderMockQ(){
       ${mockIdx<mockQs.length-1?`<button class="btn-gold" onclick="moveMock(1)">Next →</button>`:`<button class="btn-mock" onclick="endMockSession()">Submit All &amp; Score</button>`}
     </div>`;
 }
-function saveMock(){mockAnswers[mockIdx]=document.getElementById('mockBox')?.value||'';}
+function saveMock(){
+  const val = document.getElementById('mockBox')?.value || '';
+  mockAnswers[mockIdx] = val;
+  // Sync to activeExamSession answers object
+  if (window.activeExamSession) {
+    const q = mockQs[mockIdx];
+    if (q) {
+      if (!window.activeExamSession.answers) window.activeExamSession.answers = {};
+      window.activeExamSession.answers[q.id] = { text: val, savedAt: new Date().toISOString(), wordCount: val.trim().split(/\s+/).filter(w=>w).length };
+      window.activeExamSession.currentQuestion = mockIdx;
+      ExamSession.saveLocal(window.activeExamSession);
+      // Show saving indicator
+      const ind = document.getElementById('exam-save-indicator');
+      if (ind) { ind.textContent = '● Saving…'; ind.style.color = 'var(--muted)'; ind.style.opacity = '1'; }
+    }
+  }
+}
 function moveMock(d){saveMock();mockIdx=Math.max(0,Math.min(mockQs.length-1,mockIdx+d));renderMockQ();}
 function jumpMock(i){saveMock();mockIdx=i;renderMockQ();}
 
 async function endMockSession(){
-  saveMock();if(mockTimer)clearInterval(mockTimer);
+  saveMock();
+  if(mockTimer)clearInterval(mockTimer);
+  ExamSession.stopAutoSave();
+  // Mark complete and clear saved session
+  if (window.activeExamSession) { window.activeExamSession.status = 'completed'; }
+  ExamSession.clearAll().catch(() => {});
   document.getElementById('mockSession').classList.remove('on');
   const answered=mockAnswers.filter(a=>a?.trim()).length;
   const res=document.getElementById('mockResults');
@@ -4268,6 +4553,8 @@ async function onAuthSuccess(token, user) {
   ]);
   // Navigate to overview — always
   navToOverview();
+  // Check for an interrupted exam session and show resume banner
+  checkForInterruptedExam().catch(() => {});
 }
 
 function updateUserDisplay() {
