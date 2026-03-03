@@ -495,30 +495,15 @@ app.get('/api/admin/export/kb', (req, res) => {
   if (key !== process.env.ADMIN_KEY) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
-  const { execSync } = require('child_process');
-  try {
-    const found = execSync(
-      'find / -name "kb.json" -not -path "*/node_modules/*" -not -path "*/proc/*" 2>/dev/null'
-    ).toString().trim().split('\n').filter(Boolean);
-
-    let bestPath = null;
-    let bestSize = 0;
-    for (const p of found) {
-      try {
-        const size = fs.statSync(p).size;
-        if (size > bestSize) { bestSize = size; bestPath = p; }
-      } catch(e) {}
-    }
-
-    if (bestPath && bestSize > 100) {
-      const data = fs.readFileSync(bestPath, 'utf8');
-      res.setHeader('Content-Type', 'application/json');
-      return res.send(data);
-    }
-    res.status(404).json({ error: 'Not found', searched: found });
-  } catch(e) {
-    res.status(500).json({ error: e.message });
+  const storagePath = process.env.PERSISTENT_STORAGE_PATH || '/data';
+  const kbPath = path.join(storagePath, 'uploads', 'kb.json');
+  console.log('Export kb from:', kbPath);
+  if (!fs.existsSync(kbPath)) {
+    return res.status(404).json({ error: 'Not found', path: kbPath });
   }
+  const data = fs.readFileSync(kbPath, 'utf8');
+  res.setHeader('Content-Type', 'application/json');
+  res.send(data);
 });
 
 app.get('/api/admin/export/users', (req, res) => {
@@ -526,30 +511,15 @@ app.get('/api/admin/export/users', (req, res) => {
   if (key !== process.env.ADMIN_KEY) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
-  const { execSync } = require('child_process');
-  try {
-    const found = execSync(
-      'find / -name "users.json" -not -path "*/node_modules/*" -not -path "*/proc/*" 2>/dev/null'
-    ).toString().trim().split('\n').filter(Boolean);
-
-    let bestPath = null;
-    let bestSize = 0;
-    for (const p of found) {
-      try {
-        const size = fs.statSync(p).size;
-        if (size > bestSize) { bestSize = size; bestPath = p; }
-      } catch(e) {}
-    }
-
-    if (bestPath && bestSize > 100) {
-      const data = fs.readFileSync(bestPath, 'utf8');
-      res.setHeader('Content-Type', 'application/json');
-      return res.send(data);
-    }
-    res.status(404).json({ error: 'Not found', searched: found });
-  } catch(e) {
-    res.status(500).json({ error: e.message });
+  const storagePath = process.env.PERSISTENT_STORAGE_PATH || '/data';
+  const usersPath = path.join(storagePath, 'uploads', 'users.json');
+  console.log('Export users from:', usersPath);
+  if (!fs.existsSync(usersPath)) {
+    return res.status(404).json({ error: 'Not found', path: usersPath });
   }
+  const data = fs.readFileSync(usersPath, 'utf8');
+  res.setHeader('Content-Type', 'application/json');
+  res.send(data);
 });
 
 // ── Password reset routes ─────────────────────────────────────
