@@ -1266,11 +1266,80 @@ select.form-input{cursor:pointer;}
       <div id="adminResultsList"><div style="font-size:12px;color:var(--muted);">Loading…</div></div>
     </div>
 
+    <!-- QUESTIONS BANK PANEL -->
+    <div id="adminQuestionsPanel" style="background:var(--card);border:1px solid var(--bdr2);border-radius:16px;padding:20px;margin-top:18px;display:none;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
+        <h3 style="font-family:var(--fd);font-size:18px;font-weight:700;color:var(--gold-l);margin:0;">📝 Questions Bank</h3>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <span id="adminQTotal" style="font-size:12px;color:var(--muted);"></span>
+          <button class="btn-og" onclick="loadAdminQuestions(0)" style="font-size:11px;">↺ Refresh</button>
+        </div>
+      </div>
+      <!-- Filters row -->
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+        <input id="adminQSearch" class="sp-search" placeholder="Search questions…" style="flex:1;min-width:180px;padding:6px 10px;font-size:12px;" onkeydown="if(event.key==='Enter')loadAdminQuestions(0)">
+        <select id="adminQSubject" style="background:var(--card2);color:var(--white);border:1px solid var(--bdr2);border-radius:8px;padding:6px 8px;font-size:12px;min-width:130px;">
+          <option value="">All Subjects</option>
+        </select>
+        <select id="adminQYear" style="background:var(--card2);color:var(--white);border:1px solid var(--bdr2);border-radius:8px;padding:6px 8px;font-size:12px;min-width:100px;">
+          <option value="">All Years</option>
+        </select>
+        <select id="adminQType" style="background:var(--card2);color:var(--white);border:1px solid var(--bdr2);border-radius:8px;padding:6px 8px;font-size:12px;min-width:110px;">
+          <option value="">All Types</option>
+          <option value="essay">Essay</option>
+          <option value="mcq">MCQ</option>
+        </select>
+        <button class="btn-gold" onclick="loadAdminQuestions(0)" style="padding:6px 14px;font-size:12px;">Search</button>
+      </div>
+      <!-- Question list -->
+      <div id="adminQList"></div>
+      <!-- Pagination -->
+      <div id="adminQPager" style="display:flex;gap:8px;margin-top:10px;justify-content:flex-end;align-items:center;"></div>
+    </div>
+
   </div>
 </div>
 </div>
 
 </div><!-- .main -->
+
+<!-- EDIT QUESTION MODAL -->
+<div class="overlay" id="editQuestionModal" onclick="if(event.target===this)this.style.display='none'">
+<div class="modal" style="max-width:580px;">
+  <button class="modal-x" onclick="document.getElementById('editQuestionModal').style.display='none'">✕</button>
+  <div class="modal-t">✏️ Edit Question</div>
+  <input type="hidden" id="editQId">
+  <div style="margin-bottom:10px;">
+    <div style="font-size:11px;color:var(--muted);margin-bottom:4px;">Question Text</div>
+    <textarea id="editQText" class="essay-box" rows="4" style="width:100%;box-sizing:border-box;"></textarea>
+  </div>
+  <div style="margin-bottom:10px;">
+    <div style="font-size:11px;color:var(--muted);margin-bottom:4px;">Context / Facts</div>
+    <textarea id="editQContext" class="essay-box" rows="3" style="width:100%;box-sizing:border-box;"></textarea>
+  </div>
+  <div style="margin-bottom:10px;">
+    <div style="font-size:11px;color:var(--muted);margin-bottom:4px;">Model Answer</div>
+    <textarea id="editQAnswer" class="essay-box" rows="4" style="width:100%;box-sizing:border-box;"></textarea>
+  </div>
+  <div style="display:flex;gap:12px;margin-bottom:14px;">
+    <div style="flex:1;">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:4px;">Type</div>
+      <select id="editQType" style="width:100%;background:var(--card2);color:var(--white);border:1px solid var(--bdr2);border-radius:8px;padding:7px 10px;font-size:13px;">
+        <option value="essay">Essay</option>
+        <option value="mcq">MCQ</option>
+      </select>
+    </div>
+    <div style="flex:1;">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:4px;">Max Score</div>
+      <input id="editQMax" type="number" min="1" max="20" style="width:100%;box-sizing:border-box;background:var(--card2);color:var(--white);border:1px solid var(--bdr2);border-radius:8px;padding:7px 10px;font-size:13px;">
+    </div>
+  </div>
+  <div style="display:flex;gap:8px;justify-content:flex-end;">
+    <button class="btn-og" onclick="document.getElementById('editQuestionModal').style.display='none'" style="padding:8px 16px;">Cancel</button>
+    <button class="btn-gold" onclick="saveEditQuestion()" style="padding:8px 20px;">Save Changes</button>
+  </div>
+</div>
+</div>
 
 <!-- RESULTS DETAIL MODAL -->
 <div class="overlay" id="resultDetailOverlay">
@@ -1901,10 +1970,12 @@ function autoUnlockAdminUI() {
   updateSidebarAdminVisibility();
   const sovGrid = document.getElementById('subjectOverviewGrid');
   if (sovGrid) { sovGrid.style.display = ''; renderSubjectOverview(); }
-  document.getElementById('adminUserPanel').style.display  = 'block';
-  document.getElementById('adminResultsPanel').style.display = 'block';
+  document.getElementById('adminUserPanel').style.display      = 'block';
+  document.getElementById('adminResultsPanel').style.display   = 'block';
+  document.getElementById('adminQuestionsPanel').style.display = 'block';
   loadAdminUsers();
   loadAdminResults();
+  loadAdminQuestions();
   loadSyllabusBuilder();
   fetch('/api/settings').then(r => r.json()).then(s => {
     const btn = document.getElementById('regToggleBtn');
@@ -4211,7 +4282,8 @@ async function unlockAdmin(){
     // Show admin panels
     document.getElementById('adminUserPanel').style.display='block';
     document.getElementById('adminResultsPanel').style.display='block';
-    loadAdminUsers();loadAdminResults();loadSyllabusBuilder();
+    document.getElementById('adminQuestionsPanel').style.display='block';
+    loadAdminUsers();loadAdminResults();loadAdminQuestions();loadSyllabusBuilder();
     // Update registration toggle label
     fetch('/api/settings').then(r=>r.json()).then(s=>{
       const btn=document.getElementById('regToggleBtn');
@@ -4884,6 +4956,121 @@ async function loadAdminResults() {
       </div>`;
     }).join('');
   } catch(e) { el.innerHTML = '<div style="font-size:12px;color:#e07080;">Failed to load results.</div>'; }
+}
+
+// ── Admin Questions Bank ─────────────────────────────────────
+let _adminQPage = 0;
+const _ADMIN_Q_LIMIT = 50;
+
+async function loadAdminQuestions(page = 0) {
+  _adminQPage = page;
+  const el = document.getElementById('adminQList');
+  if (!el) return;
+
+  // Populate subject dropdown once
+  const subjSel = document.getElementById('adminQSubject');
+  if (subjSel && subjSel.children.length === 1 && typeof SUBJS !== 'undefined') {
+    SUBJS.forEach(s => {
+      const o = document.createElement('option');
+      o.value = s.key; o.textContent = s.name;
+      subjSel.appendChild(o);
+    });
+  }
+
+  const q       = (document.getElementById('adminQSearch')?.value || '').trim();
+  const subject = document.getElementById('adminQSubject')?.value || '';
+  const year    = document.getElementById('adminQYear')?.value || '';
+  const type    = document.getElementById('adminQType')?.value || '';
+  const params  = new URLSearchParams({ limit: _ADMIN_Q_LIMIT, offset: page * _ADMIN_Q_LIMIT });
+  if (q)       params.set('q', q);
+  if (subject) params.set('subject', subject);
+  if (year)    params.set('year', year);
+  if (type)    params.set('type', type);
+
+  el.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:8px 0;">Loading…</div>';
+
+  try {
+    const r    = await fetch('/api/admin/questions?' + params, { headers: { 'x-admin-key': window._adminKey || '' } });
+    const data = await r.json();
+
+    const totalEl = document.getElementById('adminQTotal');
+    if (totalEl) totalEl.textContent = `${data.total ?? 0} questions total`;
+
+    if (!data.questions || data.questions.length === 0) {
+      el.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:8px 0;">No questions found.</div>';
+    } else {
+      el.innerHTML = data.questions.map(q => {
+        const safeQ = h(q.question_text || '');
+        const qJson = h(JSON.stringify(q));
+        return `<div class="ur-row">
+          <div style="flex:1;min-width:0;">
+            <div class="ur-name" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;">${safeQ}</div>
+            <div class="ur-meta">${h(q.subject || '—')} &nbsp;·&nbsp; ${h(q.year || '—')} &nbsp;·&nbsp; ${h(q.source || '—')}</div>
+          </div>
+          <span class="ur-badge">${h(q.type || 'essay')}</span>
+          <button class="ur-act view" onclick='openEditQuestion(${qJson})'>Edit</button>
+          <button class="ur-act del" onclick="deleteQuestion('${q.id}')">Delete</button>
+        </div>`;
+      }).join('');
+    }
+
+    // Pagination
+    const pager = document.getElementById('adminQPager');
+    if (pager) {
+      const totalPages = Math.ceil((data.total || 0) / _ADMIN_Q_LIMIT);
+      pager.innerHTML = totalPages <= 1 ? '' :
+        `<button class="btn-og" ${page === 0 ? 'disabled' : ''} onclick="loadAdminQuestions(${page-1})" style="font-size:11px;padding:4px 12px;">◀ Prev</button>
+         <span style="font-size:11px;color:var(--muted);align-self:center;">Page ${page+1} / ${totalPages}</span>
+         <button class="btn-og" ${page >= totalPages-1 ? 'disabled' : ''} onclick="loadAdminQuestions(${page+1})" style="font-size:11px;padding:4px 12px;">Next ▶</button>`;
+    }
+  } catch(e) {
+    el.innerHTML = `<div style="font-size:12px;color:#e07080;">Failed to load questions: ${h(e.message)}</div>`;
+  }
+}
+
+async function deleteQuestion(id) {
+  if (!confirm('Delete this question? This cannot be undone.')) return;
+  try {
+    const r = await fetch(`/api/admin/questions/${encodeURIComponent(id)}`, {
+      method: 'DELETE', headers: { 'x-admin-key': window._adminKey || '' }
+    });
+    if (r.ok) loadAdminQuestions(_adminQPage);
+    else { const d = await r.json(); alert('Delete failed: ' + (d.error || r.status)); }
+  } catch(e) { alert('Delete failed: ' + e.message); }
+}
+
+function openEditQuestion(q) {
+  if (typeof q === 'string') { try { q = JSON.parse(q); } catch(_) { return; } }
+  document.getElementById('editQId').value      = q.id || '';
+  document.getElementById('editQText').value    = q.question_text || '';
+  document.getElementById('editQContext').value = q.context || '';
+  document.getElementById('editQAnswer').value  = q.model_answer || '';
+  document.getElementById('editQType').value    = q.type || 'essay';
+  document.getElementById('editQMax').value     = q.max_score || 10;
+  document.getElementById('editQuestionModal').style.display = 'flex';
+}
+
+async function saveEditQuestion() {
+  const id = document.getElementById('editQId').value;
+  if (!id) return;
+  const body = {
+    question_text: document.getElementById('editQText').value,
+    context:       document.getElementById('editQContext').value || null,
+    model_answer:  document.getElementById('editQAnswer').value || null,
+    type:          document.getElementById('editQType').value,
+    max_score:     parseInt(document.getElementById('editQMax').value) || 10,
+  };
+  try {
+    const r = await fetch(`/api/admin/questions/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'x-admin-key': window._adminKey || '' },
+      body: JSON.stringify(body),
+    });
+    if (r.ok) {
+      document.getElementById('editQuestionModal').style.display = 'none';
+      loadAdminQuestions(_adminQPage);
+    } else { const d = await r.json(); alert('Save failed: ' + (d.error || r.status)); }
+  } catch(e) { alert('Save failed: ' + e.message); }
 }
 
 async function viewUserResults(userId, name) {

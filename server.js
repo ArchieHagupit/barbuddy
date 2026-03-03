@@ -79,6 +79,41 @@ const KB = {
   pastBar:    [],     // [{ id, name, subject, year, questions:[{q,modelAnswer,keyPoints}], uploadedAt }]
 };
 
+// ── Questions table helpers ───────────────────────────────────
+// Map a questions-table row to the shape expected by generateMockBar
+function mapQRow(q) {
+  return {
+    q: q.question_text,
+    context: q.context,
+    modelAnswer: q.model_answer,
+    keyPoints: q.key_points || [],
+    subject: q.subject,
+    source: q.source,
+    year: q.year,
+    type: q.type || 'essay',
+    isReal: true,
+    pastBarId: q.batch_id,
+    pastBarName: q.source,
+    max: q.max_score || 10,
+  };
+}
+
+async function getQuestionsForSubject(subject, limit = 400) {
+  const { data, error } = await supabase
+    .from('questions').select('*').eq('subject', subject);
+  if (error || !data || data.length === 0) return null; // null = fall back to KB
+  const shuffled = data.sort(() => Math.random() - 0.5);
+  return shuffled.slice(0, limit).map(mapQRow);
+}
+
+async function getQuestionsForSubjects(subjects, limit = 800) {
+  const { data, error } = await supabase
+    .from('questions').select('*').in('subject', subjects);
+  if (error || !data || data.length === 0) return null; // null = fall back to KB
+  const shuffled = data.sort(() => Math.random() - 0.5);
+  return shuffled.slice(0, limit).map(mapQRow);
+}
+
 // Tab visibility settings (admin-controlled)
 const DEFAULT_TAB_SETTINGS = {
   overview: true,
@@ -653,6 +688,43 @@ app.delete('/api/admin/results/:resultId', adminOnly, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── Admin questions CRUD ───────────────────────────────────────
+app.get('/api/admin/questions', adminOnly, async (req, res) => {
+  try {
+    let query = supabase.from('questions').select('*', { count: 'exact' });
+    if (req.query.subject) query = query.eq('subject', req.query.subject);
+    if (req.query.year)    query = query.eq('year', req.query.year);
+    if (req.query.type)    query = query.eq('type', req.query.type);
+    if (req.query.q)       query = query.ilike('question_text', `%${req.query.q}%`);
+    const limit  = Math.min(parseInt(req.query.limit)  || 50, 200);
+    const offset = parseInt(req.query.offset) || 0;
+    query = query.range(offset, offset + limit - 1).order('subject').order('year');
+    const { data, count, error } = await query;
+    if (error) throw error;
+    res.json({ questions: data || [], total: count });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/admin/questions/:id', adminOnly, async (req, res) => {
+  try {
+    const { error } = await supabase.from('questions').delete().eq('id', req.params.id);
+    if (error) throw error;
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.patch('/api/admin/questions/:id', adminOnly, async (req, res) => {
+  try {
+    const allowed = ['question_text','context','model_answer','key_points','type','subject','year','source','max_score'];
+    const updates = {};
+    for (const k of allowed) { if (req.body[k] !== undefined) updates[k] = req.body[k]; }
+    const { data, error } = await supabase
+      .from('questions').update(updates).eq('id', req.params.id).select().single();
+    if (error) throw error;
+    res.json(data);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── Admin user-management routes ──────────────────────────────
 app.get('/api/admin/users', adminOnly, async (_req, res) => {
   try {
@@ -854,7 +926,7 @@ app.delete('/api/admin/users/:userId/tab-settings', adminOnly, async (req, res) 
 });
 
 // ── GET KB state (public — browser caches) ─────────────────
-app.get('/api/kb', (_req, res) => {
+app.get('/api/kb', async (_req, res) => {
   const n = Object.values(CONTENT).reduce((a,s) => a+Object.keys(s).length, 0);
   const pastBarSummary = KB.pastBar.map(p => ({
     id: p.id, name: p.name, subject: p.subject,
@@ -864,12 +936,30 @@ app.get('/api/kb', (_req, res) => {
     uploadedAt: p.uploadedAt,
   }));
   const totalQuestions = pastBarSummary.reduce((a,p) => a + p.qCount, 0);
+
+  // Also get total count from normalized questions table
+  let totalQuestionsDB = null;
+  let subjectQuestionCounts = {};
+  try {
+    const { count } = await supabase
+      .from('questions').select('*', { count: 'exact', head: true });
+    totalQuestionsDB = count;
+    // Per-subject counts
+    for (const subj of VALID_SUBJECTS) {
+      const { count: sc } = await supabase
+        .from('questions').select('*', { count: 'exact', head: true }).eq('subject', subj);
+      if (sc) subjectQuestionCounts[subj] = sc;
+    }
+  } catch(_) { /* non-fatal — table may not exist yet */ }
+
   res.json({
     hasSyllabus:    !!(KB.syllabus?.subjects),
     syllabusTopics: [],  // legacy field (new format uses /api/syllabus/:subject)
     references:     KB.references.map(r => ({ id:r.id, name:r.name, subject:r.subject, type:r.type, size:r.size, uploadedAt:r.uploadedAt })),
     pastBar:        pastBarSummary,
     totalQuestions,
+    totalQuestionsDB,
+    subjectQuestionCounts,
     contentTopics:  n,
     genState:       { running:GEN.running, done:GEN.done, total:GEN.total, current:GEN.current, finishedAt:GEN.finishedAt },
     customRefs:     KB.references.filter(r => r.subject === 'custom').length,
@@ -1684,31 +1774,56 @@ async function generateMockBar(subjects, count, options = {}) {
 
   let warning = null;
 
-  // STEP 1: Build real past bar pool
+  // STEP 1: Build real past bar pool (try questions table first, fall back to in-memory KB)
   let realPool = [];
   if (usePastBar) {
-    KB.pastBar.forEach(pb => {
-      const subjMatch = !subjects || subjects.includes('all') || subjects.includes(pb.subject);
-      const idMatch   = !pastBarIds?.length || pastBarIds.includes(pb.id);
-      if (subjMatch && idMatch) {
-        (pb.questions || []).forEach(q => {
-          realPool.push({
-            q: q.q,
-            context: q.context || '',
-            modelAnswer: q.modelAnswer || '',
-            keyPoints: q.keyPoints || [],
-            subject: pb.subject,
-            source: pb.name,
-            year: pb.year,
-            isReal: true,
-            type: q.type || 'situational',
-            pastBarId: pb.id,
-            pastBarName: pb.name,
-          });
-        });
+    let dbPool = null;
+    const targetSubjects = (!subjects || subjects.includes('all'))
+      ? VALID_SUBJECTS
+      : subjects;
+
+    try {
+      if (targetSubjects.length === 1) {
+        dbPool = await getQuestionsForSubject(targetSubjects[0]);
+      } else {
+        dbPool = await getQuestionsForSubjects(targetSubjects);
       }
-    });
-    realPool = shuffle(realPool);
+    } catch (e) {
+      console.warn('[mockbar] questions table query failed, falling back to KB:', e.message);
+    }
+
+    if (dbPool && dbPool.length > 0) {
+      // Apply pastBarIds filter if specific batches were requested
+      realPool = pastBarIds?.length
+        ? dbPool.filter(q => pastBarIds.includes(q.pastBarId))
+        : dbPool;
+      console.log(`[mockbar] using questions table (${realPool.length} after filter)`);
+    } else {
+      // Fall back to in-memory KB
+      KB.pastBar.forEach(pb => {
+        const subjMatch = !subjects || subjects.includes('all') || subjects.includes(pb.subject);
+        const idMatch   = !pastBarIds?.length || pastBarIds.includes(pb.id);
+        if (subjMatch && idMatch) {
+          (pb.questions || []).forEach(q => {
+            realPool.push({
+              q: q.q,
+              context: q.context || '',
+              modelAnswer: q.modelAnswer || '',
+              keyPoints: q.keyPoints || [],
+              subject: pb.subject,
+              source: pb.name,
+              year: pb.year,
+              isReal: true,
+              type: q.type || 'situational',
+              pastBarId: pb.id,
+              pastBarName: pb.name,
+            });
+          });
+        }
+      });
+      realPool = shuffle(realPool);
+      console.log(`[mockbar] using in-memory KB (${realPool.length})`);
+    }
   }
   console.log(`[mockbar] realPool size: ${realPool.length}`);
 
@@ -2396,6 +2511,26 @@ async function extractPastBarInBackground(id, content, name, subject, year) {
     entry.extracting = false;
     entry.extractedAt = new Date().toISOString();
     await savePastBarEntry(entry);
+    // Also sync to normalized questions table
+    if (dedupedQ.length > 0) {
+      const qRows = dedupedQ.map((q, i) => ({
+        id: `q_${entry.id}_${i}`,
+        batch_id: entry.id,
+        subject: q.subject || entry.subject || '',
+        year: entry.year || '',
+        source: entry.name || '',
+        type: q.type || 'essay',
+        question_text: q.q || '',
+        context: q.context || null,
+        model_answer: q.modelAnswer || null,
+        key_points: q.keyPoints || null,
+        max_score: q.max || 10,
+      }));
+      const { error: qErr } = await supabase
+        .from('questions').upsert(qRows, { onConflict: 'id' });
+      if (qErr) console.error('[questions upsert]', qErr.message);
+      else console.log(`pastbar bg [${entry.name}]: ${qRows.length} questions synced to questions table`);
+    }
   } catch(err) {
     console.error(`pastbar bg [${name}] failed: ${err.message}`);
     entry.extracting  = false;
