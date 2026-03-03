@@ -754,6 +754,10 @@ select.form-input{cursor:pointer;}
 .lesson-content h2{font-family:var(--fd);font-size:20px;color:var(--gold-l);margin:24px 0 10px;padding-bottom:8px;border-bottom:1px solid rgba(212,168,67,.15);}
 .lesson-content h3{font-family:var(--fd);font-size:16px;color:var(--text);margin:18px 0 8px;}
 .lesson-content strong{color:var(--gold-l);font-weight:700;}
+.cp-error{background:rgba(180,40,60,.15);border:1px solid rgba(180,40,60,.3);color:#f87171;padding:10px 14px;border-radius:10px;font-size:13px;margin-top:4px;}
+.cp-success{background:rgba(20,180,120,.15);border:1px solid rgba(20,180,120,.3);color:#34d399;padding:10px 14px;border-radius:10px;font-size:13px;text-align:center;margin-top:4px;}
+.cp-btn{background:none;border:none;color:var(--muted);font-size:11px;cursor:pointer;padding:3px 8px;border-radius:6px;transition:all .18s;letter-spacing:.02em;}
+.cp-btn:hover{background:rgba(212,168,67,.12);color:var(--gold-l);}
 </style>
 </head>
 <body>
@@ -848,6 +852,7 @@ select.form-input{cursor:pointer;}
       <div class="kb-dot"></div><span id="kbIndTxt">No KB</span>
     </div>
     <span id="userNameDisplay" style="display:none;"></span>
+    <button class="cp-btn" id="changePwdBtn" style="display:none;" onclick="openChangePassword()" title="Change Password">🔒 Password</button>
     <button class="btn-og" id="logoutBtn" style="display:none;font-size:11px;padding:5px 10px;" onclick="doLogout()">Log Out</button>
     <div class="avatar">BB</div>
   </div>
@@ -1274,6 +1279,26 @@ select.form-input{cursor:pointer;}
   <div class="modal-t" id="resultDetailTitle">📊 Result Detail</div>
   <div class="res-detail-grid" id="resultDetailStats"></div>
   <div id="resultDetailBody" style="font-size:13px;color:var(--muted);max-height:400px;overflow-y:auto;"></div>
+</div>
+</div>
+
+<!-- CHANGE PASSWORD MODAL -->
+<div class="overlay" id="cpOverlay">
+<div class="modal" style="max-width:400px;">
+  <button class="modal-x" onclick="closeModal('cpOverlay')">✕</button>
+  <div class="modal-t">🔒 Change Password</div>
+  <label class="form-label" style="margin-top:12px;">Current Password</label>
+  <input class="form-input" type="password" id="cp-current" placeholder="Enter current password" autocomplete="current-password">
+  <label class="form-label">New Password</label>
+  <input class="form-input" type="password" id="cp-new" placeholder="Min. 8 characters" autocomplete="new-password">
+  <label class="form-label">Confirm New Password</label>
+  <input class="form-input" type="password" id="cp-confirm" placeholder="Repeat new password" autocomplete="new-password" style="margin-bottom:4px;">
+  <div id="cp-error" class="cp-error" style="display:none;"></div>
+  <div id="cp-success" class="cp-success" style="display:none;">✓ Password changed successfully!</div>
+  <div style="display:flex;gap:8px;margin-top:16px;">
+    <button class="btn-gold" id="cp-submit-btn" onclick="submitChangePassword()" style="flex:1;justify-content:center;">🔒 Change Password</button>
+    <button class="btn-ghost" onclick="closeModal('cpOverlay')">Cancel</button>
+  </div>
 </div>
 </div>
 
@@ -4597,15 +4622,18 @@ async function onAuthSuccess(token, user) {
 }
 
 function updateUserDisplay() {
-  const disp   = document.getElementById('userNameDisplay');
-  const logBtn = document.getElementById('logoutBtn');
+  const disp    = document.getElementById('userNameDisplay');
+  const logBtn  = document.getElementById('logoutBtn');
+  const cpBtn   = document.getElementById('changePwdBtn');
   if (currentUser) {
     disp.textContent = currentUser.name;
-    disp.style.display  = '';
+    disp.style.display   = '';
     logBtn.style.display = '';
+    if (cpBtn) cpBtn.style.display = '';
   } else {
-    disp.style.display  = 'none';
+    disp.style.display   = 'none';
     logBtn.style.display = 'none';
+    if (cpBtn) cpBtn.style.display = 'none';
   }
 }
 
@@ -5326,6 +5354,75 @@ async function exportResultsCSV() {
   const blob = new Blob([lines.join('\n')], { type:'text/csv' });
   const a    = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'barbuddy_results.csv'; a.click();
 }
+
+// ── CHANGE PASSWORD ──────────────────────────────────────────
+function openChangePassword() {
+  ['cp-current','cp-new','cp-confirm'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  const errEl  = document.getElementById('cp-error');
+  const succEl = document.getElementById('cp-success');
+  if (errEl)  { errEl.style.display  = 'none'; errEl.textContent = ''; }
+  if (succEl) { succEl.style.display = 'none'; }
+  document.getElementById('cpOverlay').classList.add('on');
+  setTimeout(() => document.getElementById('cp-current')?.focus(), 80);
+}
+
+async function submitChangePassword() {
+  const current = document.getElementById('cp-current').value;
+  const newPass = document.getElementById('cp-new').value;
+  const confirm = document.getElementById('cp-confirm').value;
+  const errEl   = document.getElementById('cp-error');
+  const succEl  = document.getElementById('cp-success');
+  const btn     = document.getElementById('cp-submit-btn');
+
+  errEl.style.display = 'none'; succEl.style.display = 'none';
+
+  if (!current || !newPass || !confirm) {
+    errEl.textContent = 'All fields are required.'; errEl.style.display = 'block'; return;
+  }
+  if (newPass.length < 8) {
+    errEl.textContent = 'New password must be at least 8 characters.'; errEl.style.display = 'block'; return;
+  }
+  if (newPass !== confirm) {
+    errEl.textContent = 'New passwords do not match.'; errEl.style.display = 'block';
+    document.getElementById('cp-confirm').focus(); return;
+  }
+  if (newPass === current) {
+    errEl.textContent = 'New password must be different from current password.'; errEl.style.display = 'block'; return;
+  }
+
+  btn.disabled = true; btn.textContent = 'Changing…';
+  try {
+    const res  = await fetch('/api/user/change-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-session-token': sessionToken || '' },
+      body: JSON.stringify({ currentPassword: current, newPassword: newPass }),
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      succEl.style.display = 'block';
+      ['cp-current','cp-new','cp-confirm'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+      setTimeout(() => closeModal('cpOverlay'), 2000);
+    } else {
+      errEl.textContent = data.error || 'Failed to change password.'; errEl.style.display = 'block';
+    }
+  } catch(e) {
+    errEl.textContent = 'Network error. Please try again.'; errEl.style.display = 'block';
+  } finally {
+    btn.disabled = false; btn.textContent = '🔒 Change Password';
+  }
+}
+
+// Submit on Enter key while modal is open
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && document.getElementById('cpOverlay')?.classList.contains('on')) {
+    submitChangePassword();
+  }
+});
+
+// Close on backdrop click
+document.getElementById('cpOverlay')?.addEventListener('click', e => {
+  if (e.target.id === 'cpOverlay') closeModal('cpOverlay');
+});
 </script>
 
 <!-- PER-USER TAB ACCESS MODAL -->

@@ -793,6 +793,25 @@ app.post('/api/user/progress', requireAuth, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+app.post('/api/user/change-password', requireAuth, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body || {};
+    if (!currentPassword || !newPassword) return res.status(400).json({ error: 'Both passwords are required' });
+    if (newPassword.length < 8) return res.status(400).json({ error: 'New password must be at least 8 characters' });
+    const { data: userData } = await supabase.from('users').select('password_hash').eq('id', req.userId).single();
+    if (!userData) return res.status(404).json({ error: 'User not found' });
+    const valid = await bcrypt.compare(currentPassword, userData.password_hash);
+    if (!valid) return res.status(401).json({ error: 'Current password is incorrect' });
+    const newHash = await bcrypt.hash(newPassword, 10);
+    const { error } = await supabase.from('users').update({ password_hash: newHash }).eq('id', req.userId);
+    if (error) throw error;
+    res.json({ success: true, message: 'Password changed successfully' });
+  } catch(e) {
+    console.error('Change password error:', e.message);
+    res.status(500).json({ error: 'Failed to change password' });
+  }
+});
+
 // ── Per-user tab settings (admin-managed, merged with global) ─
 app.get('/api/user/tab-settings', requireAuth, (req, res) => {
   const userTS = req.user.tabSettings || null;
