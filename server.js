@@ -595,9 +595,12 @@ app.post('/api/results/save', requireAuth, async (req, res) => {
   try {
     const { score, total, subject, questions, timeTakenMs } = req.body || {};
     if (score === undefined || !total) return res.status(400).json({ error: 'score and total required' });
+    // Normalise subject: strip display names, keep the subject key (e.g. "commercial" not "Mock Bar")
+    const VALID_SUBJ_KEYS = ['civil','criminal','political','labor','commercial','taxation','remedial','ethics','custom'];
+    const subjectKey = VALID_SUBJ_KEYS.includes(subject) ? subject : (subject || 'mixed');
     const id = 'r_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
     const { error } = await supabase.from('results').insert([{
-      id, user_id: req.userId, subject: subject || 'Mixed',
+      id, user_id: req.userId, subject: subjectKey,
       score, total_questions: total, passed: score / total >= 0.7,
       finished_at: new Date().toISOString(),
       questions: questions || [], answers: {}, evaluations: [], sources: [],
@@ -610,17 +613,33 @@ app.post('/api/results/save', requireAuth, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+function _mapResult(r) {
+  return {
+    ...r,
+    userName:       r.users?.name  || r.user_id,
+    userEmail:      r.users?.email || '',
+    totalQuestions: r.total_questions,
+    finishedAt:     r.finished_at,
+    startedAt:      r.started_at   || null,
+  };
+}
+
 app.get('/api/admin/results', adminOnly, async (_req, res) => {
   try {
-    const { data } = await supabase.from('results').select('*').order('finished_at', { ascending: false });
-    res.json(data || []);
+    const { data } = await supabase.from('results')
+      .select('*, users(id, name, email)')
+      .order('finished_at', { ascending: false });
+    res.json((data || []).map(_mapResult));
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 app.get('/api/admin/results/:userId', adminOnly, async (req, res) => {
   try {
-    const { data } = await supabase.from('results').select('*').eq('user_id', req.params.userId).order('finished_at', { ascending: false });
-    res.json(data || []);
+    const { data } = await supabase.from('results')
+      .select('*, users(id, name, email)')
+      .eq('user_id', req.params.userId)
+      .order('finished_at', { ascending: false });
+    res.json((data || []).map(_mapResult));
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
