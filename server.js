@@ -489,6 +489,69 @@ app.get('/api/auth/me', requireAuth, (req, res) => {
   res.json({ id: u.id, name: u.name, email: u.email, role: u.role, isAdmin: u.isAdmin || false });
 });
 
+// TEMPORARY EXPORT ROUTES
+app.get('/api/admin/export/kb', (req, res) => {
+  const key = req.headers['x-admin-key'];
+  if (key !== process.env.ADMIN_KEY) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  const { execSync } = require('child_process');
+  try {
+    const found = execSync(
+      'find / -name "kb.json" -not -path "*/node_modules/*" -not -path "*/proc/*" 2>/dev/null'
+    ).toString().trim().split('\n').filter(Boolean);
+
+    let bestPath = null;
+    let bestSize = 0;
+    for (const p of found) {
+      try {
+        const size = fs.statSync(p).size;
+        if (size > bestSize) { bestSize = size; bestPath = p; }
+      } catch(e) {}
+    }
+
+    if (bestPath && bestSize > 100) {
+      const data = fs.readFileSync(bestPath, 'utf8');
+      res.setHeader('Content-Type', 'application/json');
+      return res.send(data);
+    }
+    res.status(404).json({ error: 'Not found', searched: found });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/admin/export/users', (req, res) => {
+  const key = req.headers['x-admin-key'];
+  if (key !== process.env.ADMIN_KEY) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  const { execSync } = require('child_process');
+  try {
+    const found = execSync(
+      'find / -name "users.json" -not -path "*/node_modules/*" -not -path "*/proc/*" 2>/dev/null'
+    ).toString().trim().split('\n').filter(Boolean);
+
+    let bestPath = null;
+    let bestSize = 0;
+    for (const p of found) {
+      try {
+        const size = fs.statSync(p).size;
+        if (size > bestSize) { bestSize = size; bestPath = p; }
+      } catch(e) {}
+    }
+
+    if (bestPath && bestSize > 100) {
+      const data = fs.readFileSync(bestPath, 'utf8');
+      res.setHeader('Content-Type', 'application/json');
+      return res.send(data);
+    }
+    res.status(404).json({ error: 'Not found', searched: found });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── Password reset routes ─────────────────────────────────────
 app.post('/api/auth/forgot-password', (req, res) => {
   const { email } = req.body || {};
