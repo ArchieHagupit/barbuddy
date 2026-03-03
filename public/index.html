@@ -778,6 +778,7 @@ select.form-input{cursor:pointer;}
     <!-- Register form -->
     <div id="authFormRegister" style="display:none;">
       <div class="auth-field"><label>Full Name</label><input type="text" id="regName" placeholder="Juan dela Cruz" autocomplete="name"></div>
+      <div class="auth-field"><label>School / University</label><input type="text" id="regSchool" placeholder="University of the Philippines" autocomplete="organization"></div>
       <div class="auth-field"><label>Email</label><input type="email" id="regEmail" placeholder="you@email.com" autocomplete="email"></div>
       <div class="auth-field"><label>Password</label><input type="password" id="regPassword" placeholder="••••••••" autocomplete="new-password"></div>
       <div class="auth-err" id="regErr"></div>
@@ -4557,6 +4558,7 @@ async function doLogin() {
 
 async function doRegister() {
   const name     = document.getElementById('regName').value.trim();
+  const school   = document.getElementById('regSchool').value.trim();
   const email    = document.getElementById('regEmail').value.trim();
   const password = document.getElementById('regPassword').value;
   const errEl    = document.getElementById('regErr');
@@ -4566,7 +4568,7 @@ async function doRegister() {
   if (password.length < 6) { errEl.textContent = 'Password must be at least 6 characters.'; return; }
   btn.disabled = true; btn.textContent = 'Creating account…';
   try {
-    const r = await fetch('/api/auth/register', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ name, email, password }) });
+    const r = await fetch('/api/auth/register', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ name, email, password, school }) });
     const d = await r.json();
     if (!r.ok) { errEl.textContent = d.error || 'Registration failed.'; return; }
     onAuthSuccess(d.token, d.user);
@@ -4766,7 +4768,7 @@ async function loadAdminUsers() {
       const isSelf = u.id === currentUser?.id;
       const adminBadge = u.isAdmin ? `<span class="badge-admin">👑 Admin</span>` : '';
       return `<div class="ur-row">
-        <div><div class="ur-name">${h(u.name)}${restrictSummary} ${adminBadge}</div><div class="ur-meta">${h(u.email)} &nbsp;·&nbsp; Joined ${u.createdAt.slice(0,10)} &nbsp;·&nbsp; ${u.stats.totalAttempts} attempt(s), avg ${avg}/10</div></div>
+        <div><div class="ur-name">${h(u.name)}${restrictSummary} ${adminBadge}</div><div class="ur-meta">${h(u.email)} &nbsp;·&nbsp; Joined ${u.createdAt.slice(0,10)} &nbsp;·&nbsp; ${u.stats.totalAttempts} attempt(s), avg ${avg}/10</div>${u.school?`<div class="ur-meta" style="margin-top:2px;">🎓 ${h(u.school)}</div>`:''}</div>
         <span class="ur-badge${u.active?'':' off'}">${u.active?'Active':'Disabled'}</span>
         <button class="ur-act view"   onclick="viewUserResults('${u.id}','${h(u.name)}')">Results</button>
         <button class="ur-act access" onclick="openUserAccessModal('${u.id}','${h(u.name)}')">⚙ Access</button>

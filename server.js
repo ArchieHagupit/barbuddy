@@ -172,6 +172,7 @@ function mapUser(u) {
     activeExamSession: u.active_exam_session || null,
     mockBarCount:      u.mock_bar_count || 0,
     avgScore:          u.avg_score || 0,
+    school:            u.school || null,
     stats: { totalAttempts: u.mock_bar_count || 0, totalScore: 0, totalQuestions: 0 },
   };
 }
@@ -448,7 +449,7 @@ async function authOrAdmin(req, res, next) {
 app.post('/api/auth/register', async (req, res) => {
   try {
     if (!SETTINGS.registrationOpen) return res.status(403).json({ error: 'Registration is currently closed' });
-    const { name, email, password } = req.body || {};
+    const { name, email, password, school } = req.body || {};
     if (!name || !email || !password) return res.status(400).json({ error: 'Name, email, and password required' });
     const emailLower = email.toLowerCase().trim();
     const { data: existing } = await supabase.from('users').select('id').eq('email', emailLower).single();
@@ -462,6 +463,7 @@ app.post('/api/auth/register', async (req, res) => {
       id, name: name.trim(), email: emailLower, password_hash: passwordHash,
       is_admin: isFirstUser || !!isAdminEmail, is_active: true,
       joined_at: new Date().toISOString(), progress: {}, tab_settings: {},
+      school: school || null,
     }]);
     if (insertErr) throw insertErr;
     const token = await createSession(id);
