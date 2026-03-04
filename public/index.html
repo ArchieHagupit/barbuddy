@@ -3634,12 +3634,17 @@ function startMockSession(questions, timeMin, subjectKey) {
   ExamSession.startAutoSave(() => window.activeExamSession);
 }
 
+function fmtTime(secs){
+  const h=Math.floor(secs/3600),m=Math.floor((secs%3600)/60),s=secs%60;
+  const mm=m.toString().padStart(2,'0'),ss=s.toString().padStart(2,'0');
+  return h>0?`${h}:${mm}:${ss}`:`${m}:${ss}`;
+}
 function runTimer(){
   if(mockTimer)clearInterval(mockTimer);
+  document.getElementById('timer-val').textContent=fmtTime(mockLeft);
   mockTimer=setInterval(()=>{
     mockLeft--;
-    const m=Math.floor(mockLeft/60),s=mockLeft%60;
-    document.getElementById('timer-val').textContent=`${m}:${s.toString().padStart(2,'0')}`;
+    document.getElementById('timer-val').textContent=fmtTime(mockLeft);
     document.getElementById('ms-timer').classList.toggle('warn',mockLeft<=300);
     // Track elapsed time for session restore
     if (window.activeExamSession) {
@@ -3724,28 +3729,29 @@ async function endMockSession(){
   }
 
   mockScores=scores;
-  const total=scores.reduce((a,s)=>a+(s.numericScore||0),0);
-  const avg=scores.length?Math.round(total/scores.length*10)/10:0;
-  const pct=Math.round(avg/10*100);
+  const rawScore=scores.reduce((a,s)=>a+(s.numericScore||0),0);
+  const numQuestions=scores.length||mockQs.length||1;
+  const maxScore=numQuestions*10;
+  const avg=Math.round(rawScore/numQuestions*10)/10;
+  const pct=maxScore>0?Math.round(rawScore/maxScore*100):0;
   totalQDone+=answered;totalCorrect+=Math.round(pct/100*answered);updateDash();
   saveMockBarResults(scores.map((s,i)=>({q:(mockQs[i]?.prompt||mockQs[i]?.q||'').slice(0,120),score:s.numericScore||0,max:10})));
 
   // Pre-fill email modal subject
-  const emailSubj=`BarBuddy Mock Bar Results — ${new Date().toLocaleDateString('en-PH')} — ${avg}/10`;
+  const emailSubj=`BarBuddy Mock Bar Results — ${new Date().toLocaleDateString('en-PH')} — ${rawScore}/${maxScore} (${pct}%)`;
   document.getElementById('email-subject').value=emailSubj;
 
   res.innerHTML=`<div class="mock-results">
     ${currentUser?`<div style="font-size:12px;color:var(--muted);background:rgba(201,168,76,.07);border:1px solid rgba(201,168,76,.18);border-radius:9px;padding:8px 14px;margin-bottom:14px;text-align:left;">🎓 <strong style="color:var(--gold-l);">${h(currentUser.name)}</strong> &nbsp;·&nbsp; ${new Date().toLocaleDateString('en-PH')}</div>`:''}
     <div style="font-size:32px;margin-bottom:8px;">🏛</div>
     <div style="font-family:var(--fd);font-size:20px;font-weight:700;color:#ff8c42;margin-bottom:4px;">Mock Bar Results</div>
-    <div class="mr-grade">${avg}/10</div>
+    <div class="mr-grade">${rawScore}/${maxScore}</div>
     <div style="font-size:16px;font-weight:700;color:${pct>=70?'#14b4a0':pct>=55?'#c9a84c':'#e07080'};margin-bottom:4px;">${pct}% — ${pct>=70?'✅ PASSED':pct>=55?'📖 Keep Studying':'❌ Needs More Review'}</div>
-    <div style="font-size:12px;color:var(--muted);font-family:var(--fm);margin-bottom:18px;">Passing score: 7.0/10 (70%)</div>
+    <div style="font-size:12px;color:var(--muted);font-family:var(--fm);margin-bottom:18px;">Passing score: 70% (${Math.round(numQuestions*7)} / ${maxScore} points)</div>
     <div class="mr-stats">
-      <div class="mr-stat"><div class="n">${answered}</div><div class="l">Answered</div></div>
-      <div class="mr-stat"><div class="n">${mockQs.length-answered}</div><div class="l">Skipped</div></div>
-      <div class="mr-stat"><div class="n">${avg}/10</div><div class="l">Avg Score</div></div>
-      <div class="mr-stat"><div class="n">${pct}%</div><div class="l">Overall</div></div>
+      <div class="mr-stat"><div class="n">${rawScore}/${maxScore}</div><div class="l">Score</div></div>
+      <div class="mr-stat"><div class="n">${pct}%</div><div class="l">Percentage</div></div>
+      <div class="mr-stat"><div class="n">${numQuestions}</div><div class="l">Questions</div></div>
     </div>
     <div style="display:flex;gap:8px;justify-content:center;margin-bottom:22px;flex-wrap:wrap;">
       <button class="btn-mock" onclick="document.getElementById('mockConfig').style.display='block';res.style.display='none';">⏱ New Session</button>
@@ -4808,18 +4814,22 @@ async function dismissResetRequest(requestId) {
 // ══════════════════════════════════
 async function saveMockBarResults(scores) {
   if (!sessionToken || !currentUser) return;
-  const total     = scores.length;
-  const scoreSum  = scores.reduce((a,s) => a + (s.score||0), 0);
-  const maxSum    = scores.reduce((a,s) => a + (s.max||10), 0);
+  const total    = mockQs.length || scores.length;
+  const scoreSum = scores.reduce((a,s) => a + (s.score||0), 0);
   const timeTaken = window.mockStartTime ? Date.now() - window.mockStartTime : null;
+  console.log('Submitting exam:', {
+    questionCount: total,
+    answerCount: mockAnswers.filter(a => a?.trim()).length,
+    subject: currentSubject,
+  });
   try {
     await fetch('/api/results/save', {
       method: 'POST',
       headers: { 'Content-Type':'application/json', 'x-session-token': sessionToken },
       body: JSON.stringify({
-        score:       parseFloat((scoreSum / total).toFixed(2)),
+        score:       parseFloat(scoreSum.toFixed(2)),
         total,
-        subject:     'Mock Bar',
+        subject:     currentSubject || 'Mock Bar',
         questions:   scores.map(s => ({ q: s.q, score: s.score, max: s.max })),
         timeTakenMs: timeTaken,
       }),
@@ -4929,13 +4939,14 @@ function _normalizeResult(row) {
   const userId     = row.userId       || row.user_id       || '';
   const score      = row.score        || 0;
   const total      = row.totalQuestions || row.total_questions || row.total || 0;
-  const passed     = row.passed       ?? (total > 0 && score / total >= 0.7);
+  const maxScore   = total * 10;
+  const passed     = row.passed       ?? (maxScore > 0 && score / maxScore >= 0.7);
   const subjectKey = row.subject      || '';
   const subject    = _SUBJECT_NAMES[subjectKey] || subjectKey || 'Mock Bar';
   const finishedAt = row.finishedAt   || row.finished_at   || row.completedAt || row.submittedAt || '';
   const userName   = row.users?.name  || row.userName      || row.user_name   || row.name || userId || 'Unknown User';
-  const pct        = total > 0 ? Math.round(score / total * 100) : 0;
-  return { userId, score, total, passed, subject, finishedAt, userName, pct };
+  const pct        = maxScore > 0 ? Math.round(score / maxScore * 100) : 0;
+  return { userId, score, total, maxScore, passed, subject, finishedAt, userName, pct };
 }
 
 async function loadAdminResults() {
@@ -4946,11 +4957,11 @@ async function loadAdminResults() {
     const rows = await r.json();
     if (!Array.isArray(rows) || !rows.length) { el.innerHTML = '<div style="font-size:12px;color:var(--muted);">No results saved yet.</div>'; return; }
     el.innerHTML = rows.map(row => {
-      const { userName, finishedAt, total, score, pct, passed } = _normalizeResult(row);
+      const { userName, finishedAt, total, maxScore, score, pct, passed } = _normalizeResult(row);
       const dateStr = finishedAt ? finishedAt.slice(0,10) : '—';
       return `<div class="ur-row">
         <div><div class="ur-name">${h(userName)}</div><div class="ur-meta">${dateStr} &nbsp;·&nbsp; ${total} questions</div></div>
-        <span class="ur-badge${passed?'':' off'}">${score}/${total} (${pct}%)</span>
+        <span class="ur-badge${passed?'':' off'}">${score}/${maxScore} (${pct}%)</span>
         <button class="ur-act view" onclick="viewResult('${row.id}')">View</button>
         <button class="ur-act del" onclick="deleteResult('${row.id}')">Delete</button>
       </div>`;
@@ -5084,7 +5095,7 @@ async function viewUserResults(userId, name) {
     <div class="res-dstat"><div class="res-dstat-val">${norm.length ? avgPct+'%' : '—'}</div><div class="res-dstat-lbl">Avg Score</div></div>
     <div class="res-dstat"><div class="res-dstat-val">${norm.filter(r=>r.passed).length}</div><div class="res-dstat-lbl">Passed</div></div>`;
   document.getElementById('resultDetailBody').innerHTML = norm.map(r =>
-    `<div style="padding:8px 0;border-bottom:1px solid var(--bdr2);font-size:12px;">${r.finishedAt?r.finishedAt.slice(0,10):'—'} &nbsp; <strong>${r.score}/${r.total} (${r.pct}%)</strong></div>`
+    `<div style="padding:8px 0;border-bottom:1px solid var(--bdr2);font-size:12px;">${r.finishedAt?r.finishedAt.slice(0,10):'—'} &nbsp; <strong>${r.score}/${r.maxScore} (${r.pct}%)</strong></div>`
   ).join('') || '<div style="color:var(--muted);">No results.</div>';
   document.getElementById('resultDetailOverlay').classList.add('on');
 }
@@ -5094,11 +5105,11 @@ async function viewResult(resultId) {
   const rows = await r.json();
   const row  = (Array.isArray(rows) ? rows : []).find(x => x.id === resultId);
   if (!row) return;
-  const { userName, finishedAt, total, score, pct } = _normalizeResult(row);
+  const { userName, finishedAt, total, maxScore, score, pct } = _normalizeResult(row);
   const dateStr = finishedAt ? finishedAt.slice(0,10) : '—';
   document.getElementById('resultDetailTitle').textContent = `📊 ${userName} — ${dateStr}`;
   document.getElementById('resultDetailStats').innerHTML = `
-    <div class="res-dstat"><div class="res-dstat-val">${score}/${total}</div><div class="res-dstat-lbl">Score</div></div>
+    <div class="res-dstat"><div class="res-dstat-val">${score}/${maxScore}</div><div class="res-dstat-lbl">Score</div></div>
     <div class="res-dstat"><div class="res-dstat-val">${pct}%</div><div class="res-dstat-lbl">Percentage</div></div>
     <div class="res-dstat"><div class="res-dstat-val">${total}</div><div class="res-dstat-lbl">Questions</div></div>`;
   document.getElementById('resultDetailBody').innerHTML = (row.questions||[]).map((q,i)=>

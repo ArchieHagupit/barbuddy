@@ -658,14 +658,16 @@ app.post('/api/admin/settings', adminOnly, async (req, res) => {
 app.post('/api/results/save', requireAuth, async (req, res) => {
   try {
     const { score, total, subject, questions, timeTakenMs } = req.body || {};
-    if (score === undefined || !total) return res.status(400).json({ error: 'score and total required' });
+    const questionCount = questions?.length || total || 0;
+    if (score === undefined || !questionCount) return res.status(400).json({ error: 'score and total required' });
     // Normalise subject: strip display names, keep the subject key (e.g. "commercial" not "Mock Bar")
     const VALID_SUBJ_KEYS = ['civil','criminal','political','labor','commercial','taxation','remedial','ethics','custom'];
     const subjectKey = VALID_SUBJ_KEYS.includes(subject) ? subject : (subject || 'mixed');
     const id = 'r_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+    const maxPossible = questionCount * 10;
     const { error } = await supabase.from('results').insert([{
       id, user_id: req.userId, subject: subjectKey,
-      score, total_questions: total, passed: score / total >= 0.7,
+      score, total_questions: questionCount, passed: maxPossible > 0 && score / maxPossible >= 0.7,
       finished_at: new Date().toISOString(),
       questions: questions || [], answers: {}, evaluations: [], sources: [],
     }]);
