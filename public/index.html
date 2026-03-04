@@ -1569,16 +1569,20 @@ function showToast(message, type = 'info') {
 // ── Resume banner ───────────────────────────────────────────
 async function checkForInterruptedExam() {
   const session = await ExamSession.getBestSession();
-  if (!session) return false;
-  const minutesAgo = (Date.now() - new Date(session.lastSavedAt).getTime()) / 60000;
+  if (!session || session.status !== 'in_progress') return false;
+
+  // Discard sessions older than 24 hours
+  const ageMs = Date.now() - new Date(session.lastSavedAt).getTime();
+  if (ageMs > 24 * 60 * 60 * 1000) {
+    await ExamSession.clearAll();
+    return false;
+  }
+
+  const minutesAgo = ageMs / 60000;
   const timeStr = minutesAgo < 1 ? 'just now' : minutesAgo < 60 ? `${Math.round(minutesAgo)} minute${Math.round(minutesAgo)>1?'s':''} ago` : `${Math.round(minutesAgo/60)} hour${Math.round(minutesAgo/60)>1?'s':''} ago`;
   const answeredCount = countAnswered(session.answers);
-  if (minutesAgo < 15) {
-    // Interrupted very recently — auto-resume silently
-    await resumeExamSession(session);
-    return true;
-  }
-  // Interrupted a while ago — show banner and let user decide
+
+  // Always show banner — never auto-resume; let the user decide
   showResumeBanner({ session, timeStr, answeredCount });
   return true;
 }
@@ -1605,7 +1609,7 @@ function showResumeBanner({ session, timeStr, answeredCount }) {
       <button onclick="discardExamSession()" style="padding:7px 18px;background:transparent;color:var(--muted);font-size:11px;border:1px solid var(--bdr);border-radius:8px;cursor:pointer;font-family:var(--fb);">Discard</button>
     </div>`;
   document.body.appendChild(banner);
-  setTimeout(() => { if (banner.parentNode) { banner.style.opacity='0'; banner.style.transition='opacity .3s'; setTimeout(() => banner.remove(), 300); } }, 30000);
+  // Banner stays visible until user explicitly clicks Resume or Discard
 }
 
 async function resumeExamSession(sessionArg) {
@@ -1643,6 +1647,24 @@ async function resumeExamSession(sessionArg) {
   // renderMockQ() reads mockAnswers[mockIdx] to populate the textarea — now correct
   renderMockQ();
   ExamSession.startAutoSave(() => window.activeExamSession);
+
+  // Retry textarea restore — renderMockQ uses innerHTML so the element may not be
+  // in the DOM yet if the page transition hasn't completed
+  let _restoreAttempts = 0;
+  const _retryRestore = () => {
+    const textarea = document.getElementById('mockBox');
+    if (textarea) {
+      const expected = mockAnswers[mockIdx] || '';
+      if (expected && !textarea.value) {
+        textarea.value = expected;
+        console.log('Answer restored on retry:', expected.length, 'chars');
+      }
+    } else if (_restoreAttempts < 10) {
+      _restoreAttempts++;
+      setTimeout(_retryRestore, 100);
+    }
+  };
+  setTimeout(_retryRestore, 100);
 
   const answeredCount = mockAnswers.filter(a => a?.trim()).length;
   showToast(`✓ Exam resumed — ${answeredCount} answer${answeredCount !== 1 ? 's' : ''} restored`, 'success');
@@ -1729,10 +1751,23 @@ async function checkAPIStatus(){
 }
 // ── Save exam on tab switch / minimize ─────────────────────
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden && window.activeExamSession?.status === 'in_progress') {
-    saveMock(); // capture latest text from textarea
-    ExamSession.saveLocal(window.activeExamSession);
-    ExamSession.saveServer(window.activeExamSession).catch(() => {});
+  if (document.hidden) {
+    if (window.activeExamSession?.status === 'in_progress') {
+      saveMock(); // capture latest text from textarea
+      window.activeExamSession.lastSavedAt = new Date().toISOString();
+      ExamSession.saveLocal(window.activeExamSession);
+      ExamSession.saveServer(window.activeExamSession).catch(e => console.warn('Server save failed:', e));
+    }
+  } else {
+    // Tab returning — restore current textarea value if it got cleared
+    if (window.activeExamSession?.status === 'in_progress' && mockQs.length) {
+      setTimeout(() => {
+        const textarea = document.getElementById('mockBox');
+        if (textarea && mockAnswers[mockIdx] && !textarea.value) {
+          textarea.value = mockAnswers[mockIdx];
+        }
+      }, 150);
+    }
   }
 });
 
@@ -3698,6 +3733,9 @@ function saveMock(){
     window.activeExamSession.answers[mockIdx] = { text: val, savedAt: new Date().toISOString(), wordCount: val.trim().split(/\s+/).filter(w=>w).length };
     window.activeExamSession.currentQuestion = mockIdx;
     ExamSession.saveLocal(window.activeExamSession);
+    // Debounce server sync — localStorage write is immediate above
+    clearTimeout(window._serverSaveTimer);
+    window._serverSaveTimer = setTimeout(() => ExamSession.saveServer(window.activeExamSession).catch(()=>{}), 3000);
     const ind = document.getElementById('exam-save-indicator');
     if (ind) { ind.textContent = '● Saving…'; ind.style.color = 'var(--muted)'; ind.style.opacity = '1'; }
   }
