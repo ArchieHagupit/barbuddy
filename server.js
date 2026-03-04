@@ -387,7 +387,34 @@ async function savePastBarEntry(entry) {
     questions: entry.questions || [], q_count: entry.questions?.length || entry.qCount || 0,
     uploaded_at: entry.uploadedAt || new Date().toISOString(),
   }], { onConflict: 'id' });
+  await syncQuestionsFromBatch(entry);
 }
+
+async function syncQuestionsFromBatch(batch) {
+  const questions = batch.questions || [];
+  if (questions.length === 0) return;
+
+  for (let i = 0; i < questions.length; i++) {
+    const q   = questions[i];
+    const qId = `q_${batch.id}_${i}`;
+    await supabase.from('questions').upsert([{
+      id:            qId,
+      batch_id:      batch.id,
+      subject:       batch.subject,
+      year:          q.year    || batch.year   || 'Unknown',
+      source:        q.source  || batch.source || 'upload',
+      type:          q.type    || 'situational',
+      question_text: q.q       || q.question   || q.question_text || '',
+      context:       q.context || q.facts      || null,
+      model_answer:  q.answer  || q.modelAnswer || null,
+      key_points:    q.keyPoints || q.key_points || [],
+      max_score:     q.max     || q.maxScore    || 10,
+    }], { onConflict: 'id' });
+  }
+
+  console.log(`Synced ${questions.length} questions from ${batch.name}`);
+}
+
 async function deletePastBarEntry(id) {
   await supabase.from('past_bar').delete().eq('id', id);
 }
@@ -2510,27 +2537,7 @@ async function extractPastBarInBackground(id, content, name, subject, year) {
     entry.questions  = dedupedQ;
     entry.extracting = false;
     entry.extractedAt = new Date().toISOString();
-    await savePastBarEntry(entry);
-    // Also sync to normalized questions table
-    if (dedupedQ.length > 0) {
-      const qRows = dedupedQ.map((q, i) => ({
-        id: `q_${entry.id}_${i}`,
-        batch_id: entry.id,
-        subject: q.subject || entry.subject || '',
-        year: entry.year || '',
-        source: entry.name || '',
-        type: q.type || 'essay',
-        question_text: q.q || '',
-        context: q.context || null,
-        model_answer: q.modelAnswer || null,
-        key_points: q.keyPoints || null,
-        max_score: q.max || 10,
-      }));
-      const { error: qErr } = await supabase
-        .from('questions').upsert(qRows, { onConflict: 'id' });
-      if (qErr) console.error('[questions upsert]', qErr.message);
-      else console.log(`pastbar bg [${entry.name}]: ${qRows.length} questions synced to questions table`);
-    }
+    await savePastBarEntry(entry); // also calls syncQuestionsFromBatch internally
   } catch(err) {
     console.error(`pastbar bg [${name}] failed: ${err.message}`);
     entry.extracting  = false;
