@@ -3790,7 +3790,7 @@ function buildResultsHtml(){
   const e=s=>String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
   const dateStr=mockSessionDate?formatDate(mockSessionDate instanceof Date?mockSessionDate.toISOString():mockSessionDate):formatDate(new Date().toISOString());
   const subjStr=(!mockSubjectsUsed.length||mockSubjectsUsed.includes('all'))?'All Subjects':mockSubjectsUsed.map(s=>SUBJS.find(x=>x.key===s)?.name||s).join(', ');
-  const userName=window.currentUser?.name||'Bar Examinee';
+  const userName=window.currentUser?.name||window.loggedInUser?.name||window.user?.name||document.querySelector('.user-name,.topbar-name,#user-display-name,.sidebar-user-name')?.textContent?.trim()||localStorage.getItem('bb_user_name')||(()=>{try{return JSON.parse(localStorage.getItem('bb_user')||'{}').name||'';}catch(e){return'';}})()||'Bar Examinee';
   const answered=mockAnswers.filter(a=>a?.trim()).length;
   const rawSc=mockScores.reduce((a,s)=>a+(s.numericScore||0),0);
   const numQ=mockQs.length||mockScores.length||1;
@@ -4594,6 +4594,7 @@ async function onAuthSuccess(token, user) {
   currentUser  = user;
   localStorage.setItem('bb_token', token);
   localStorage.setItem('bb_user', JSON.stringify(user));
+  if (user?.name) localStorage.setItem('bb_user_name', user.name);
   document.getElementById('authWall').style.display = 'none';
   updateUserDisplay();
   updateSidebarAdminVisibility();
@@ -4633,6 +4634,7 @@ async function doLogout() {
   currentUser  = null;
   localStorage.removeItem('bb_token');
   localStorage.removeItem('bb_user');
+  localStorage.removeItem('bb_user_name');
   document.getElementById('authWall').style.display = 'flex';
   updateUserDisplay();
 }
