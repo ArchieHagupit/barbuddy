@@ -536,11 +536,16 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .q-marker.current{background:rgba(255,140,66,.25);border-color:#ff8c42;color:#ff8c42;}
 /* MOCK RESULTS */
 .mock-results{background:linear-gradient(145deg,var(--ink2),var(--ink));border:1px solid rgba(212,168,67,.2);border-radius:20px;padding:32px;text-align:center;}
-.mr-grade{font-family:var(--fd);font-size:64px;font-weight:700;color:var(--gold-l);line-height:1;margin:10px 0;}
+.score-display{text-align:center;padding:24px 16px;}
+.mr-grade,.score-big{font-family:var(--fd);font-size:clamp(2rem,8vw,4rem);font-weight:700;color:var(--gold-l);line-height:1.1;margin:10px 0;word-break:break-word;}
+.score-fraction{display:inline-block;max-width:100%;overflow-wrap:break-word;}
+.score-sub{font-size:clamp(.85rem,2vw,1rem);color:#aab;margin-top:8px;text-align:center;}
+.result-user{font-size:1.1rem;color:#f0c040;font-weight:600;margin-bottom:4px;}
 .mr-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:22px 0;}
 .mr-stat{background:rgba(255,255,255,.04);border:1px solid rgba(212,168,67,.15);border-radius:11px;padding:12px;text-align:center;}
-.mr-stat .n{font-family:var(--fd);font-size:22px;font-weight:700;color:var(--gold-l);}
+.mr-stat .n{font-family:var(--fd);font-size:22px;font-weight:700;color:var(--gold-l);word-break:break-all;}
 .mr-stat .l{font-size:11px;color:var(--text-muted);margin-top:2px;}
+@media print{.score-big,.mr-grade{font-size:2.5rem!important;}}
 .q-review-item{background:rgba(255,255,255,.03);border:1px solid var(--bdr2);border-radius:12px;padding:13px;margin-bottom:9px;text-align:left;}
 .q-score-badge{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;padding:3px 9px;border-radius:6px;font-family:var(--fm);}
 .qsb-high{background:rgba(20,180,160,.15);color:var(--teal);}
@@ -3525,6 +3530,17 @@ function fmtTime(secs){
   const mm=m.toString().padStart(2,'0'),ss=s.toString().padStart(2,'0');
   return h>0?`${h}:${mm}:${ss}`:`${m}:${ss}`;
 }
+function fmt(n,decimals=1){
+  if(n===null||n===undefined)return'0';
+  const num=parseFloat(n);
+  if(isNaN(num))return'0';
+  return parseFloat(num.toFixed(decimals)).toString();
+}
+function formatDate(iso){
+  if(!iso)return'Unknown date';
+  const d=new Date(iso);
+  return d.toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric',hour:'2-digit',minute:'2-digit'});
+}
 function runTimer(){
   if(mockTimer)clearInterval(mockTimer);
   document.getElementById('timer-val').textContent=fmtTime(mockLeft);
@@ -3627,18 +3643,18 @@ async function endMockSession(){
   saveMockBarResults(scores.map((s,i)=>({q:(mockQs[i]?.prompt||mockQs[i]?.q||'').slice(0,120),score:s.numericScore||0,max:10})));
 
   // Pre-fill email modal subject
-  const emailSubj=`BarBuddy Mock Bar Results — ${new Date().toLocaleDateString('en-PH')} — ${rawScore}/${maxScore} (${pct}%)`;
+  const emailSubj=`BarBuddy Mock Bar Results — ${new Date().toLocaleDateString('en-PH')} — ${fmt(rawScore)}/${maxScore} (${pct}%)`;
   document.getElementById('email-subject').value=emailSubj;
 
   res.innerHTML=`<div class="mock-results">
-    ${currentUser?`<div style="font-size:12px;color:var(--muted);background:rgba(201,168,76,.07);border:1px solid rgba(201,168,76,.18);border-radius:9px;padding:8px 14px;margin-bottom:14px;text-align:left;">🎓 <strong style="color:var(--gold-l);">${h(currentUser.name)}</strong> &nbsp;·&nbsp; ${new Date().toLocaleDateString('en-PH')}</div>`:''}
+    ${currentUser?`<div style="background:rgba(201,168,76,.07);border:1px solid rgba(201,168,76,.18);border-radius:9px;padding:8px 14px;margin-bottom:14px;text-align:left;"><div class="result-user">👤 ${h(currentUser.name)}</div><div style="font-size:11px;color:var(--muted);">${new Date().toLocaleDateString('en-PH')}</div></div>`:''}
     <div style="font-size:32px;margin-bottom:8px;">🏛</div>
     <div style="font-family:var(--fd);font-size:20px;font-weight:700;color:#ff8c42;margin-bottom:4px;">Mock Bar Results</div>
-    <div class="mr-grade">${rawScore}/${maxScore}</div>
+    <div class="mr-grade"><span class="score-fraction">${fmt(rawScore)}/${maxScore}</span></div>
     <div style="font-size:16px;font-weight:700;color:${pct>=70?'#14b4a0':pct>=55?'#c9a84c':'#e07080'};margin-bottom:4px;">${pct}% — ${pct>=70?'✅ PASSED':pct>=55?'📖 Keep Studying':'❌ Needs More Review'}</div>
-    <div style="font-size:12px;color:var(--muted);font-family:var(--fm);margin-bottom:18px;">Passing score: 70% (${Math.round(numQuestions*7)} / ${maxScore} points)</div>
+    <div style="font-size:12px;color:var(--muted);font-family:var(--fm);margin-bottom:18px;">Passing score: 70% (${Math.ceil(maxScore*0.7)} / ${maxScore} points)</div>
     <div class="mr-stats">
-      <div class="mr-stat"><div class="n">${rawScore}/${maxScore}</div><div class="l">Score</div></div>
+      <div class="mr-stat"><div class="n"><span class="score-fraction">${fmt(rawScore)}/${maxScore}</span></div><div class="l">Score</div></div>
       <div class="mr-stat"><div class="n">${pct}%</div><div class="l">Percentage</div></div>
       <div class="mr-stat"><div class="n">${numQuestions}</div><div class="l">Questions</div></div>
     </div>
@@ -3658,7 +3674,7 @@ async function endMockSession(){
         <div style="font-size:11px;color:#a08060;margin-bottom:5px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
           Q${i+1} · <span class="sbg ${sub.cls}">${sub.name}</span>
           ${q.isReal?`<span style="font-size:9px;">📜 ${h(q.pastBarName||'Past Bar')}</span>`:q.source==='Pre-generated'?'<span style="font-size:9px;color:var(--teal);">📚 Pre-gen</span>':'<span style="font-size:9px;">🤖 AI</span>'}
-          <span class="q-score-badge ${s.grade==='Not Answered'?'qsb-low':qBadgeCls}" style="margin-left:auto;">${s.grade==='Not Answered'?'Not Answered':ns+'/10'}</span>
+          <span class="q-score-badge ${s.grade==='Not Answered'?'qsb-low':qBadgeCls}" style="margin-left:auto;">${s.grade==='Not Answered'?'Not Answered':fmt(ns)+'/10'}</span>
         </div>
         ${isSit
           ? `<div class="facts-box" style="margin-bottom:16px;">
@@ -3772,15 +3788,17 @@ function renderPastBarList(){
 // ══════════════════════════════════
 function buildResultsHtml(){
   const e=s=>String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
-  const dateStr=mockSessionDate?mockSessionDate.toLocaleString('en-PH'):new Date().toLocaleString('en-PH');
+  const dateStr=mockSessionDate?formatDate(mockSessionDate instanceof Date?mockSessionDate.toISOString():mockSessionDate):formatDate(new Date().toISOString());
   const subjStr=(!mockSubjectsUsed.length||mockSubjectsUsed.includes('all'))?'All Subjects':mockSubjectsUsed.map(s=>SUBJS.find(x=>x.key===s)?.name||s).join(', ');
+  const userName=window.currentUser?.name||'Bar Examinee';
   const answered=mockAnswers.filter(a=>a?.trim()).length;
-  const totalSc=mockScores.reduce((a,s)=>a+(s.numericScore||0),0);
-  const avg=mockScores.length?Math.round(totalSc/mockScores.length*10)/10:0;
-  const pct=Math.round(avg/10*100);
+  const rawSc=mockScores.reduce((a,s)=>a+(s.numericScore||0),0);
+  const numQ=mockQs.length||mockScores.length||1;
+  const maxSc=numQ*10;
+  const pct=maxSc>0?Math.round(rawSc/maxSc*100):0;
   const passColor=pct>=70?'#1a7a5e':pct>=55?'#8b6914':'#b32d2d';
 
-  const alacTr=(label,c,max)=>c?`<tr><td style="padding:6px 8px;border:1px solid #d0b870;font-weight:600;">${label}</td><td style="padding:6px 8px;border:1px solid #d0b870;text-align:center;font-weight:bold;">${c.score!=null?c.score+'/'+max:'—'}</td><td style="padding:6px 8px;border:1px solid #d0b870;">${e(c.feedback||'')}</td></tr>`:'';
+  const alacTr=(label,c,max)=>c?`<tr><td style="padding:6px 8px;border:1px solid #d0b870;font-weight:600;">${label}</td><td style="padding:6px 8px;border:1px solid #d0b870;text-align:center;font-weight:bold;">${c.score!=null?fmt(c.score)+'/'+max:'—'}</td><td style="padding:6px 8px;border:1px solid #d0b870;">${e(c.feedback||'')}</td></tr>`:'';
 
   const qHtml=mockQs.map((q,i)=>{
     const s=mockScores[i]||{};
@@ -3818,14 +3836,16 @@ function buildResultsHtml(){
   }).join('');
 
   return `<div style="font-family:Georgia,serif;color:#111;max-width:800px;margin:0 auto;padding:20px;">
-    <h1 style="font-size:22px;color:#7a6128;border-bottom:2px solid #7a6128;padding-bottom:8px;margin-bottom:8px;">BarBuddy — Mock Bar Examination Results</h1>
+    <h1 style="font-size:22px;color:#7a6128;border-bottom:2px solid #7a6128;padding-bottom:8px;margin-bottom:4px;">BarBuddy — Mock Bar Examination Results</h1>
+    <p style="font-size:1rem;color:#5a3e1b;margin:4px 0 16px 0;"><strong>Examinee:</strong> ${e(userName)}</p>
     <div style="font-size:13px;color:#333;margin-bottom:14px;line-height:2;">
       <div><strong>Date:</strong> ${e(dateStr)}</div>
       <div><strong>Subject:</strong> ${e(subjStr)}</div>
-      <div><strong>Questions:</strong> ${answered} answered / ${mockQs.length} total</div>
+      <div><strong>Questions:</strong> ${answered} answered / ${numQ} total</div>
     </div>
-    <div style="font-size:20px;font-weight:bold;color:${passColor};margin:10px 0 5px;">Overall Score: ${avg}/10 — ${pct>=70?'✅ PASSED':pct>=55?'📖 KEEP STUDYING':'❌ NEEDS MORE REVIEW'}</div>
-    <div style="font-size:12px;color:#888;margin-bottom:20px;">Passing score: 7.0/10 (70%)</div>
+    <div style="font-size:2.5rem;font-weight:bold;color:${passColor};margin:10px 0 2px;word-break:break-word;">${fmt(rawSc)}/${maxSc}</div>
+    <div style="font-size:16px;font-weight:bold;color:${passColor};margin:0 0 5px;">${pct}% — ${pct>=70?'✅ PASSED':pct>=55?'📖 KEEP STUDYING':'❌ NEEDS MORE REVIEW'}</div>
+    <div style="font-size:12px;color:#888;margin-bottom:20px;">Passing score: 70% (${Math.ceil(maxSc*0.7)} / ${maxSc} points)</div>
     ${qHtml}
     <div style="margin-top:30px;padding-top:12px;border-top:1px solid #ccc;font-size:11px;color:#666;text-align:center;">Generated by BarBuddy — Philippine Bar Exam Companion</div>
   </div>`;
@@ -5034,14 +5054,15 @@ async function viewResult(resultId) {
   const row  = (Array.isArray(rows) ? rows : []).find(x => x.id === resultId);
   if (!row) return;
   const { userName, finishedAt, total, maxScore, score, pct } = _normalizeResult(row);
-  const dateStr = finishedAt ? finishedAt.slice(0,10) : '—';
+  const dateStr = finishedAt ? formatDate(finishedAt) : '—';
   document.getElementById('resultDetailTitle').textContent = `📊 ${userName} — ${dateStr}`;
   document.getElementById('resultDetailStats').innerHTML = `
-    <div class="res-dstat"><div class="res-dstat-val">${score}/${maxScore}</div><div class="res-dstat-lbl">Score</div></div>
+    <div class="res-dstat"><div class="result-user" style="margin-bottom:8px;">👤 ${h(userName)}</div></div>
+    <div class="res-dstat"><div class="res-dstat-val">${fmt(score)}/${maxScore}</div><div class="res-dstat-lbl">Score</div></div>
     <div class="res-dstat"><div class="res-dstat-val">${pct}%</div><div class="res-dstat-lbl">Percentage</div></div>
     <div class="res-dstat"><div class="res-dstat-val">${total}</div><div class="res-dstat-lbl">Questions</div></div>`;
   document.getElementById('resultDetailBody').innerHTML = (row.questions||[]).map((q,i)=>
-    `<div style="padding:7px 0;border-bottom:1px solid var(--bdr2);font-size:12px;"><strong>Q${i+1}:</strong> ${h((q.q||'').slice(0,120))} &nbsp;<span style="color:var(--gold);">${q.score||'—'}/${q.max||'—'}</span></div>`
+    `<div style="padding:7px 0;border-bottom:1px solid var(--bdr2);font-size:12px;"><strong>Q${i+1}:</strong> ${h((q.q||'').slice(0,120))} &nbsp;<span style="color:var(--gold);">${fmt(q.score)||'—'}/${q.max||'—'}</span></div>`
   ).join('') || '<div style="color:var(--muted);">No question detail.</div>';
   document.getElementById('resultDetailOverlay').classList.add('on');
 }
