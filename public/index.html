@@ -552,6 +552,16 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .sb-real{background:rgba(155,35,53,.15);color:#e07080;border:1px solid rgba(155,35,53,.25);}
 .sb-pregen{background:rgba(20,180,160,.1);color:var(--teal);border:1px solid rgba(20,180,160,.2);}
 .sb-ai{background:rgba(255,140,66,.1);color:#ff8c42;border:1px solid rgba(255,140,66,.2);}
+/* ADMIN SOURCE ROWS */
+.source-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 12px;border-radius:10px;margin-bottom:6px;border:1px solid var(--bdr2);}
+.source-row.enabled{background:rgba(20,180,160,.06);border-color:rgba(20,180,160,.2);}
+.source-row.disabled{background:rgba(255,255,255,.02);opacity:.6;}
+.source-info{flex:1;min-width:0;}
+.source-name{font-size:13px;font-weight:600;color:var(--white);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.source-meta{font-size:11px;color:var(--muted);margin-top:2px;}
+.toggle-btn{font-size:11px;font-weight:700;padding:5px 12px;border-radius:7px;border:none;cursor:pointer;white-space:nowrap;flex-shrink:0;}
+.btn-disable{background:rgba(220,60,60,.15);color:#f07070;}
+.btn-enable{background:rgba(20,180,160,.15);color:var(--teal);}
 /* MANUAL ENTRY DIVIDER */
 .manual-divider{display:flex;align-items:center;gap:10px;font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.05em;margin:20px 0 14px;text-transform:uppercase;}
 .manual-divider::before,.manual-divider::after{content:'';flex:1;height:1px;background:var(--bdr);}
@@ -1297,6 +1307,16 @@ select.form-input{cursor:pointer;}
       <div id="adminQPager" style="display:flex;gap:8px;margin-top:10px;justify-content:flex-end;align-items:center;"></div>
     </div>
 
+    <!-- QUESTION SOURCES PANEL -->
+    <div id="adminSourcesPanel" style="background:var(--card);border:1px solid var(--bdr2);border-radius:16px;padding:20px;margin-top:18px;display:none;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;flex-wrap:wrap;gap:8px;">
+        <h3 style="font-family:var(--fd);font-size:18px;font-weight:700;color:var(--gold-l);margin:0;">📋 Question Sources</h3>
+        <button class="btn-og" onclick="loadAdminSources()" style="font-size:11px;">↺ Refresh</button>
+      </div>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.55;">Enable or disable past bar batches globally. Disabled batches are excluded from all Mock Bar sessions.</p>
+      <div id="adminSourcesList"></div>
+    </div>
+
   </div>
 </div>
 </div>
@@ -2008,10 +2028,12 @@ function autoUnlockAdminUI() {
   document.getElementById('adminUserPanel').style.display      = 'block';
   document.getElementById('adminResultsPanel').style.display   = 'block';
   document.getElementById('adminQuestionsPanel').style.display = 'block';
+  document.getElementById('adminSourcesPanel').style.display   = 'block';
   loadAdminUsers();
   loadAdminResults();
   loadAdminQuestions();
   loadSyllabusBuilder();
+  loadAdminSources();
   fetch('/api/settings').then(r => r.json()).then(s => {
     const btn = document.getElementById('regToggleBtn');
     if (btn) btn.textContent = s.registrationOpen ? 'Close Registration' : 'Open Registration';
@@ -2240,7 +2262,6 @@ async function renderMockBarTab(subj, container) {
           ${timeOpts.map(([m,l])=>`<button class="mb-preset-btn${mbTimeMins===m?' active':''}" onclick="stSetMbTime(${m},this)">${l}</button>`).join('')}
         </div>
       </div>
-      ${renderSourcesSection(subj)}
       <div class="mb-setup-card">
         <div class="mb-section-label">Difficulty Preference</div>
         <div class="mb-btn-row" id="stMbDiffRow">
@@ -2274,191 +2295,32 @@ function stSetMbDiff(diff, btn) {
   if (btn) btn.classList.add('active');
 }
 
-// ── SOURCE PICKER ────────────────────────────────────────────
-// Builds the sources section HTML and initialises window.mockSources
-// subj = null/'all' → show all uploaded materials; specific key → filter to that subject only
-function renderSourcesSection(subj) {
-  window.mockSources = {};
-  const isAll = !subj || subj === 'all';
-  const subjPastBar = isAll
-    ? (KB.pastBar || [])
-    : (KB.pastBar || []).filter(pb => pb.subject === subj);
-
-  // Populate state — uploaded files only, no pregen/AI
-  subjPastBar.forEach(pb => {
-    window.mockSources[pb.id] = { type:'pastbar', id:pb.id, name:pb.name, subject:pb.subject, year:pb.year, count:pb.qCount||0, selected:true };
-  });
-
-  const makeItem = (id, icon, name, meta, checked) =>
-    `<div class="source-item${checked?' source-checked':''}" id="source-item-${id}" onclick="toggleSource('${id}',event)" style="cursor:pointer;">
-      <div class="source-check-icon" style="pointer-events:none;">${checked?'☑':'☐'}</div>
-      <div class="source-item-info" style="pointer-events:none;">
-        <div class="source-item-name">${icon} ${h(name)}</div>
-        <div class="source-item-meta">${meta}</div>
-      </div>
-    </div>`;
-
-  let html = `<div class="mb-setup-card">
-    <div class="mb-section-label">Question Sources</div>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">Select which uploaded materials to draw questions from.</div>`;
-
-  if (subjPastBar.length > 0) {
-    html += `<div class="sources-group-label">Uploaded Exam Materials</div>`;
-    subjPastBar.forEach(pb => {
-      const meta = `${h(pb.subject)}${pb.year?' · '+pb.year:''} · <strong>${pb.qCount||0} questions</strong>`;
-      html += makeItem(pb.id, '📜', pb.name, meta, true);
-    });
-  } else {
-    html += `<div style="text-align:center;padding:24px 12px;color:var(--muted);font-size:13px;line-height:1.7;">
-      <div style="font-size:32px;margin-bottom:10px;">📂</div>
-      No materials uploaded${isAll ? '' : ' for this subject'} yet.<br>
-      Go to <button class="source-ctrl-btn" onclick="navToAdmin()" style="vertical-align:middle;">⚙️ Admin</button> to upload past bar questions or reference materials.
-    </div>`;
-  }
-
-  if (subjPastBar.length > 1) {
-    html += `<div style="display:flex;gap:8px;margin-top:12px;">
-      <button class="source-ctrl-btn" onclick="selectAllSources(true)">✓ Select All</button>
-      <button class="source-ctrl-btn" onclick="selectAllSources(false)">✗ Deselect All</button>
-    </div>`;
-  }
-
-  html += `</div>`;
-  return html;
-}
-
-function toggleSource(id, event) {
-  if (event) event.stopPropagation();
-  if (!window.mockSources?.[id]) return;
-  window.mockSources[id].selected = !window.mockSources[id].selected;
-  // Update just this item's visual state
-  const itemEl = document.getElementById('source-item-' + id);
-  if (itemEl) {
-    const isSelected = window.mockSources[id].selected;
-    const icon = itemEl.querySelector('.source-check-icon');
-    if (isSelected) {
-      itemEl.classList.add('source-checked');
-      if (icon) icon.textContent = '☑';
-    } else {
-      itemEl.classList.remove('source-checked');
-      if (icon) icon.textContent = '☐';
-    }
-    // Brief flash to confirm click registered
-    itemEl.style.transition = 'none';
-    itemEl.style.opacity = '0.55';
-    requestAnimationFrame(() => {
-      itemEl.style.transition = 'background .18s,border-color .18s,transform .15s,opacity .18s';
-      itemEl.style.opacity = '1';
-    });
-  }
-  enforceMinOneSource();
-  updateMockPreview();
-}
-
-function enforceMinOneSource() {
-  const sources = Object.values(window.mockSources || {});
-  if (sources.filter(s => s.selected).length === 0) {
-    // Auto-reselect the last source in the list
-    const last = sources[sources.length - 1];
-    if (last) {
-      last.selected = true;
-      const itemEl = document.getElementById('source-item-' + last.id);
-      if (itemEl) {
-        itemEl.classList.add('source-checked');
-        const icon = itemEl.querySelector('.source-check-icon');
-        if (icon) icon.textContent = '☑';
-      }
-      showSourceWarning('At least one source must remain selected.');
-    }
-  }
-}
-
-function showSourceWarning(msg) {
-  let warn = document.getElementById('source-min-warning');
-  if (!warn) {
-    warn = document.createElement('div');
-    warn.id = 'source-min-warning';
-    warn.style.cssText = 'font-size:12px;color:var(--og);padding:6px 10px;background:rgba(232,144,74,.1);border:1px solid rgba(232,144,74,.25);border-radius:8px;margin-top:8px;display:flex;align-items:center;gap:6px;';
-    const srcSection = document.getElementById('mbSourcesList') || document.querySelector('.mb-setup-card');
-    if (srcSection) srcSection.appendChild(warn);
-  }
-  warn.innerHTML = '⚠️ ' + msg;
-  warn.style.display = 'flex';
-  clearTimeout(warn._t);
-  warn._t = setTimeout(() => { if (warn) warn.style.display = 'none'; }, 2500);
-}
-
-function selectAllSources(val) {
-  if (!window.mockSources) return;
-  const keys = Object.keys(window.mockSources);
-  if (!val && keys.length === 1) {
-    showSourceWarning('Cannot deselect — at least one source must remain selected.');
-    return;
-  }
-  keys.forEach((id, idx) => {
-    // When deselecting all, keep the first source selected
-    const newVal = val ? true : (idx === 0 ? true : false);
-    window.mockSources[id].selected = newVal;
-    const itemEl = document.getElementById('source-item-' + id);
-    if (itemEl) {
-      const icon = itemEl.querySelector('.source-check-icon');
-      if (newVal) { itemEl.classList.add('source-checked'); if (icon) icon.textContent = '☑'; }
-      else { itemEl.classList.remove('source-checked'); if (icon) icon.textContent = '☐'; }
-    }
-  });
-  if (!val && keys.length > 1) {
-    const kept = window.mockSources[keys[0]];
-    showSourceWarning('"' + (kept?.name?.slice(0,30) || '') + (kept?.name?.length > 30 ? '…' : '') + '" kept — at least one required.');
-  }
-  updateMockPreview();
-}
-
-function updateSourcesDisplay() {
-  if (!window.mockSources) return;
-  Object.keys(window.mockSources).forEach(id => {
-    const src  = window.mockSources[id];
-    const item = document.getElementById('source-item-' + id);
-    const icon = item?.querySelector('.source-check-icon');
-    if (!item) return;
-    item.classList.toggle('source-checked', src.selected);
-    if (icon) icon.textContent = src.selected ? '☑' : '☐';
-  });
-}
-
 function updateMockPreview() {
-  const sel   = Object.values(window.mockSources || {}).filter(s => s.selected);
-  const avail = sel.reduce((a,s) => a + (s.count||0), 0);
-  const want  = mbCount || 5;
-  let text;
-  if (sel.length === 0) {
-    text = '⚠️ No sources selected. Select at least one source to begin.';
-  } else if (avail === 0) {
-    text = '⚠️ Selected sources have 0 questions available.';
-  } else if (avail < want) {
-    text = `⚠️ Only ${avail} question${avail!==1?'s':''} available — will draw ${avail}.`;
-  } else {
-    text = `✓ ${avail} questions available from ${sel.length} source${sel.length!==1?'s':''} · Will draw ${want}`;
-  }
-  // Update whichever preview element exists (subject-page or all-subjects mockbar page)
+  const subjects = getMbSubjects();
+  const isAll = subjects.includes('all');
+  const avail = (KB.pastBar || [])
+    .filter(pb => pb.enabled !== false && (isAll || subjects.includes(pb.subject)))
+    .reduce((a, pb) => a + (pb.qCount || 0), 0);
+  const want = mbCount || 5;
+  const text = avail === 0
+    ? '⚠️ No questions available for the selected subjects.'
+    : avail < want
+      ? `⚠️ Only ${avail} question${avail!==1?'s':''} available — will draw ${avail}.`
+      : `✓ ${avail} questions available · Will draw ${want}`;
   const prev = document.getElementById('mockbar-preview') || document.getElementById('mbPreview');
   if (prev) prev.textContent = text;
-  // Update whichever start button exists
   const btn = document.getElementById('stStartMockBtn') || document.getElementById('startMockBtn');
-  if (btn) { const off = sel.length === 0 || avail === 0; btn.disabled = off; btn.style.opacity = off ? '0.4' : '1'; }
+  if (btn) { btn.disabled = avail === 0; btn.style.opacity = avail === 0 ? '0.4' : '1'; }
 }
 
 async function startSubjectMockBar(subj) {
   const btn = document.getElementById('stStartMockBtn');
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Preparing…'; }
-  const sel          = Object.values(window.mockSources || {}).filter(s => s.selected && s.type === 'pastbar');
-  const pastBarIds   = sel.map(s => s.id);
-  const totalAvail   = sel.reduce((a,s) => a + (s.count||0), 0);
-  const actualCount  = totalAvail > 0 ? Math.min(mbCount, totalAvail) : mbCount;
   try {
     const r = await fetch('/api/mockbar/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ subjects: [subj], count: actualCount, pastBarIds, includePreGen: false, aiGenerate: false, difficulty: mbDifficulty, timeMins: mbTimeMins || 0 }),
+      body: JSON.stringify({ subjects: [subj], count: mbCount, includePreGen: false, aiGenerate: false, difficulty: mbDifficulty, timeMins: mbTimeMins || 0 }),
     });
     const d = await r.json();
     if (d.error) throw new Error(d.error);
@@ -3593,18 +3455,7 @@ async function startMockBar(){
   // Determine subject scope: forced subject (custom/single) or multi-subject selection
   const forcedSubj = document.getElementById('mbSubjectFilterCard')?.dataset.forcedSubj;
   const subjects = forcedSubj ? [forcedSubj] : getMbSubjects();
-  // Use only selected uploaded-file sources — no pregen, no AI
-  const sel = Object.values(window.mockSources || {}).filter(s => s.selected && s.type === 'pastbar');
-  const pastBarIds = sel.map(s => s.id);
-  const totalAvail = sel.reduce((a,s) => a + (s.count||0), 0);
-  const actualCount = totalAvail > 0 ? Math.min(count, totalAvail) : count;
-  if (pastBarIds.length === 0) {
-    const errEl = document.getElementById('mockStartError');
-    errEl.textContent = '⚠️ No sources selected. Please select at least one uploaded material.';
-    errEl.style.display = 'block';
-    return;
-  }
-  console.log('Starting mock bar:', {actualCount, subjects, pastBarIds, mbDifficulty});
+  console.log('Starting mock bar:', {count, subjects, mbDifficulty});
   mockSubjectsUsed = subjects; mockSessionDate = new Date(); mockScores = []; window.mockStartTime = Date.now();
   const btn = document.getElementById('startMockBtn');
   btn.disabled=true; btn.textContent='⏳ Building question set…';
@@ -3612,7 +3463,7 @@ async function startMockBar(){
   document.getElementById('mbWarnBanner').style.display='none';
   try{
     const r = await fetch('/api/mockbar/generate',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({subjects, count:actualCount, pastBarIds, includePreGen:false, aiGenerate:false, difficulty:mbDifficulty})});
+      body:JSON.stringify({subjects, count, includePreGen:false, aiGenerate:false, difficulty:mbDifficulty})});
     const data = await r.json(); if(data.error) throw new Error(data.error);
     if (data.warning) {
       const wb = document.getElementById('mbWarnBanner');
@@ -4327,7 +4178,8 @@ async function unlockAdmin(){
     document.getElementById('adminUserPanel').style.display='block';
     document.getElementById('adminResultsPanel').style.display='block';
     document.getElementById('adminQuestionsPanel').style.display='block';
-    loadAdminUsers();loadAdminResults();loadAdminQuestions();loadSyllabusBuilder();
+    document.getElementById('adminSourcesPanel').style.display='block';
+    loadAdminUsers();loadAdminResults();loadAdminQuestions();loadSyllabusBuilder();loadAdminSources();
     // Update registration toggle label
     fetch('/api/settings').then(r=>r.json()).then(s=>{
       const btn=document.getElementById('regToggleBtn');
@@ -5005,6 +4857,44 @@ async function loadAdminResults() {
       </div>`;
     }).join('');
   } catch(e) { el.innerHTML = '<div style="font-size:12px;color:#e07080;">Failed to load results.</div>'; }
+}
+
+// ── Admin Question Sources ────────────────────────────────────
+async function loadAdminSources() {
+  const el = document.getElementById('adminSourcesList');
+  if (!el) return;
+  el.innerHTML = '<div style="font-size:12px;color:var(--muted);">Loading…</div>';
+  try {
+    const r = await adminFetch('/api/kb');
+    const d = await r.json();
+    const batches = d.pastBar || [];
+    if (!batches.length) { el.innerHTML = '<div style="font-size:12px;color:var(--muted);">No past bar batches uploaded yet.</div>'; return; }
+    el.innerHTML = batches.map(pb => {
+      const enabled = pb.enabled !== false;
+      return `<div class="source-row ${enabled ? 'enabled' : 'disabled'}" id="src-row-${pb.id}">
+        <div class="source-info">
+          <div class="source-name">${h(pb.name || pb.label || pb.id)}</div>
+          <div class="source-meta">${pb.qCount || 0} questions · ${pb.subject || 'all subjects'}</div>
+        </div>
+        <button class="toggle-btn ${enabled ? 'btn-disable' : 'btn-enable'}" onclick="toggleBatchSource('${pb.id}', ${!enabled})">
+          ${enabled ? 'Disable' : 'Enable'}
+        </button>
+      </div>`;
+    }).join('');
+  } catch(e) { el.innerHTML = `<div style="font-size:12px;color:#e07080;">Failed to load sources: ${e.message}</div>`; }
+}
+
+async function toggleBatchSource(id, enable) {
+  try {
+    const r = await adminFetch(`/api/admin/pastbar/${id}/toggle`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: enable }) });
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    // Update KB cache
+    const entry = (KB.pastBar || []).find(p => p.id === id);
+    if (entry) entry.enabled = d.enabled;
+    // Refresh the list
+    loadAdminSources();
+  } catch(e) { alert('Error: ' + e.message); }
 }
 
 // ── Admin Questions Bank ─────────────────────────────────────

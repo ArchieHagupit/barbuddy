@@ -100,17 +100,25 @@ function mapQRow(q) {
 
 async function getQuestionsForSubject(subject, limit = 400) {
   const { data, error } = await supabase
-    .from('questions').select('*').eq('subject', subject);
+    .from('questions')
+    .select('*, batch_info:past_bar!batch_id(enabled)')
+    .eq('subject', subject);
   if (error || !data || data.length === 0) return null; // null = fall back to KB
-  const shuffled = data.sort(() => Math.random() - 0.5);
+  const enabled = data.filter(q => q.batch_info?.enabled !== false);
+  if (enabled.length === 0) return null;
+  const shuffled = enabled.sort(() => Math.random() - 0.5);
   return shuffled.slice(0, limit).map(mapQRow);
 }
 
 async function getQuestionsForSubjects(subjects, limit = 800) {
   const { data, error } = await supabase
-    .from('questions').select('*').in('subject', subjects);
+    .from('questions')
+    .select('*, batch_info:past_bar!batch_id(enabled)')
+    .in('subject', subjects);
   if (error || !data || data.length === 0) return null; // null = fall back to KB
-  const shuffled = data.sort(() => Math.random() - 0.5);
+  const enabled = data.filter(q => q.batch_info?.enabled !== false);
+  if (enabled.length === 0) return null;
+  const shuffled = enabled.sort(() => Math.random() - 0.5);
   return shuffled.slice(0, limit).map(mapQRow);
 }
 
@@ -223,6 +231,7 @@ function mapPastBar(pb) {
     questions:  pb.questions || [],
     qCount:     pb.q_count || 0,
     uploadedAt: pb.uploaded_at,
+    enabled:    pb.enabled !== false,  // default true
   };
 }
 
@@ -963,6 +972,7 @@ app.get('/api/kb', async (_req, res) => {
     qCount: p.questions?.length || p.qCount || 0,
     source: p.source || 'upload',
     uploadedAt: p.uploadedAt,
+    enabled: p.enabled !== false,
   }));
   const totalQuestions = pastBarSummary.reduce((a,p) => a + p.qCount, 0);
 
@@ -1526,6 +1536,26 @@ ${qHtml}
   res.status(400).json({ error: 'format must be json, txt, or pdf' });
 });
 
+// ── ADMIN: Toggle past-bar batch enabled/disabled ────────────
+app.patch('/api/admin/pastbar/:id/toggle', adminOnly, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const enabled = !!req.body.enabled;
+    const { data, error } = await supabase
+      .from('past_bar')
+      .update({ enabled })
+      .eq('id', id)
+      .select()
+      .single();
+    if (error) throw error;
+    // Update in-memory KB cache
+    const entry = KB.pastBar.find(p => p.id === id);
+    if (entry) entry.enabled = enabled;
+    console.log(`Batch ${id} ${enabled ? 'enabled' : 'disabled'}`);
+    res.json({ success: true, id, enabled: data.enabled });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── ADMIN: Past Bar extraction status (legacy) ───────────────
 app.get('/api/admin/pastbar/:id/status', adminOnly, (req, res) => {
   const entry = KB.pastBar.find(p => p.id === req.params.id);
@@ -1791,7 +1821,6 @@ Output ONLY a valid JSON array. Start with [ and end with ]. No markdown, no pre
 async function generateMockBar(subjects, count, options = {}) {
   const {
     sources      = { pastBar: true, preGen: false, aiGenerate: false },
-    pastBarIds   = [],       // specific past bar file IDs to include; empty = all matching subjects
     includePreGen = false,   // explicit boolean override; false = never use pregen
     topics       = [],       // filter preGen pool to these topic names (when non-empty)
     difficulty   = 'balanced',
@@ -1822,17 +1851,13 @@ async function generateMockBar(subjects, count, options = {}) {
     }
 
     if (dbPool && dbPool.length > 0) {
-      // Apply pastBarIds filter if specific batches were requested
-      realPool = pastBarIds?.length
-        ? dbPool.filter(q => pastBarIds.includes(q.pastBarId))
-        : dbPool;
-      console.log(`[mockbar] using questions table (${realPool.length} after filter)`);
+      realPool = dbPool; // enabled filter already applied in getQuestionsForSubject(s)
+      console.log(`[mockbar] using questions table (${realPool.length} questions from enabled batches)`);
     } else {
-      // Fall back to in-memory KB
+      // Fall back to in-memory KB — only use enabled batches
       KB.pastBar.forEach(pb => {
         const subjMatch = !subjects || subjects.includes('all') || subjects.includes(pb.subject);
-        const idMatch   = !pastBarIds?.length || pastBarIds.includes(pb.id);
-        if (subjMatch && idMatch) {
+        if (subjMatch && pb.enabled !== false) {
           (pb.questions || []).forEach(q => {
             realPool.push({
               q: q.q,
@@ -1954,12 +1979,12 @@ async function generateMockBar(subjects, count, options = {}) {
 // ── MOCK BAR GENERATOR ──────────────────────────────────────
 app.post('/api/mockbar/generate', async (req, res) => {
   if (!API_KEY) return res.status(500).json({ error:'API key not set' });
-  const { subjects, count=20, sources, pastBarIds, includePreGen, aiGenerate, topics, difficulty } = req.body;
+  const { subjects, count=20, sources, includePreGen, aiGenerate, topics, difficulty } = req.body;
   console.log(`[mockbar] requested: ${count} questions, subjects: ${JSON.stringify(subjects)}`);
   // Merge explicit top-level aiGenerate flag into sources object (new UI sends it at top level)
   const mergedSources = aiGenerate !== undefined ? { ...sources, aiGenerate } : sources;
   try {
-    const result = await generateMockBar(subjects, count, { sources: mergedSources, pastBarIds, includePreGen: includePreGen ?? null, topics, difficulty });
+    const result = await generateMockBar(subjects, count, { sources: mergedSources, includePreGen: includePreGen ?? null, topics, difficulty });
     res.json(result);
   } catch(err) {
     console.error('[mockbar] error:', err.message);
