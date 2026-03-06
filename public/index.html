@@ -542,6 +542,8 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .q-marker{width:26px;height:26px;border-radius:6px;border:1px solid var(--bdr2);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;cursor:pointer;transition:all .18s;color:var(--muted);}
 .q-marker.done{background:rgba(255,140,66,.15);border-color:rgba(255,140,66,.4);color:#ff8c42;}
 .q-marker.current{background:rgba(255,140,66,.25);border-color:#ff8c42;color:#ff8c42;}
+.q-marker.flagged{background:rgba(249,115,22,.2);border-color:#fb923c;color:#fb923c;}
+.exam-highlight{border-radius:3px;padding:0 2px;cursor:pointer;}
 /* EVAL PROGRESS SCREEN */
 #eval-progress-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;gap:16px;text-align:center;padding:40px 20px;}
 .eval-icon{font-size:3rem;animation:evalPulse 2s infinite;}
@@ -1026,8 +1028,9 @@ select.form-input{cursor:pointer;}
       <div class="ms-timer" id="ms-timer" style="display:none;">⏱ <span id="timer-val"></span></div>
       <div style="display:flex;align-items:center;gap:8px;">
         <span id="exam-save-indicator" style="font-size:11px;font-family:var(--fm);color:var(--muted);opacity:0;transition:opacity .3s;">✓ Saved</span>
+        <button id="flag-btn" onclick="toggleFlagQuestion()" style="padding:5px 10px;font-size:11px;border:1px solid #2a3347;background:transparent;color:#888;border-radius:7px;cursor:pointer;display:flex;align-items:center;gap:4px;" title="Flag for review">🚩 Flag</button>
         <button onclick="confirmAbandonExam()" style="padding:5px 10px;font-size:11px;border:1px solid var(--bdr);background:transparent;color:var(--muted);border-radius:7px;cursor:pointer;">Exit</button>
-        <button class="btn-og" onclick="endMockSession()" style="font-size:11px;border-color:rgba(255,140,66,.4);color:#ff8c42;">End &amp; Score</button>
+        <button class="btn-og" onclick="checkFlaggedBeforeSubmit()" style="font-size:11px;border-color:rgba(255,140,66,.4);color:#ff8c42;">End &amp; Score</button>
       </div>
     </div>
     <div class="q-markers" id="qMarkers"></div>
@@ -1674,6 +1677,10 @@ async function resumeExamSession(sessionArg) {
         || '';
   });
 
+  // ── Restore highlights and flags ────────────────────────────
+  window.examHighlights = session.highlights || {};
+  window.flaggedQuestions = session.flagged?.length ? new Set(session.flagged) : new Set();
+
   // ── Render exam UI ─────────────────────────────────────────
   showPage('mockbar');
   clearSidebarActive();
@@ -1681,7 +1688,7 @@ async function resumeExamSession(sessionArg) {
   document.getElementById('mockResults').style.display = 'none';
   document.getElementById('mockSession').classList.add('on');
   document.getElementById('ms-of').textContent = `of ${mockQs.length}`;
-  document.getElementById('qMarkers').innerHTML = mockQs.map((_,i) => `<div class="q-marker" id="qm${i}" onclick="jumpMock(${i})">${i+1}</div>`).join('');
+  renderQMarkers();
   if (mockTimeLimitSecs > 0) { document.getElementById('ms-timer').style.display = 'flex'; runTimer(); }
   else document.getElementById('ms-timer').style.display = 'none';
 
@@ -3550,6 +3557,8 @@ function startMockSession(questions, timeMin, subjectKey) {
   mockQs = questions; mockIdx = 0; mockAnswers = Array(mockQs.length).fill('');
   mockScores = []; mockSubjectsUsed = []; mockSessionDate = new Date().toISOString();
   mockTimeLimitSecs = timeMin > 0 ? timeMin * 60 : 0;
+  window.examHighlights = {};
+  window.flaggedQuestions = new Set();
   // Navigate to the mock bar page to show the session UI
   showPage('mockbar');
   clearSidebarActive();
@@ -3557,7 +3566,7 @@ function startMockSession(questions, timeMin, subjectKey) {
   document.getElementById('mockResults').style.display = 'none';
   document.getElementById('mockSession').classList.add('on');
   document.getElementById('ms-of').textContent = `of ${mockQs.length}`;
-  document.getElementById('qMarkers').innerHTML = mockQs.map((_,i) => `<div class="q-marker" id="qm${i}" onclick="jumpMock(${i})">${i+1}</div>`).join('');
+  renderQMarkers();
   if (mockTimeLimitSecs > 0) { mockLeft = mockTimeLimitSecs; document.getElementById('ms-timer').style.display = 'flex'; runTimer(); }
   else document.getElementById('ms-timer').style.display = 'none';
   renderMockQ();
@@ -3633,25 +3642,31 @@ function renderMockQ(){
       ?`<span class="ms-source">📚 Pre-generated</span>`
       :`<span class="ms-source">🤖 AI Generated</span>`;
   document.querySelectorAll('.q-marker').forEach((m,i)=>{
-    m.className='q-marker'+(mockAnswers[i]?.trim()?' done':'')+(i===mockIdx?' current':'');
+    const flagged=window.flaggedQuestions?.has(i);
+    m.className='q-marker'+(mockAnswers[i]?.trim()?' done':'')+(i===mockIdx?' current':'')+(flagged?' flagged':'');
+    m.innerHTML=(i+1)+(flagged?'<span style="font-size:8px;margin-left:1px;">🚩</span>':'');
   });
   const qText = q.prompt || q.q || '';
   const isSituational = (q.type === 'situational') && q.context && q.context.trim();
   document.getElementById('mockQArea').innerHTML=`
     <div style="display:flex;gap:7px;margin-bottom:18px;flex-wrap:wrap;"><span class="sbg ${sub.cls}">${h(sub.name)}</span><span class="tag tg-e">Bar Essay</span></div>
+    <div id="exam-content">
     ${isSituational
       ? `<div class="facts-box"><div class="facts-label">📋 Facts</div><div class="facts-text">${h(q.context)}</div></div>
          <div class="question-label">❓ Question</div>
          <div class="question-text">${h(qText)}</div>`
       : `<div class="question-text" style="font-size:17px;">${h(qText)}</div>`
     }
+    </div>
     <div style="font-size:11px;color:var(--muted);margin:8px 0 10px;">Write a complete bar exam answer. Navigate freely between questions before submitting.</div>
     <textarea class="essay-box" id="mockBox" style="min-height:220px;" placeholder="Write your answer…" oninput="saveMock()">${h(mockAnswers[mockIdx]||'')}</textarea>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;">
       <button class="btn-ghost" onclick="moveMock(-1)" ${mockIdx===0?'disabled':''}>← Prev</button>
       <span style="font-size:12px;color:var(--muted);font-family:var(--fm);">${mockAnswers.filter(a=>a?.trim()).length}/${mockQs.length} answered</span>
-      ${mockIdx<mockQs.length-1?`<button class="btn-gold" onclick="moveMock(1)">Next →</button>`:`<button class="btn-mock" onclick="endMockSession()">Submit All &amp; Score</button>`}
+      ${mockIdx<mockQs.length-1?`<button class="btn-gold" onclick="moveMock(1)">Next →</button>`:`<button class="btn-mock" onclick="checkFlaggedBeforeSubmit()">Submit All &amp; Score</button>`}
     </div>`;
+  updateFlagButton(mockIdx);
+  restoreHighlightsForQuestion(mockIdx);
 }
 function saveMock(){
   const val = document.getElementById('mockBox')?.value || '';
@@ -5785,6 +5800,219 @@ document.addEventListener('keydown', e => {
 document.getElementById('cpOverlay')?.addEventListener('click', e => {
   if (e.target.id === 'cpOverlay') closeModal('cpOverlay');
 });
+
+// ══════════════════════════════════════════════════════════════
+// MOCK BAR — Q-MARKER RENDERER (flag-aware)
+// ══════════════════════════════════════════════════════════════
+function renderQMarkers() {
+  const el = document.getElementById('qMarkers');
+  if (!el) return;
+  el.innerHTML = mockQs.map((_,i) => {
+    const flagged = window.flaggedQuestions?.has(i);
+    const done    = mockAnswers[i]?.trim();
+    const current = i === mockIdx;
+    const cls = 'q-marker'+(done?' done':'')+(current?' current':'')+(flagged?' flagged':'');
+    return `<div class="${cls}" id="qm${i}" onclick="jumpMock(${i})">${i+1}${flagged?'<span style="font-size:8px;margin-left:1px;">🚩</span>':''}</div>`;
+  }).join('');
+}
+
+// ══════════════════════════════════════════════════════════════
+// FEATURE 1 — TEXT HIGHLIGHTING
+// ══════════════════════════════════════════════════════════════
+(function initHighlighting() {
+  // Show toolbar on text selection within exam-content
+  document.addEventListener('mouseup', (e) => {
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed || !selection.toString().trim()) {
+      hideHighlightToolbar(); return;
+    }
+    const examContent = document.getElementById('exam-content');
+    if (!examContent?.contains(selection.anchorNode)) {
+      hideHighlightToolbar(); return;
+    }
+    const range = selection.getRangeAt(0);
+    const rect  = range.getBoundingClientRect();
+    const toolbar = document.getElementById('highlight-toolbar');
+    if (!toolbar) return;
+    toolbar.style.display = 'flex';
+    toolbar.style.left = Math.min(rect.left + window.scrollX, window.innerWidth - 230) + 'px';
+    toolbar.style.top  = (rect.top + window.scrollY - 48) + 'px';
+    document.getElementById('hl-remove-btn').style.display = 'none';
+    window._pendingSelection = range.cloneRange();
+  });
+
+  // Color button clicks
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('.hl-color-btn');
+    if (!btn) return;
+    e.stopPropagation();
+    applyHighlight(btn.dataset.color);
+    hideHighlightToolbar();
+  });
+
+  // Remove button click
+  document.getElementById('hl-remove-btn')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (window._highlightToRemove) {
+      const hl = window._highlightToRemove;
+      hl.outerHTML = hl.innerHTML;
+      window._highlightToRemove = null;
+      saveHighlightsForCurrentQuestion();
+    }
+    hideHighlightToolbar();
+  });
+
+  // Hide toolbar on mousedown outside it
+  document.addEventListener('mousedown', (e) => {
+    if (!e.target.closest('#highlight-toolbar')) hideHighlightToolbar();
+  });
+
+  // Right-click on existing highlight to show remove option
+  document.addEventListener('contextmenu', (e) => {
+    const hl = e.target.closest('.exam-highlight');
+    if (!hl) return;
+    e.preventDefault();
+    const rect = hl.getBoundingClientRect();
+    const toolbar = document.getElementById('highlight-toolbar');
+    if (!toolbar) return;
+    toolbar.style.display = 'flex';
+    toolbar.style.left = Math.min(rect.left + window.scrollX, window.innerWidth - 230) + 'px';
+    toolbar.style.top  = (rect.top + window.scrollY - 48) + 'px';
+    document.getElementById('hl-remove-btn').style.display = 'inline-block';
+    window._highlightToRemove = hl;
+    window._pendingSelection = null;
+  });
+})();
+
+function applyHighlight(color) {
+  const range = window._pendingSelection;
+  if (!range) return;
+  const span = document.createElement('span');
+  span.className = 'exam-highlight';
+  span.dataset.color = color;
+  span.style.backgroundColor = color;
+  span.style.color = '#111';
+  span.title = 'Right-click to remove';
+  try {
+    range.surroundContents(span);
+  } catch(e) {
+    // Partial selection across nodes — extract and wrap
+    const fragment = range.extractContents();
+    span.appendChild(fragment);
+    range.insertNode(span);
+  }
+  saveHighlightsForCurrentQuestion();
+  window._pendingSelection = null;
+  window.getSelection()?.removeAllRanges();
+}
+
+function hideHighlightToolbar() {
+  const t = document.getElementById('highlight-toolbar');
+  if (t) t.style.display = 'none';
+}
+
+function saveHighlightsForCurrentQuestion() {
+  const container = document.getElementById('exam-content');
+  if (!container) return;
+  if (!window.examHighlights) window.examHighlights = {};
+  window.examHighlights[mockIdx] = container.innerHTML;
+  if (window.activeExamSession) {
+    window.activeExamSession.highlights = window.examHighlights;
+    ExamSession.saveLocal(window.activeExamSession);
+  }
+}
+
+function restoreHighlightsForQuestion(idx) {
+  if (!window.examHighlights?.[idx]) return;
+  const container = document.getElementById('exam-content');
+  if (!container) return;
+  container.innerHTML = window.examHighlights[idx];
+}
+
+// ══════════════════════════════════════════════════════════════
+// FEATURE 2 — FLAG QUESTION FOR REVIEW
+// ══════════════════════════════════════════════════════════════
+function toggleFlagQuestion() {
+  const idx = mockIdx;
+  if (!window.flaggedQuestions) window.flaggedQuestions = new Set();
+  if (window.flaggedQuestions.has(idx)) {
+    window.flaggedQuestions.delete(idx);
+  } else {
+    window.flaggedQuestions.add(idx);
+  }
+  updateFlagButton(idx);
+  // Update just this marker without full re-render
+  const marker = document.getElementById('qm' + idx);
+  if (marker) {
+    const flagged = window.flaggedQuestions.has(idx);
+    const done    = mockAnswers[idx]?.trim();
+    marker.className = 'q-marker'+(done?' done':'')+(idx===mockIdx?' current':'')+(flagged?' flagged':'');
+    marker.innerHTML = (idx+1)+(flagged?'<span style="font-size:8px;margin-left:1px;">🚩</span>':'');
+  }
+  if (window.activeExamSession) {
+    window.activeExamSession.flagged = Array.from(window.flaggedQuestions);
+    ExamSession.saveLocal(window.activeExamSession);
+  }
+}
+
+function updateFlagButton(idx) {
+  const btn = document.getElementById('flag-btn');
+  if (!btn) return;
+  const isFlagged = window.flaggedQuestions?.has(idx);
+  if (isFlagged) {
+    btn.style.background   = 'rgba(249,115,22,0.15)';
+    btn.style.color        = '#fb923c';
+    btn.style.borderColor  = 'rgba(249,115,22,0.4)';
+    btn.innerHTML = '🚩 Flagged';
+  } else {
+    btn.style.background   = 'transparent';
+    btn.style.color        = '#888';
+    btn.style.borderColor  = '#2a3347';
+    btn.innerHTML = '🚩 Flag';
+  }
+}
+
+function checkFlaggedBeforeSubmit() {
+  const flagged = window.flaggedQuestions;
+  if (!flagged || flagged.size === 0) { endMockSession(); return; }
+  const flaggedList = Array.from(flagged).sort((a,b) => a-b);
+  const modal = document.createElement('div');
+  modal.id = 'flagged-review-modal';
+  modal.innerHTML = `
+  <div style="position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:10000;display:flex;align-items:center;justify-content:center;padding:20px;">
+    <div style="background:#0f1923;border:1px solid #2a3347;border-radius:16px;padding:28px;max-width:480px;width:100%;max-height:80vh;overflow-y:auto;">
+      <h3 style="color:#f0c040;font-size:1.2rem;margin:0 0 6px;">🚩 Flagged Questions</h3>
+      <p style="color:#888;font-size:0.85rem;margin:0 0 20px;">You flagged ${flagged.size} question${flagged.size>1?'s':''} for review. Jump to any before submitting.</p>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:24px;">
+        ${flaggedList.map(idx => {
+          const q = mockQs[idx];
+          const answered = mockAnswers[idx]?.trim()?.length > 0;
+          const qText = (q?.prompt || q?.q || 'Question '+(idx+1)).slice(0,80);
+          return `<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:#1a2235;border-radius:10px;border:1px solid #2a3347;cursor:pointer;" onclick="goToFlaggedQuestion(${idx})">
+            <div style="width:32px;height:32px;border-radius:8px;background:rgba(249,115,22,0.15);border:1px solid #fb923c;color:#fb923c;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:0.85rem;flex-shrink:0;">${idx+1}</div>
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:0.85rem;color:#ccd;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${h(qText)}…</div>
+              <div style="font-size:0.75rem;margin-top:2px;color:${answered?'#4caf50':'#f87171'};">${answered?'✅ Answered':'⚠️ Not answered'}</div>
+            </div>
+            <span style="color:#888;font-size:1.2rem;">→</span>
+          </div>`;
+        }).join('')}
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <button onclick="document.getElementById('flagged-review-modal')?.remove();endMockSession();" style="flex:1;padding:12px;background:linear-gradient(135deg,#f0c040,#d4a017);color:#1a1200;border:none;border-radius:10px;font-weight:700;cursor:pointer;font-size:0.9rem;">Submit Anyway</button>
+        <button onclick="document.getElementById('flagged-review-modal')?.remove();" style="flex:1;padding:12px;background:#1a2235;color:#ccd;border:1px solid #2a3347;border-radius:10px;font-weight:600;cursor:pointer;font-size:0.9rem;">Continue Reviewing</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.appendChild(modal);
+}
+
+function goToFlaggedQuestion(idx) {
+  document.getElementById('flagged-review-modal')?.remove();
+  saveMock();
+  mockIdx = idx;
+  renderMockQ();
+}
 </script>
 
 <!-- PER-USER TAB ACCESS MODAL -->
@@ -5816,5 +6044,16 @@ document.getElementById('cpOverlay')?.addEventListener('click', e => {
     </div>
   </div>
 </div>
+
+<!-- Highlight color picker toolbar — shown on text selection inside exam-content -->
+<div id="highlight-toolbar" style="display:none;position:fixed;z-index:9999;background:#1a2235;border:1px solid #2a3347;border-radius:8px;padding:6px 10px;box-shadow:0 4px 20px rgba(0,0,0,0.4);align-items:center;gap:6px;">
+  <span style="font-size:11px;color:#888;margin-right:2px;">Highlight:</span>
+  <button class="hl-color-btn" data-color="#ffd700" style="width:18px;height:18px;border-radius:50%;background:#ffd700;border:2px solid transparent;cursor:pointer;" title="Yellow"></button>
+  <button class="hl-color-btn" data-color="#90ee90" style="width:18px;height:18px;border-radius:50%;background:#90ee90;border:2px solid transparent;cursor:pointer;" title="Green"></button>
+  <button class="hl-color-btn" data-color="#ffb6c1" style="width:18px;height:18px;border-radius:50%;background:#ffb6c1;border:2px solid transparent;cursor:pointer;" title="Pink"></button>
+  <button class="hl-color-btn" data-color="#87ceeb" style="width:18px;height:18px;border-radius:50%;background:#87ceeb;border:2px solid transparent;cursor:pointer;" title="Blue"></button>
+  <button id="hl-remove-btn" style="display:none;margin-left:4px;padding:2px 8px;font-size:11px;background:rgba(239,68,68,0.2);color:#f87171;border:1px solid rgba(239,68,68,0.3);border-radius:6px;cursor:pointer;">Remove</button>
+</div>
+
 </body>
 </html>
