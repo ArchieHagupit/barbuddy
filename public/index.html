@@ -460,6 +460,14 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .model-answer-section{margin-bottom:2px;}
 .ma-label{color:var(--gold);font-weight:700;text-transform:uppercase;font-size:11px;letter-spacing:.08em;margin-bottom:4px;}
 .ma-text{font-size:14px;line-height:1.75;color:rgba(248,246,241,.88);margin-bottom:14px;white-space:pre-line;}
+/* ALAC model answer display */
+.alac-model-answer{border-radius:10px;overflow:hidden;border:1px solid #2a3347;}
+.alac-model-header{background:#1a2235;padding:10px 14px;font-size:.82rem;font-weight:700;color:var(--gold);letter-spacing:.5px;border-bottom:1px solid #2a3347;}
+.alac-section{padding:12px 14px;border-bottom:1px solid #1e2a3a;}
+.alac-section:last-child{border-bottom:none;}
+.alac-section-label{font-size:.72rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;}
+.alac-section-content{font-size:.88rem;color:rgba(248,246,241,.85);line-height:1.65;white-space:pre-line;}
+.plain-model-answer{font-size:.88rem;color:rgba(248,246,241,.85);line-height:1.65;white-space:pre-line;}
 .essay-box{width:100%;min-height:200px;background:var(--card3);border:1px solid var(--bdr2);border-radius:12px;padding:16px;color:var(--white);font-family:var(--fb);font-size:14px;line-height:1.75;outline:none;resize:vertical;transition:border-color .2s,box-shadow .2s;}
 .essay-box:focus{border-color:rgba(212,168,67,.4);box-shadow:0 0 0 3px rgba(212,168,67,.08);}
 .essay-box:focus{border-color:rgba(201,168,76,.4);}
@@ -3207,20 +3215,37 @@ function alacScoreCls(score, key){
   if(key==='conclusion')  return score>=1.2?'hi':score>=0.7?'mid':'lo';
   return score>=2?'hi':score>=1?'mid':'lo';
 }
-// Parse "ANSWER: ... LEGAL BASIS: ... APPLICATION: ... CONCLUSION: ..." into sections
-function renderModelAnswer(text){
+// Render model answer — ALAC-aware with colored sections, plain fallback for other types
+function renderModelAnswer(text, type){
   if(!text) return '<em style="color:#777;font-size:13px;">No model answer available for this question.</em>';
-  const markers=['ANSWER','LEGAL BASIS','APPLICATION','CONCLUSION'];
-  const hasAny=markers.some(m=>text.includes(m+':'));
-  if(!hasAny) return `<span class="alac-model">${h(text)}</span>`;
-  const positions=[];
-  markers.forEach(m=>{const idx=text.indexOf(m+':');if(idx!==-1)positions.push({label:m,idx,end:idx+m.length+1});});
-  positions.sort((a,b)=>a.idx-b.idx);
-  const parts=positions.map((p,i)=>{
-    const nextIdx=positions[i+1]?positions[i+1].idx:text.length;
-    return {label:p.label,text:text.slice(p.end,nextIdx).trim()};
+  const SECTIONS=[
+    {key:'ANSWER',      label:'A — Answer',      color:'#4a9eff', icon:'⚖️'},
+    {key:'LEGAL BASIS', label:'L — Legal Basis',  color:'#f0c040', icon:'📜'},
+    {key:'APPLICATION', label:'A — Application',  color:'#4caf50', icon:'🔍'},
+    {key:'CONCLUSION',  label:'C — Conclusion',   color:'#ff9800', icon:'✅'},
+  ];
+  const upper=text.toUpperCase();
+  const hasALAC=SECTIONS.some(s=>upper.includes(s.key+':'));
+  if(!hasALAC) return `<div class="plain-model-answer">${h(text)}</div>`;
+  // Parse each ALAC section by scanning for marker positions
+  const found=[];
+  SECTIONS.forEach(s=>{
+    const idx=upper.indexOf(s.key+':');
+    if(idx!==-1) found.push({...s,idx,end:idx+s.key.length+1});
   });
-  return parts.map(p=>`<div class="model-answer-section"><div class="ma-label">${h(p.label)}</div><div class="ma-text">${h(p.text)}</div></div>`).join('');
+  found.sort((a,b)=>a.idx-b.idx);
+  const parts=found.map((s,i)=>{
+    const nextIdx=found[i+1]?found[i+1].idx:text.length;
+    return {...s,content:text.slice(s.end,nextIdx).trim()};
+  }).filter(s=>s.content);
+  if(!parts.length) return `<div class="plain-model-answer">${h(text)}</div>`;
+  return `<div class="alac-model-answer">
+    <div class="alac-model-header">📘 Model Answer (ALAC Format)</div>
+    ${parts.map(s=>`<div class="alac-section">
+      <div class="alac-section-label" style="color:${s.color};">${s.icon} ${s.label}</div>
+      <div class="alac-section-content">${h(s.content)}</div>
+    </div>`).join('')}
+  </div>`;
 }
 function renderAlacCard(ev){
   const gc=ev.grade==='Excellent'?'#14b4a0':ev.grade==='Good'?'#50d090':ev.grade==='Satisfactory'?'#c9a84c':ev.grade==='Needs Improvement'?'#e09050':'#e07080';
@@ -3925,9 +3950,25 @@ function buildResultsHtml(){
       // Key points missed
       if(s.keyMissed?.length) card+=`<div style="background:#fff5f5;border-left:3px solid #f44336;padding:8px 12px;margin:8px 0;border-radius:4px;"><strong style="color:#c62828;font-size:12px;">❌ KEY POINTS MISSED</strong><ul style="margin:4px 0 0 0;padding-left:18px;font-size:13px;">${s.keyMissed.map(k=>`<li style="margin:2px 0;">${e(k)}</li>`).join('')}</ul></div>`;
 
-      // Model answer
+      // Model answer — render with ALAC sections if structured
       card+=`<div style="font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:.08em;color:#7a6128;margin:12px 0 5px;">MODEL ANSWER</div>`;
-      card+=`<div style="background:#f0f8f0;border:1px solid #b0d8b0;border-radius:4px;padding:10px 14px;font-size:13px;line-height:1.7;margin-bottom:10px;">${e(s.modelAnswer||'—')}</div>`;
+      (()=>{
+        const ma=s.modelAnswer||'';
+        if(!ma){card+=`<div style="background:#f0f8f0;border:1px solid #b0d8b0;border-radius:4px;padding:10px 14px;font-size:13px;line-height:1.7;margin-bottom:10px;">—</div>`;return;}
+        const PSEC=[{k:'ANSWER',l:'A — Answer'},{k:'LEGAL BASIS',l:'L — Legal Basis'},{k:'APPLICATION',l:'A — Application'},{k:'CONCLUSION',l:'C — Conclusion'}];
+        const up=ma.toUpperCase();
+        const found=PSEC.map(s=>({...s,idx:up.indexOf(s.k+':')})).filter(s=>s.idx!==-1).sort((a,b)=>a.idx-b.idx);
+        if(found.length<2){card+=`<div style="background:#f0f8f0;border:1px solid #b0d8b0;border-radius:4px;padding:10px 14px;font-size:13px;line-height:1.7;margin-bottom:10px;">${e(ma)}</div>`;return;}
+        let sec='<div class="alac-model-answer"><div class="alac-model-header">Model Answer (ALAC Format)</div>';
+        found.forEach((f,i)=>{
+          const end=f.idx+f.k.length+1;
+          const next=found[i+1]?found[i+1].idx:ma.length;
+          const content=ma.slice(end,next).trim();
+          if(content) sec+=`<div class="alac-section"><div class="alac-section-label">${f.l}</div><div class="alac-section-content">${e(content)}</div></div>`;
+        });
+        sec+='</div>';
+        card+=sec;
+      })();
 
       // Student answer
       card+=`<div style="font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:.08em;color:#7a6128;margin:12px 0 5px;">STUDENT ANSWER</div>`;
@@ -3979,6 +4020,13 @@ function printMockResults(){
     th{background:#f5efe0;color:#5a3e1b;padding:6px 8px;text-align:left;font-weight:600;border:1px solid #d0b870;}
     td{padding:5px 8px;border:1px solid #e8e0d0;vertical-align:top;}
     tr:nth-child(even) td{background:#faf7f2;}
+    .alac-model-answer{border:1px solid #d4c5a0;border-radius:6px;overflow:hidden;margin:8px 0;}
+    .alac-model-header{background:#f5f0e8;padding:6px 10px;font-size:.85rem;font-weight:700;color:#5a3e1b;border-bottom:1px solid #d4c5a0;}
+    .alac-section{padding:8px 10px;border-bottom:1px solid #e8e0d0;}
+    .alac-section:last-child{border-bottom:none;}
+    .alac-section-label{font-size:.78rem;font-weight:700;color:#5a3e1b;text-transform:uppercase;margin-bottom:4px;}
+    .alac-section-content{font-size:.88rem;color:#333;line-height:1.5;white-space:pre-line;}
+    .plain-model-answer{font-size:.88rem;color:#333;line-height:1.5;white-space:pre-line;}
   </style></head><body>${body}</body></html>`);
   w.document.close();w.focus();
   setTimeout(()=>w.print(),600);

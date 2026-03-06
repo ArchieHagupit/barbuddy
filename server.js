@@ -2278,9 +2278,44 @@ Respond ONLY with valid JSON (no markdown):
     // Fall back to stored model answer if AI omitted it
     if (!result.modelAnswer && modelAnswer) result.modelAnswer = modelAnswer;
     if (!result.keyPoints?.length && keyPoints?.length) result.keyPoints = keyPoints;
+    // Reformat plain-text model answer into ALAC for situational/essay questions
+    if ((qtype === 'situational' || qtype === 'essay') && result.modelAnswer) {
+      result.modelAnswer = await formatModelAnswerAsALAC(question, context, result.modelAnswer);
+    }
     res.json(result);
   } catch(err) { res.status(500).json({ error:err.message }); }
 });
+
+// ── ALAC model answer formatter ───────────────────────────────
+// Reformats a plain-text model answer into ALAC structure for situational questions.
+// Skips immediately if already formatted or if model answer is absent.
+async function formatModelAnswerAsALAC(question, context, modelAnswer) {
+  if (!modelAnswer) return modelAnswer;
+  const upper = modelAnswer.toUpperCase();
+  if (['ANSWER:', 'LEGAL BASIS:', 'APPLICATION:', 'CONCLUSION:'].some(kw => upper.includes(kw))) {
+    return modelAnswer; // already ALAC — no extra call needed
+  }
+  const prompt = `You are a Philippine bar exam coach. Reformat this model answer into strict ALAC format.
+
+ALAC FORMAT:
+ANSWER: [Direct yes/no ruling — 1-2 sentences]
+LEGAL BASIS: [Cite the specific law, article, provision, or case — 1-2 sentences]
+APPLICATION: [Apply the law to the specific facts of this case — 2-4 sentences]
+CONCLUSION: [Restate the final ruling — 1 sentence]
+
+Question: ${question}
+${context ? 'Facts: ' + context : ''}
+Model Answer to reformat: ${modelAnswer}
+
+Respond ONLY with raw JSON: {"alacFormatted":"ANSWER: ...\\n\\nLEGAL BASIS: ...\\n\\nAPPLICATION: ...\\n\\nCONCLUSION: ..."}`;
+  try {
+    const result = await callClaudeJSON([{ role: 'user', content: prompt }], 600);
+    if (result?.alacFormatted) return result.alacFormatted;
+  } catch(e) {
+    console.warn('[formatModelAnswerAsALAC] failed:', e.message);
+  }
+  return modelAnswer;
+}
 
 // ── callClaudeHaikuJSON — haiku-only, semaphore-guarded, for fast batch eval ─
 async function callClaudeHaikuJSON(prompt, maxTokens = 400) {
@@ -2410,6 +2445,9 @@ Respond ONLY with valid JSON: {"score":"X/10","numericScore":0,"grade":"...","al
         result.questionType = qtype;
         if (!result.modelAnswer && modelAnswer) result.modelAnswer = modelAnswer;
         if (!result.keyPoints?.length && keyPoints?.length) result.keyPoints = keyPoints;
+        if ((qtype === 'situational' || qtype === 'essay') && result.modelAnswer) {
+          result.modelAnswer = await formatModelAnswerAsALAC(question, context, result.modelAnswer);
+        }
       }
       return result || { score: '0/10', numericScore: 0, grade: 'Error', overallFeedback: 'Evaluation failed — please retry.', keyMissed: [] };
     } catch (e) {
