@@ -172,42 +172,35 @@ let TAB_SETTINGS = JSON.parse(JSON.stringify(DEFAULT_TAB_SETTINGS));
 // ── Universal JSON extractor ─────────────────────────────────
 // Claude sometimes returns plain text preambles or markdown fences.
 // Try 5 strategies in order before giving up.
-function extractJSON(raw) {
-  if (!raw || typeof raw !== 'string') return null;
+function extractJSON(text) {
+  if (!text) return null;
 
-  // Strategy 1: Direct parse (already valid JSON)
-  try { return JSON.parse(raw); } catch(_) {}
+  // Strategy 1: Already valid JSON
+  try { return JSON.parse(text.trim()); } catch(_) {}
 
-  // Strategy 2: Strip markdown code fences  ```json ... ``` or ``` ... ```
-  const fenceMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  // Strategy 2: Strip markdown code fences — handles ```json ... ``` and ``` ... ```
+  const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
   if (fenceMatch) { try { return JSON.parse(fenceMatch[1].trim()); } catch(_) {} }
 
-  // Strategy 3: Greedy-match first { ... } or [ ... ] (handles preamble text)
-  const objMatch = raw.match(/(\{[\s\S]*\})/s);
-  if (objMatch) { try { return JSON.parse(objMatch[1].trim()); } catch(_) {} }
-  const arrMatch = raw.match(/(\[[\s\S]*\])/s);
-  if (arrMatch) { try { return JSON.parse(arrMatch[1].trim()); } catch(_) {} }
-
-  // Strategy 4: Slice from first { or [ to matching last } or ]
-  const fb = raw.indexOf('{'), fk = raw.indexOf('[');
-  let si = -1;
-  if (fb !== -1 && fk !== -1) si = Math.min(fb, fk);
-  else if (fb !== -1) si = fb;
-  else if (fk !== -1) si = fk;
-  if (si !== -1) {
-    const trimmed = raw.slice(si);
-    const ei = Math.max(trimmed.lastIndexOf('}'), trimmed.lastIndexOf(']'));
-    if (ei !== -1) { try { return JSON.parse(trimmed.slice(0, ei + 1)); } catch(_) {} }
+  // Strategy 3: Find first { ... } block
+  const firstBrace = text.indexOf('{');
+  const lastBrace  = text.lastIndexOf('}');
+  if (firstBrace !== -1 && lastBrace !== -1) {
+    try { return JSON.parse(text.slice(firstBrace, lastBrace + 1)); } catch(_) {}
   }
 
-  // Strategy 5: Fix common malformed JSON (trailing commas, unquoted keys)
-  const cleaned = raw
-    .replace(/,\s*([}\]])/g, '$1')
-    .replace(/(['"])?([a-zA-Z0-9_]+)(['"])?\s*:/g, '"$2":');
-  const co = cleaned.match(/(\{[\s\S]*\})/s);
-  if (co) { try { return JSON.parse(co[1].trim()); } catch(_) {} }
+  // Strategy 4: Find [ ... ] array block
+  const firstBracket = text.indexOf('[');
+  const lastBracket  = text.lastIndexOf(']');
+  if (firstBracket !== -1 && lastBracket !== -1) {
+    try { return JSON.parse(text.slice(firstBracket, lastBracket + 1)); } catch(_) {}
+  }
 
-  console.error('[extractJSON] All strategies failed. First 500 chars:', raw.slice(0, 500));
+  // Strategy 5: Remove common prefixes/suffixes (e.g. "Here is the JSON:" or trailing prose)
+  const cleaned = text.replace(/^[^{[]*/, '').replace(/[^}\]]*$/, '').trim();
+  if (cleaned) { try { return JSON.parse(cleaned); } catch(_) {} }
+
+  console.error('[extractJSON] All strategies failed. First 200 chars:', text.slice(0, 200));
   return null;
 }
 
@@ -2268,12 +2261,13 @@ Respond ONLY with valid JSON (no markdown):
 // ── callClaudeHaikuJSON — haiku-only, semaphore-guarded, for fast batch eval ─
 async function callClaudeHaikuJSON(prompt, maxTokens = 400) {
   await aiSemaphore.acquire();
+  const JSON_SUFFIX = '\n\nRespond with ONLY raw JSON. No markdown, no code fences, no explanation before or after. Start your response with { and end with }.';
   try {
     const body = JSON.stringify({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: maxTokens,
       system: STRICT_SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: prompt }],
+      messages: [{ role: 'user', content: prompt + JSON_SUFFIX }],
     });
     for (let attempt = 1; attempt <= 3; attempt++) {
       const r = await fetch('https://api.anthropic.com/v1/messages', {
