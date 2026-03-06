@@ -2074,6 +2074,14 @@ app.post('/api/evaluate', async (req, res) => {
   const qtype = forceType || detectQuestionType(question, context, modelAnswer);
   const isSituational = qtype === 'situational' || qtype === 'essay' || qtype === 'alac';
   console.log(`[evaluate] type=${qtype} q="${(question||'').slice(0,60)}"`);
+
+  // ── Alternative answer detection ──────────────────────────
+  const alternatives    = extractAlternativeAnswers(modelAnswer);
+  const hasAlternatives = alternatives.length > 1;
+  const maSection = hasAlternatives
+    ? `SUGGESTED ANSWER HAS ${alternatives.length} VALID ALTERNATIVES — evaluate the student against whichever they most closely answered. Return "matchedAlternative" as the number (1, 2, …) of the best-matching alternative. A student who correctly answers any valid alternative deserves full credit for that approach.\n\n${alternatives.map((a, i) => `ALTERNATIVE ${i + 1}:\n${a}`).join('\n\n')}`
+    : (modelAnswer ? `Reference Answer: ${modelAnswer}` : '');
+
   let prompt, maxTok;
 
   if (isSituational) {
@@ -2083,7 +2091,7 @@ app.post('/api/evaluate', async (req, res) => {
 Keep overallFeedback under 200 words. Keep each ALAC component feedback under 50 words. Be concise and direct.
 
 Question: ${question}
-${modelAnswer?`Reference Answer: ${modelAnswer}`:''}
+${maSection}
 ${(keyPoints||[]).length?`Key Points to Check: ${keyPoints.join(', ')}`:''}
 ${refCtx?`\nLegal Reference Context:\n${refCtx}`:''}
 
@@ -2127,6 +2135,7 @@ ${GRADE_SCALE}
 Respond ONLY with valid JSON (no markdown):
 {
   "score": "X/10", "numericScore": 7, "grade": "Excellent|Good|Satisfactory|Needs Improvement|Poor",
+  "matchedAlternative": 1,
   "alac": {
     "answer":      { "score": 1.2, "max": 1.5, "feedback": "...", "studentDid": "..." },
     "legalBasis":  { "score": 2.5, "max": 3.0, "feedback": "...", "studentDid": "..." },
@@ -2146,7 +2155,7 @@ Respond ONLY with valid JSON (no markdown):
 Keep overallFeedback under 100 words and each component feedback under 50 words. Be concise and direct.
 
 Question: ${question}
-${modelAnswer?`Model Answer: ${modelAnswer}`:''}
+${maSection}
 ${(keyPoints||[]).length?`Key Points: ${keyPoints.join(', ')}`:''}
 Student Answer: ${answer}
 
@@ -2160,6 +2169,7 @@ ${GRADE_SCALE}
 Respond ONLY with valid JSON (no markdown):
 {
   "score": "X/10", "numericScore": 0, "grade": "Excellent|Good|Satisfactory|Needs Improvement|Poor",
+  "matchedAlternative": 1,
   "breakdown": {
     "accuracy":     { "score": 0.0, "max": 4, "feedback": "under 50 words" },
     "completeness": { "score": 0.0, "max": 3, "feedback": "under 50 words" },
@@ -2176,16 +2186,28 @@ Respond ONLY with valid JSON (no markdown):
     if (!result) {
       return res.status(422).json({ error:'Evaluation failed — could not parse scoring response. Please try submitting your answer again.' });
     }
-    result.format       = qtype;  // always use detected type (overrides AI-reported format)
+    result.format       = qtype;
     result.questionType = qtype;
-    // Fall back to stored model answer if AI omitted it
-    if (!result.modelAnswer && modelAnswer) result.modelAnswer = modelAnswer;
     if (!result.keyPoints?.length && keyPoints?.length) result.keyPoints = keyPoints;
+
+    // ── Apply matched alternative ──────────────────────────────
+    if (hasAlternatives) {
+      const idx = Math.max(0, Math.min((result.matchedAlternative || 1) - 1, alternatives.length - 1));
+      result.modelAnswer              = alternatives[idx];
+      result.modelAnswerOriginal      = modelAnswer;
+      result.usedAlternative          = true;
+      result.matchedAlternativeNumber = idx + 1;
+      console.log(`[evaluate] alt ${idx + 1}/${alternatives.length} selected for scoring`);
+    } else {
+      if (!result.modelAnswer && modelAnswer) result.modelAnswer = modelAnswer;
+      result.usedAlternative = false;
+    }
+
     // Generate structured ALAC model answer for situational questions
     if (isSituational && result.modelAnswer) {
       const alacResult = await generateALACModelAnswer(question, context, result.modelAnswer, subject);
       if (alacResult) {
-        result.alacModelAnswer     = alacResult.components;
+        result.alacModelAnswer      = alacResult.components;
         result.modelAnswerFormatted = alacResult.formatted;
         result.modelAnswer          = alacResult.formatted;
       }
@@ -2193,6 +2215,37 @@ Respond ONLY with valid JSON (no markdown):
     res.json(result);
   } catch(err) { res.status(500).json({ error:err.message }); }
 });
+
+// ── Alternative answer extractor ──────────────────────────────────────────────
+// Returns array of alternatives if the model answer contains multiple valid options,
+// or [modelAnswer] (single-element) if only one answer exists.
+function extractAlternativeAnswers(modelAnswer) {
+  if (!modelAnswer || modelAnswer.length < 40) return [modelAnswer];
+
+  // Pattern 1: "SUGGESTED ANSWER: ... ALTERNATIVE ANSWER: ..."
+  // Strip leading "SUGGESTED ANSWER:" then split on alternative markers
+  const stripped = modelAnswer.replace(/^suggested\s+answer\s*:?\s*/i, '');
+  const altSplitParts = stripped
+    .split(/(?:alternative\s+answer|another\s+answer|other\s+answer)\s*:?\s*/gi)
+    .map(p => p.trim()).filter(p => p.length > 20);
+  if (altSplitParts.length >= 2) return altSplitParts;
+
+  // Pattern 2: bare "alternative answer" / "another answer" markers (no preceding suggested answer)
+  const altRaw = modelAnswer
+    .split(/(?:alternative\s+answer|another\s+answer|other\s+answer)\s*:?\s*/gi)
+    .map(p => p.trim()).filter(p => p.length > 20);
+  if (altRaw.length >= 2) return altRaw;
+
+  // Pattern 3: "or alternatively" / "or in the alternative"
+  if (/\bor\s+alternatively\b|\bor\s+in\s+the\s+alternative\b/i.test(modelAnswer)) {
+    const parts = modelAnswer
+      .split(/\bor\s+alternatively\b|\bor\s+in\s+the\s+alternative\b/i)
+      .map(p => p.trim()).filter(p => p.length > 20);
+    if (parts.length >= 2) return parts;
+  }
+
+  return [modelAnswer];
+}
 
 // ── ALAC model answer generator ────────────────────────────────────────────────
 // Returns { formatted, components: {answer, legalBasis, application, conclusion} }
@@ -2336,36 +2389,55 @@ app.post('/api/evaluate-batch', requireAuth, async (req, res) => {
       const refCtx = KB.references.filter(r => r.subject === subject).slice(0, 1).map(r => r.summary || '').join('');
       const qtype = detectQuestionType(question, context, modelAnswer);
       const isSit = qtype === 'situational' || qtype === 'essay' || qtype === 'alac';
+
+      const alternatives    = extractAlternativeAnswers(modelAnswer);
+      const hasAlternatives = alternatives.length > 1;
+      const maSection = hasAlternatives
+        ? `SUGGESTED ANSWER HAS ${alternatives.length} VALID ALTERNATIVES — evaluate the student against whichever they most closely answered. Return "matchedAlternative" as the number (1, 2, …) of the best-matching alternative.\n\n${alternatives.map((a, i) => `ALTERNATIVE ${i + 1}:\n${a}`).join('\n\n')}`
+        : (modelAnswer ? `Reference Answer: ${modelAnswer}` : '');
+
       let prompt, maxTok;
 
       if (isSit) {
         maxTok = 2500;
         prompt = `You are a Philippine Bar Exam examiner. Evaluate using ALAC (Answer 1.5pts, Legal Basis 3pts, Application 4pts, Conclusion 1.5pts). Keep overallFeedback under 200 words and each component feedback under 50 words.
 Question: ${question}
-${modelAnswer ? `Reference Answer: ${modelAnswer}` : ''}
+${maSection}
 ${(keyPoints || []).length ? `Key Points: ${keyPoints.join(', ')}` : ''}
 ${refCtx ? `Legal Context: ${refCtx.slice(0, 400)}` : ''}
 Student Answer: ${answer}
 ${GRADE_SCALE}
-Respond ONLY with valid JSON: {"score":"X/10","numericScore":0,"grade":"...","alac":{"answer":{"score":0,"max":1.5,"feedback":"under 50 words","studentDid":""},"legalBasis":{"score":0,"max":3,"feedback":"under 50 words","studentDid":""},"application":{"score":0,"max":4,"feedback":"under 50 words","studentDid":""},"conclusion":{"score":0,"max":1.5,"feedback":"under 50 words","studentDid":""}},"overallFeedback":"under 200 words","strengths":[],"improvements":[],"keyMissed":[],"format":"essay"}`;
+Respond ONLY with valid JSON: {"score":"X/10","numericScore":0,"grade":"...","alac":{"answer":{"score":0,"max":1.5,"feedback":"under 50 words","studentDid":""},"legalBasis":{"score":0,"max":3,"feedback":"under 50 words","studentDid":""},"application":{"score":0,"max":4,"feedback":"under 50 words","studentDid":""},"conclusion":{"score":0,"max":1.5,"feedback":"under 50 words","studentDid":""}},"overallFeedback":"under 200 words","strengths":[],"improvements":[],"keyMissed":[],"matchedAlternative":1,"format":"essay"}`;
       } else {
         maxTok = 2500;
         prompt = `You are a Philippine Bar Exam examiner. Evaluate this conceptual/theoretical answer. Keep overallFeedback under 100 words and each component feedback under 50 words.
 Question: ${question}
-${modelAnswer ? `Model Answer: ${modelAnswer}` : ''}
+${maSection}
 ${(keyPoints || []).length ? `Key Points: ${keyPoints.join(', ')}` : ''}
 Student Answer: ${answer}
 Score: Accuracy(4pts) + Completeness(3pts) + Clarity(3pts) = 10.
 ${GRADE_SCALE}
-Respond ONLY with valid JSON: {"score":"X/10","numericScore":0,"grade":"...","breakdown":{"accuracy":{"score":0,"max":4,"feedback":"under 50 words"},"completeness":{"score":0,"max":3,"feedback":"under 50 words"},"clarity":{"score":0,"max":3,"feedback":"under 50 words"}},"overallFeedback":"under 100 words","keyMissed":[],"format":"conceptual"}`;
+Respond ONLY with valid JSON: {"score":"X/10","numericScore":0,"grade":"...","breakdown":{"accuracy":{"score":0,"max":4,"feedback":"under 50 words"},"completeness":{"score":0,"max":3,"feedback":"under 50 words"},"clarity":{"score":0,"max":3,"feedback":"under 50 words"}},"overallFeedback":"under 100 words","keyMissed":[],"matchedAlternative":1,"format":"conceptual"}`;
       }
 
       const result = await callClaudeHaikuJSON(prompt, maxTok);
       if (result) {
         result.format = qtype;
         result.questionType = qtype;
-        if (!result.modelAnswer && modelAnswer) result.modelAnswer = modelAnswer;
         if (!result.keyPoints?.length && keyPoints?.length) result.keyPoints = keyPoints;
+
+        // Resolve matched alternative
+        if (hasAlternatives) {
+          const idx = Math.max(0, Math.min((result.matchedAlternative || 1) - 1, alternatives.length - 1));
+          result.modelAnswer              = alternatives[idx];
+          result.modelAnswerOriginal      = modelAnswer;
+          result.usedAlternative          = true;
+          result.matchedAlternativeNumber = idx + 1;
+        } else {
+          if (!result.modelAnswer && modelAnswer) result.modelAnswer = modelAnswer;
+          result.usedAlternative = false;
+        }
+
         if (isSit && result.modelAnswer) {
           const alacResult = await generateALACModelAnswer(question, context, result.modelAnswer, subject);
           if (alacResult) {

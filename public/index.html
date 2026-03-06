@@ -3211,10 +3211,19 @@ function renderALACSections(components){
 // Accepts either an evaluation object or a plain string (legacy compat)
 function renderModelAnswer(evaluation, questionType){
   if(typeof evaluation==='string') evaluation={modelAnswer:evaluation};
+
+  // Alternative answer indicator
+  const altBanner = evaluation.usedAlternative
+    ? `<div style="display:flex;align-items:center;gap:8px;background:#e8f5e9;border:1px solid #81c784;border-radius:6px;padding:8px 12px;margin-bottom:10px;font-size:13px;color:#2e7d32;">
+        <span style="font-size:15px;">✅</span>
+        <span>Matched to <strong>Alternative Answer ${evaluation.matchedAlternativeNumber}</strong> — scored against this version</span>
+       </div>`
+    : '';
+
   // 1. Structured components from server
   if(evaluation.alacModelAnswer){
     const rendered=renderALACSections(evaluation.alacModelAnswer);
-    if(rendered) return rendered;
+    if(rendered) return altBanner + rendered;
   }
   // 2. Formatted ALAC string or plain modelAnswer
   const text=evaluation.modelAnswerFormatted||evaluation.modelAnswer||evaluation.correctAnswer||'';
@@ -3223,9 +3232,9 @@ function renderModelAnswer(evaluation, questionType){
   const comps=parseALACString(text);
   if(comps){
     const rendered=renderALACSections(comps);
-    if(rendered) return rendered;
+    if(rendered) return altBanner + rendered;
   }
-  return `<div class="plain-model-answer">${h(text)}</div>`;
+  return altBanner + `<div class="plain-model-answer">${h(text)}</div>`;
 }
 function renderAlacCard(ev){
   const gc=ev.grade==='Excellent'?'#14b4a0':ev.grade==='Good'?'#50d090':ev.grade==='Satisfactory'?'#c9a84c':ev.grade==='Needs Improvement'?'#e09050':'#e07080';
@@ -3932,6 +3941,7 @@ function buildResultsHtml(){
 
       // Model answer — render with ALAC sections if structured
       card+=`<div style="font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:.08em;color:#7a6128;margin:12px 0 5px;">MODEL ANSWER</div>`;
+      if(s.usedAlternative) card+=`<div style="background:#e8f5e9;border:1px solid #81c784;border-radius:4px;padding:6px 10px;margin-bottom:8px;font-size:12px;color:#2e7d32;">✅ Matched to Alternative Answer ${s.matchedAlternativeNumber} — scored against this version</div>`;
       (()=>{
         // 1. Prefer structured alacModelAnswer components
         const ac=s.alacModelAnswer;
