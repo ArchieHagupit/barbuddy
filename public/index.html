@@ -534,6 +534,16 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .q-marker{width:26px;height:26px;border-radius:6px;border:1px solid var(--bdr2);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;cursor:pointer;transition:all .18s;color:var(--muted);}
 .q-marker.done{background:rgba(255,140,66,.15);border-color:rgba(255,140,66,.4);color:#ff8c42;}
 .q-marker.current{background:rgba(255,140,66,.25);border-color:#ff8c42;color:#ff8c42;}
+/* EVAL PROGRESS SCREEN */
+#eval-progress-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;gap:16px;text-align:center;padding:40px 20px;}
+.eval-icon{font-size:3rem;animation:evalPulse 2s infinite;}
+@keyframes evalPulse{0%,100%{transform:scale(1);}50%{transform:scale(1.1);}}
+#eval-progress-screen h2{font-size:1.5rem;color:var(--gold-l);margin:0;}
+.eval-progress-bar{width:100%;max-width:400px;height:12px;background:#2a3347;border-radius:6px;overflow:hidden;}
+.eval-progress-fill{height:100%;background:linear-gradient(90deg,var(--gold),#d4a017);border-radius:6px;transition:width .5s ease;}
+.eval-stats{font-size:1.1rem;color:#aab;font-weight:500;}
+.eval-message{color:#888;font-size:.95rem;margin:0;}
+.eval-note{color:#666;font-size:.8rem;margin:0;line-height:1.6;}
 /* MOCK RESULTS */
 .mock-results{background:linear-gradient(145deg,var(--ink2),var(--ink));border:1px solid rgba(212,168,67,.2);border-radius:20px;padding:32px;text-align:center;}
 .score-display{text-align:center;padding:24px 16px;}
@@ -3621,16 +3631,68 @@ async function endMockSession(){
   const answered=mockAnswers.filter(a=>a?.trim()).length;
   const res=document.getElementById('mockResults');
   res.style.display='block';
-  res.innerHTML=`<div class="mock-results"><div style="font-size:40px;margin-bottom:10px;">⏳</div><div style="font-family:var(--fd);font-size:22px;color:var(--gold-l);">Scoring ${answered} answers…</div><div style="font-size:13px;color:var(--muted);">AI is evaluating each answer. This may take a moment.</div></div>`;
+  res.innerHTML=`<div id="eval-progress-screen">
+    <div class="eval-icon">⚖️</div>
+    <h2>Evaluating Your Answers</h2>
+    <div class="eval-progress-bar"><div id="eval-progress-fill" class="eval-progress-fill" style="width:0%"></div></div>
+    <div class="eval-stats"><span id="eval-done">0</span> / <span id="eval-total">${answered}</span> answers evaluated</div>
+    <p class="eval-message" id="eval-message">AI is reviewing your answers...</p>
+    <p class="eval-note">Please keep this window open.<br>Results will appear automatically.</p>
+  </div>`;
 
-  const scores=[];
-  for(let i=0;i<mockQs.length;i++){
-    const q=mockQs[i],ans=mockAnswers[i]||'';
-    if(!ans.trim()){scores.push({score:'0/10',numericScore:0,grade:'Not Answered',overallFeedback:'No answer provided.',keyMissed:[]});continue;}
-    try{
-      const r=await fetch('/api/evaluate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q.prompt||q.q,answer:ans,context:q.context||'',modelAnswer:q.modelAnswer,keyPoints:q.keyPoints,subject:q.subject})});
-      scores.push(await r.json());
-    }catch(e){scores.push({score:'?/10',numericScore:0,grade:'Error',overallFeedback:e.message,keyMissed:[]});}
+  // Build batch payload
+  const batchPayload=mockQs.map((q,i)=>({question:q.prompt||q.q,answer:mockAnswers[i]||'',context:q.context||'',modelAnswer:q.modelAnswer,keyPoints:q.keyPoints,subject:q.subject}));
+  let scores=[];
+  try{
+    const authHdr=sessionToken||'';
+    // Generate submissionId on client so polling can start immediately
+    const submissionId='sub_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);
+    // Start polling loop before the batch request resolves
+    let pollActive=true;
+    const pollOnce=async()=>{
+      try{
+        const progRes=await fetch('/api/eval-progress/'+submissionId,{headers:{'x-session-token':authHdr}});
+        if(!progRes.ok)return;
+        const data=await progRes.json();
+        const pct=data.total>0?Math.round(data.done/data.total*100):0;
+        const doneEl=document.getElementById('eval-done');
+        const fillEl=document.getElementById('eval-progress-fill');
+        const msgEl=document.getElementById('eval-message');
+        if(doneEl)doneEl.textContent=data.done;
+        if(fillEl)fillEl.style.width=pct+'%';
+        if(msgEl){
+          if(pct<30)msgEl.textContent='AI is reviewing your answers...';
+          else if(pct<70)msgEl.textContent='Analyzing your responses...';
+          else if(pct<100)msgEl.textContent='Almost done...';
+          else msgEl.textContent='Preparing your results!';
+        }
+      }catch(e){}
+      if(pollActive)setTimeout(pollOnce,1000);
+    };
+    setTimeout(pollOnce,800); // first poll after server has time to register the submission
+    // Fire off batch request (server evaluates all in parallel)
+    const batchRes=await fetch('/api/evaluate-batch',{method:'POST',headers:{'Content-Type':'application/json','x-session-token':authHdr},body:JSON.stringify({questions:batchPayload,submissionId})});
+    pollActive=false; // stop polling loop
+    const batchData=await batchRes.json();
+    scores=batchData.scores||[];
+    if(!scores.length)throw new Error(batchData.error||'No scores returned');
+    // Snap progress bar to 100%
+    const fillEl=document.getElementById('eval-progress-fill');
+    const doneEl=document.getElementById('eval-done');
+    if(fillEl)fillEl.style.width='100%';
+    if(doneEl)doneEl.textContent=scores.length;
+  }catch(e){
+    // Fallback: sequential evaluation
+    console.warn('[endMock] batch failed, falling back to sequential:',e.message);
+    scores=[];
+    for(let i=0;i<mockQs.length;i++){
+      const q=mockQs[i],ans=mockAnswers[i]||'';
+      if(!ans.trim()){scores.push({score:'0/10',numericScore:0,grade:'Not Answered',overallFeedback:'No answer provided.',keyMissed:[]});continue;}
+      try{
+        const r=await fetch('/api/evaluate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q.prompt||q.q,answer:ans,context:q.context||'',modelAnswer:q.modelAnswer,keyPoints:q.keyPoints,subject:q.subject})});
+        scores.push(await r.json());
+      }catch(ex){scores.push({score:'?/10',numericScore:0,grade:'Error',overallFeedback:ex.message,keyMissed:[]});}
+    }
   }
 
   mockScores=scores;

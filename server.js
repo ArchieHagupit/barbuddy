@@ -10,6 +10,25 @@ const crypto     = require('crypto');
 const bcrypt     = require('bcryptjs');
 const { createClient } = require('@supabase/supabase-js');
 
+// ── Semaphore — limits concurrent AI calls globally ─────────
+class Semaphore {
+  constructor(max) { this.max = max; this.count = 0; this.queue = []; }
+  acquire() {
+    return new Promise(resolve => {
+      if (this.count < this.max) { this.count++; resolve(); }
+      else this.queue.push(resolve);
+    });
+  }
+  release() {
+    this.count--;
+    if (this.queue.length) { this.count++; this.queue.shift()(); }
+  }
+}
+const aiSemaphore = new Semaphore(10);
+
+// ── Per-submission evaluation progress ──────────────────────
+const evalProgress = new Map(); // submissionId → { total, done, complete }
+
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_KEY,
@@ -2241,6 +2260,148 @@ Respond ONLY with valid JSON (no markdown):
     result.questionType = qtype;
     res.json(result);
   } catch(err) { res.status(500).json({ error:err.message }); }
+});
+
+// ── callClaudeHaikuJSON — haiku-only, semaphore-guarded, for fast batch eval ─
+async function callClaudeHaikuJSON(prompt, maxTokens = 400) {
+  await aiSemaphore.acquire();
+  try {
+    const body = JSON.stringify({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: maxTokens,
+      system: STRICT_SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: prompt }],
+    });
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      const r = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': API_KEY, 'anthropic-version': '2023-06-01' },
+        body,
+      });
+      const d = await r.json();
+      if (r.status === 529 || r.status === 429 || d?.error?.type === 'overloaded_error') {
+        if (attempt < 3) { await sleep(attempt * 5000); continue; }
+        throw new Error('Haiku overloaded after retries');
+      }
+      if (d.error) throw new Error(d.error.message);
+      const raw = d.content.map(c => c.text || '').join('');
+      const parsed = extractJSON(raw);
+      if (parsed !== null) return parsed;
+      if (attempt < 3) await sleep(1000);
+    }
+    return null;
+  } finally {
+    aiSemaphore.release();
+  }
+}
+
+// ── EVAL PROGRESS polling ─────────────────────────────────────
+app.get('/api/eval-progress/:id', requireAuth, (req, res) => {
+  const progress = evalProgress.get(req.params.id) || { total: 0, done: 0, complete: false };
+  res.json(progress);
+});
+
+// ── EVALUATE BATCH — parallel haiku evaluation ────────────────
+app.post('/api/evaluate-batch', requireAuth, async (req, res) => {
+  if (!API_KEY) return res.status(500).json({ error: 'API key not set' });
+  const { questions, submissionId: clientId } = req.body; // [{ question, answer, context, modelAnswer, keyPoints, subject }]
+  if (!Array.isArray(questions) || !questions.length)
+    return res.status(400).json({ error: 'questions array required' });
+
+  // Client may supply its own submissionId so it can start polling before the response arrives
+  const submissionId = (clientId && /^[a-zA-Z0-9_-]{5,50}$/.test(clientId))
+    ? clientId
+    : 'sub_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+  evalProgress.set(submissionId, { total: questions.length, done: 0, complete: false });
+
+  // Kick off parallel evaluation — do NOT await here so we can return submissionId immediately
+  // We respond with submissionId first, then evaluations arrive via a second request
+  // Actually: we return the submissionId in the final response once all are done.
+  // The client polls /api/eval-progress/:id while waiting.
+  const evalOne = async (item, idx) => {
+    const { question, answer, context, modelAnswer, keyPoints, subject } = item;
+    if (!answer || !answer.trim()) {
+      const prog = evalProgress.get(submissionId);
+      if (prog) { prog.done++; if (prog.done >= prog.total) prog.complete = true; }
+      return { score: '0/10', numericScore: 0, grade: 'Not Answered', overallFeedback: 'No answer provided.', keyMissed: [] };
+    }
+    try {
+      const refCtx = KB.references.filter(r => r.subject === subject).slice(0, 1).map(r => r.summary || '').join('');
+      const qtype  = detectQuestionType(question, context, modelAnswer);
+      const format = qtype === 'situational' ? 'essay' : qtype === 'conceptual' ? 'definition' : qtype;
+      let prompt, maxTok;
+
+      if (format === 'truefalse') {
+        maxTok = 350;
+        prompt = `You are a Philippine Bar Exam examiner. Evaluate this True or False answer.
+Question: ${question}
+${modelAnswer ? `Correct Answer: ${modelAnswer}` : ''}
+Student Answer: ${answer}
+Score: 10=correct+explanation, 7=correct+vague, 5=correct+no explanation, 0=wrong.
+${GRADE_SCALE}
+Respond ONLY with valid JSON: {"score":"X/10","numericScore":0,"grade":"...","isCorrect":true,"overallFeedback":"...","correctAnswer":"...","modelAnswer":"...","format":"truefalse"}`;
+      } else if (format === 'mcq') {
+        maxTok = 400;
+        prompt = `You are a Philippine Bar Exam examiner. Evaluate this Multiple Choice answer.
+Question: ${question}
+${modelAnswer ? `Correct Answer: ${modelAnswer}` : ''}
+Student Answer: ${answer}
+Score: 10=correct+reasoning, 7=correct+weak reason, 5=wrong+partial understanding, 0=wrong.
+${GRADE_SCALE}
+Respond ONLY with valid JSON: {"score":"X/10","numericScore":0,"grade":"...","isCorrect":true,"overallFeedback":"...","whyCorrect":"...","whyOthersWrong":"...","modelAnswer":"...","format":"mcq"}`;
+      } else if (format === 'enumeration') {
+        maxTok = 400;
+        const kpList = (keyPoints || []).length ? keyPoints.join('\n') : (modelAnswer || '');
+        prompt = `You are a Philippine Bar Exam examiner. Evaluate this Enumeration answer.
+Question: ${question}
+${kpList ? `Expected Points:\n${kpList}` : ''}
+Student Answer: ${answer}
+Award points proportionally (10 ÷ required items per item). Half credit for partial.
+${GRADE_SCALE}
+Respond ONLY with valid JSON: {"score":"X/10","numericScore":0,"grade":"...","itemsRequired":5,"itemsCorrect":3,"itemsMissed":[],"itemsWrong":[],"overallFeedback":"...","modelAnswer":"...","format":"enumeration"}`;
+      } else if (format === 'definition') {
+        maxTok = 400;
+        prompt = `You are a Philippine Bar Exam examiner. Evaluate this Definition/Distinction answer.
+Question: ${question}
+${modelAnswer ? `Model Answer: ${modelAnswer}` : ''}
+${(keyPoints || []).length ? `Key Points: ${keyPoints.join(', ')}` : ''}
+Student Answer: ${answer}
+Score: Accuracy(4pts) + Completeness(3pts) + Clarity(3pts) = 10.
+${GRADE_SCALE}
+Respond ONLY with valid JSON: {"score":"X/10","numericScore":0,"grade":"...","breakdown":{"accuracy":{"score":0,"max":4,"feedback":""},"completeness":{"score":0,"max":3,"feedback":""},"clarity":{"score":0,"max":3,"feedback":""}},"overallFeedback":"...","keyMissed":[],"modelAnswer":"...","format":"definition"}`;
+      } else {
+        maxTok = 400;
+        prompt = `You are a Philippine Bar Exam examiner. Evaluate using ALAC (Answer 1.5pts, Legal Basis 3pts, Application 4pts, Conclusion 1.5pts).
+Question: ${question}
+${modelAnswer ? `Reference Answer: ${modelAnswer}` : ''}
+${(keyPoints || []).length ? `Key Points: ${keyPoints.join(', ')}` : ''}
+${refCtx ? `Legal Context: ${refCtx.slice(0, 500)}` : ''}
+Student Answer: ${answer}
+${GRADE_SCALE}
+Respond ONLY with valid JSON: {"score":"X/10","numericScore":0,"grade":"...","alac":{"answer":{"score":0,"max":1.5,"feedback":"","studentDid":""},"legalBasis":{"score":0,"max":3,"feedback":"","studentDid":""},"application":{"score":0,"max":4,"feedback":"","studentDid":""},"conclusion":{"score":0,"max":1.5,"feedback":"","studentDid":""}},"overallFeedback":"...","strengths":[],"improvements":[],"keyMissed":[],"modelAnswer":"...","format":"essay"}`;
+      }
+
+      const result = await callClaudeHaikuJSON(prompt, maxTok);
+      if (result) { result.format = qtype; result.questionType = qtype; }
+      return result || { score: '0/10', numericScore: 0, grade: 'Error', overallFeedback: 'Evaluation failed — please retry.', keyMissed: [] };
+    } catch (e) {
+      console.error(`[evaluate-batch] Q${idx + 1} failed:`, e.message);
+      return { score: '0/10', numericScore: 0, grade: 'Error', overallFeedback: 'Evaluation temporarily unavailable.', keyMissed: [] };
+    } finally {
+      const prog = evalProgress.get(submissionId);
+      if (prog) { prog.done++; if (prog.done >= prog.total) prog.complete = true; }
+    }
+  };
+
+  try {
+    const scores = await Promise.all(questions.map((q, i) => evalOne(q, i)));
+    // Clean up progress after 5 minutes
+    setTimeout(() => evalProgress.delete(submissionId), 5 * 60 * 1000);
+    res.json({ submissionId, scores });
+  } catch (err) {
+    evalProgress.delete(submissionId);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── EMAIL RESULTS ────────────────────────────────────────────
