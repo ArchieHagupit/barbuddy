@@ -994,9 +994,7 @@ select.form-input{cursor:pointer;}
 
     <!-- PREVIEW + START -->
     <div class="mb-setup-card" style="border-color:rgba(255,140,66,.2);">
-      <div class="mb-section-label">Preview</div>
-      <div class="mb-preview" id="mbPreview">Calculating available questions…</div>
-      <div style="margin-top:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
         <button class="btn-mock" onclick="startMockBar()" id="startMockBtn">🚀 Begin Mock Bar</button>
         <div id="mockSourceStats" class="source-stats" style="display:none;"></div>
       </div>
@@ -3513,6 +3511,7 @@ function startMockSession(questions, timeMin, subjectKey) {
   mockSessions++; updateDash();
   // ── Create and save exam session ──
   const subj = subjectKey || mockQs[0]?.subject || 'all';
+  window.lastExamSubject = subj; // remember for "New Session" button
   const subjName = SUBJS.find(s => s.key === subj)?.name || subj;
   window.activeExamSession = {
     sessionId: 'exam_' + Date.now(),
@@ -3721,7 +3720,7 @@ async function endMockSession(){
       <div class="mr-stat"><div class="n">${numQuestions}</div><div class="l">Questions</div></div>
     </div>
     <div style="display:flex;gap:8px;justify-content:center;margin-bottom:22px;flex-wrap:wrap;">
-      <button class="btn-mock" onclick="document.getElementById('mockConfig').style.display='block';res.style.display='none';">⏱ New Session</button>
+      <button class="btn-mock" onclick="navToSubject(window.lastExamSubject||'overview','mockbar')">⏱ New Session</button>
       <button class="btn-ghost" onclick="nav('learn',document.getElementById('tab-learn'))">📖 Back to Learn</button>
       <button class="btn-ghost" onclick="printMockResults()">🖨️ Print</button>
       <button class="btn-ghost" onclick="openModal('emailOverlay')">📧 Email</button>
