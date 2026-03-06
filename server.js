@@ -2091,8 +2091,9 @@ app.post('/api/evaluate', async (req, res) => {
   let prompt, maxTok;
 
   if (format === 'truefalse') {
-    maxTok = 600;
+    maxTok = 800;
     prompt = `You are a Philippine Bar Exam examiner. Evaluate this True or False answer.
+Keep overallFeedback under 100 words. Be concise and direct.
 
 Question: ${question}
 ${modelAnswer?`Correct Answer / Explanation: ${modelAnswer}`:''}
@@ -2110,15 +2111,15 @@ Respond ONLY with valid JSON (no markdown):
 {
   "score": "X/10", "numericScore": 0, "grade": "Excellent|Good|Satisfactory|Needs Improvement|Poor",
   "isCorrect": true,
-  "overallFeedback": "Brief assessment of the student's answer",
-  "correctAnswer": "What the correct answer is and why — full explanation",
-  "modelAnswer": "The complete correct answer with full legal basis",
+  "overallFeedback": "Brief assessment under 100 words",
+  "correctAnswer": "What the correct answer is and why",
   "format": "truefalse"
 }`;
 
   } else if (format === 'mcq') {
-    maxTok = 700;
+    maxTok = 1000;
     prompt = `You are a Philippine Bar Exam examiner. Evaluate this Multiple Choice answer.
+Keep overallFeedback under 100 words. Be concise and direct.
 
 Question: ${question}
 ${modelAnswer?`Correct Answer: ${modelAnswer}`:''}
@@ -2136,17 +2137,17 @@ Respond ONLY with valid JSON (no markdown):
 {
   "score": "X/10", "numericScore": 0, "grade": "Excellent|Good|Satisfactory|Needs Improvement|Poor",
   "isCorrect": true,
-  "overallFeedback": "Brief assessment",
-  "whyCorrect": "Full explanation of why the correct answer is right, with legal basis",
-  "whyOthersWrong": "Brief note on why the other options are incorrect",
-  "modelAnswer": "The complete correct answer with legal reasoning",
+  "overallFeedback": "Brief assessment under 100 words",
+  "whyCorrect": "Explanation of why the correct answer is right, with legal basis",
+  "whyOthersWrong": "Brief note on why other options are incorrect",
   "format": "mcq"
 }`;
 
   } else if (format === 'enumeration') {
-    maxTok = 800;
+    maxTok = 1000;
     const kpList = (keyPoints||[]).length ? keyPoints.join('\n') : (modelAnswer||'');
     prompt = `You are a Philippine Bar Exam examiner. Evaluate this Enumeration answer.
+Keep overallFeedback under 100 words. Be concise and direct.
 
 Question: ${question}
 ${kpList?`Expected Points / Key Items:\n${kpList}`:''}
@@ -2166,14 +2167,14 @@ Respond ONLY with valid JSON (no markdown):
   "itemsCorrect": 3,
   "itemsMissed": ["missed item 1", "missed item 2"],
   "itemsWrong": ["incorrect item stated by student if any"],
-  "overallFeedback": "Brief assessment",
-  "modelAnswer": "Complete enumeration with all required items",
+  "overallFeedback": "Brief assessment under 100 words",
   "format": "enumeration"
 }`;
 
   } else if (format === 'definition') {
-    maxTok = 800;
+    maxTok = 1000;
     prompt = `You are a Philippine Bar Exam examiner. Evaluate this Definition or Distinction answer.
+Keep overallFeedback under 100 words and each component feedback under 50 words. Be concise and direct.
 
 Question: ${question}
 ${modelAnswer?`Model Answer: ${modelAnswer}`:''}
@@ -2193,20 +2194,20 @@ Respond ONLY with valid JSON (no markdown):
 {
   "score": "X/10", "numericScore": 0, "grade": "Excellent|Good|Satisfactory|Needs Improvement|Poor",
   "breakdown": {
-    "accuracy":     { "score": 0.0, "max": 4, "feedback": "..." },
-    "completeness": { "score": 0.0, "max": 3, "feedback": "..." },
-    "clarity":      { "score": 0.0, "max": 3, "feedback": "..." }
+    "accuracy":     { "score": 0.0, "max": 4, "feedback": "under 50 words" },
+    "completeness": { "score": 0.0, "max": 3, "feedback": "under 50 words" },
+    "clarity":      { "score": 0.0, "max": 3, "feedback": "under 50 words" }
   },
-  "overallFeedback": "Brief assessment",
+  "overallFeedback": "Brief assessment under 100 words",
   "keyMissed": ["key element or distinction the student missed"],
-  "modelAnswer": "Complete model definition or distinction",
   "format": "definition"
 }`;
 
   } else {
     // essay / situational — full ALAC
-    maxTok = 2000;
+    maxTok = 3000;
     prompt = `You are a Philippine Bar Exam examiner. Evaluate this student answer using the ALAC method (Answer, Legal Basis, Application, Conclusion) which is the standard format required in the Philippine Bar Exam.
+Keep overallFeedback under 200 words. Keep each ALAC component feedback under 50 words. Be concise and direct.
 
 Question: ${question}
 ${modelAnswer?`Reference Answer: ${modelAnswer}`:''}
@@ -2259,11 +2260,10 @@ Respond ONLY with valid JSON (no markdown):
     "application": { "score": 2.8, "max": 4.0, "feedback": "...", "studentDid": "..." },
     "conclusion":  { "score": 1.2, "max": 1.5, "feedback": "...", "studentDid": "..." }
   },
-  "overallFeedback": "2-3 sentence overall assessment",
+  "overallFeedback": "2-3 sentence overall assessment under 200 words",
   "strengths": ["..."],
   "improvements": ["..."],
   "keyMissed": ["specific law or case they should have cited"],
-  "modelAnswer": "ANSWER: [direct answer]\nLEGAL BASIS: [specific article/case]\nAPPLICATION: [how law applies to these facts]\nCONCLUSION: [restatement of answer]",
   "format": "essay"
 }`;
   }
@@ -2306,6 +2306,7 @@ async function callClaudeHaikuJSON(prompt, maxTokens = 400) {
         throw new Error('Haiku overloaded after retries');
       }
       if (d.error) throw new Error(d.error.message);
+      if (d.stop_reason === 'max_tokens') console.warn('[callClaudeHaikuJSON] Response truncated! Used:', d.usage?.output_tokens, 'tokens. Increase maxTokens.');
       const raw = sanitizeAIResponse(d.content.map(c => c.text || '').join(''));
       const parsed = extractJSON(raw);
       if (parsed !== null) return parsed;
@@ -2354,60 +2355,59 @@ app.post('/api/evaluate-batch', requireAuth, async (req, res) => {
       let prompt, maxTok;
 
       if (format === 'truefalse') {
-        maxTok = 350;
-        prompt = `You are a Philippine Bar Exam examiner. Evaluate this True or False answer.
+        maxTok = 600;
+        prompt = `You are a Philippine Bar Exam examiner. Evaluate this True or False answer. Keep overallFeedback under 100 words.
 Question: ${question}
 ${modelAnswer ? `Correct Answer: ${modelAnswer}` : ''}
 Student Answer: ${answer}
 Score: 10=correct+explanation, 7=correct+vague, 5=correct+no explanation, 0=wrong.
 ${GRADE_SCALE}
-Respond ONLY with valid JSON: {"score":"X/10","numericScore":0,"grade":"...","isCorrect":true,"overallFeedback":"...","correctAnswer":"...","modelAnswer":"...","format":"truefalse"}`;
+Respond ONLY with valid JSON: {"score":"X/10","numericScore":0,"grade":"...","isCorrect":true,"overallFeedback":"under 100 words","correctAnswer":"...","format":"truefalse"}`;
       } else if (format === 'mcq') {
-        maxTok = 400;
-        prompt = `You are a Philippine Bar Exam examiner. Evaluate this Multiple Choice answer.
+        maxTok = 700;
+        prompt = `You are a Philippine Bar Exam examiner. Evaluate this Multiple Choice answer. Keep overallFeedback under 100 words.
 Question: ${question}
 ${modelAnswer ? `Correct Answer: ${modelAnswer}` : ''}
 Student Answer: ${answer}
 Score: 10=correct+reasoning, 7=correct+weak reason, 5=wrong+partial understanding, 0=wrong.
 ${GRADE_SCALE}
-Respond ONLY with valid JSON: {"score":"X/10","numericScore":0,"grade":"...","isCorrect":true,"overallFeedback":"...","whyCorrect":"...","whyOthersWrong":"...","modelAnswer":"...","format":"mcq"}`;
+Respond ONLY with valid JSON: {"score":"X/10","numericScore":0,"grade":"...","isCorrect":true,"overallFeedback":"under 100 words","whyCorrect":"...","whyOthersWrong":"...","format":"mcq"}`;
       } else if (format === 'enumeration') {
-        maxTok = 400;
+        maxTok = 700;
         const kpList = (keyPoints || []).length ? keyPoints.join('\n') : (modelAnswer || '');
-        prompt = `You are a Philippine Bar Exam examiner. Evaluate this Enumeration answer.
+        prompt = `You are a Philippine Bar Exam examiner. Evaluate this Enumeration answer. Keep overallFeedback under 100 words.
 Question: ${question}
 ${kpList ? `Expected Points:\n${kpList}` : ''}
 Student Answer: ${answer}
 Award points proportionally (10 ÷ required items per item). Half credit for partial.
 ${GRADE_SCALE}
-Respond ONLY with valid JSON: {"score":"X/10","numericScore":0,"grade":"...","itemsRequired":5,"itemsCorrect":3,"itemsMissed":[],"itemsWrong":[],"overallFeedback":"...","modelAnswer":"...","format":"enumeration"}`;
+Respond ONLY with valid JSON: {"score":"X/10","numericScore":0,"grade":"...","itemsRequired":5,"itemsCorrect":3,"itemsMissed":[],"itemsWrong":[],"overallFeedback":"under 100 words","format":"enumeration"}`;
       } else if (format === 'definition') {
-        maxTok = 400;
-        prompt = `You are a Philippine Bar Exam examiner. Evaluate this Definition/Distinction answer.
+        maxTok = 700;
+        prompt = `You are a Philippine Bar Exam examiner. Evaluate this Definition/Distinction answer. Keep overallFeedback under 100 words and each component feedback under 50 words.
 Question: ${question}
 ${modelAnswer ? `Model Answer: ${modelAnswer}` : ''}
 ${(keyPoints || []).length ? `Key Points: ${keyPoints.join(', ')}` : ''}
 Student Answer: ${answer}
 Score: Accuracy(4pts) + Completeness(3pts) + Clarity(3pts) = 10.
 ${GRADE_SCALE}
-Respond ONLY with valid JSON: {"score":"X/10","numericScore":0,"grade":"...","breakdown":{"accuracy":{"score":0,"max":4,"feedback":""},"completeness":{"score":0,"max":3,"feedback":""},"clarity":{"score":0,"max":3,"feedback":""}},"overallFeedback":"...","keyMissed":[],"modelAnswer":"...","format":"definition"}`;
+Respond ONLY with valid JSON: {"score":"X/10","numericScore":0,"grade":"...","breakdown":{"accuracy":{"score":0,"max":4,"feedback":"under 50 words"},"completeness":{"score":0,"max":3,"feedback":"under 50 words"},"clarity":{"score":0,"max":3,"feedback":"under 50 words"}},"overallFeedback":"under 100 words","keyMissed":[],"format":"definition"}`;
       } else {
-        maxTok = 700;
-        prompt = `You are a Philippine Bar Exam examiner. Evaluate using ALAC (Answer 1.5pts, Legal Basis 3pts, Application 4pts, Conclusion 1.5pts).
+        maxTok = 1200;
+        prompt = `You are a Philippine Bar Exam examiner. Evaluate using ALAC (Answer 1.5pts, Legal Basis 3pts, Application 4pts, Conclusion 1.5pts). Keep overallFeedback under 200 words and each component feedback under 50 words.
 Question: ${question}
 ${modelAnswer ? `Reference Answer: ${modelAnswer}` : ''}
 ${(keyPoints || []).length ? `Key Points: ${keyPoints.join(', ')}` : ''}
 ${refCtx ? `Legal Context: ${refCtx.slice(0, 400)}` : ''}
 Student Answer: ${answer}
 ${GRADE_SCALE}
-Respond ONLY with valid JSON: {"score":"X/10","numericScore":0,"grade":"...","alac":{"answer":{"score":0,"max":1.5,"feedback":"","studentDid":""},"legalBasis":{"score":0,"max":3,"feedback":"","studentDid":""},"application":{"score":0,"max":4,"feedback":"","studentDid":""},"conclusion":{"score":0,"max":1.5,"feedback":"","studentDid":""}},"overallFeedback":"...","strengths":[],"improvements":[],"keyMissed":[],"modelAnswer":"ANSWER: ...\nLEGAL BASIS: ...\nAPPLICATION: ...\nCONCLUSION: ...","format":"essay"}`;
+Respond ONLY with valid JSON: {"score":"X/10","numericScore":0,"grade":"...","alac":{"answer":{"score":0,"max":1.5,"feedback":"under 50 words","studentDid":""},"legalBasis":{"score":0,"max":3,"feedback":"under 50 words","studentDid":""},"application":{"score":0,"max":4,"feedback":"under 50 words","studentDid":""},"conclusion":{"score":0,"max":1.5,"feedback":"under 50 words","studentDid":""}},"overallFeedback":"under 200 words","strengths":[],"improvements":[],"keyMissed":[],"format":"essay"}`;
       }
 
       const result = await callClaudeHaikuJSON(prompt, maxTok);
       if (result) {
         result.format = qtype;
         result.questionType = qtype;
-        // Use stored model answer as fallback when AI omits or truncates it
         if (!result.modelAnswer && modelAnswer) result.modelAnswer = modelAnswer;
         if (!result.keyPoints?.length && keyPoints?.length) result.keyPoints = keyPoints;
       }
@@ -2827,6 +2827,7 @@ async function callClaude(messages, max_tokens=2000) {
       throw new Error('API overloaded — please try again in a few minutes');
     }
     if (d.error) throw new Error(d.error.message);
+    if (d.stop_reason === 'max_tokens') console.warn(`[callClaude] Response truncated! model=${model} used=${d.usage?.output_tokens} tokens. Increase max_tokens.`);
     if (i > 0) console.log(`Claude success on attempt ${i+1} with ${model}`);
     return d.content.map(c => c.text || '').join('');
   }
