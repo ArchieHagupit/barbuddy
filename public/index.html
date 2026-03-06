@@ -2319,7 +2319,7 @@ function updateMockPreview() {
     ? '⚠️ No questions available for the selected subjects.'
     : avail < want
       ? `⚠️ Only ${avail} question${avail!==1?'s':''} available — will draw ${avail}.`
-      : `✓ ${avail} questions available · Will draw ${want}`;
+      : ``;
   const prev = document.getElementById('mockbar-preview') || document.getElementById('mbPreview');
   if (prev) prev.textContent = text;
   const btn = document.getElementById('stStartMockBtn') || document.getElementById('startMockBtn');
