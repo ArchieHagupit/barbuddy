@@ -2091,7 +2091,7 @@ app.post('/api/evaluate', async (req, res) => {
   let prompt, maxTok;
 
   if (format === 'truefalse') {
-    maxTok = 800;
+    maxTok = 2500;
     prompt = `You are a Philippine Bar Exam examiner. Evaluate this True or False answer.
 Keep overallFeedback under 100 words. Be concise and direct.
 
@@ -2117,7 +2117,7 @@ Respond ONLY with valid JSON (no markdown):
 }`;
 
   } else if (format === 'mcq') {
-    maxTok = 1000;
+    maxTok = 2500;
     prompt = `You are a Philippine Bar Exam examiner. Evaluate this Multiple Choice answer.
 Keep overallFeedback under 100 words. Be concise and direct.
 
@@ -2144,7 +2144,7 @@ Respond ONLY with valid JSON (no markdown):
 }`;
 
   } else if (format === 'enumeration') {
-    maxTok = 1000;
+    maxTok = 2500;
     const kpList = (keyPoints||[]).length ? keyPoints.join('\n') : (modelAnswer||'');
     prompt = `You are a Philippine Bar Exam examiner. Evaluate this Enumeration answer.
 Keep overallFeedback under 100 words. Be concise and direct.
@@ -2172,7 +2172,7 @@ Respond ONLY with valid JSON (no markdown):
 }`;
 
   } else if (format === 'definition') {
-    maxTok = 1000;
+    maxTok = 2500;
     prompt = `You are a Philippine Bar Exam examiner. Evaluate this Definition or Distinction answer.
 Keep overallFeedback under 100 words and each component feedback under 50 words. Be concise and direct.
 
@@ -2355,7 +2355,7 @@ app.post('/api/evaluate-batch', requireAuth, async (req, res) => {
       let prompt, maxTok;
 
       if (format === 'truefalse') {
-        maxTok = 600;
+        maxTok = 2500;
         prompt = `You are a Philippine Bar Exam examiner. Evaluate this True or False answer. Keep overallFeedback under 100 words.
 Question: ${question}
 ${modelAnswer ? `Correct Answer: ${modelAnswer}` : ''}
@@ -2364,7 +2364,7 @@ Score: 10=correct+explanation, 7=correct+vague, 5=correct+no explanation, 0=wron
 ${GRADE_SCALE}
 Respond ONLY with valid JSON: {"score":"X/10","numericScore":0,"grade":"...","isCorrect":true,"overallFeedback":"under 100 words","correctAnswer":"...","format":"truefalse"}`;
       } else if (format === 'mcq') {
-        maxTok = 700;
+        maxTok = 2500;
         prompt = `You are a Philippine Bar Exam examiner. Evaluate this Multiple Choice answer. Keep overallFeedback under 100 words.
 Question: ${question}
 ${modelAnswer ? `Correct Answer: ${modelAnswer}` : ''}
@@ -2373,7 +2373,7 @@ Score: 10=correct+reasoning, 7=correct+weak reason, 5=wrong+partial understandin
 ${GRADE_SCALE}
 Respond ONLY with valid JSON: {"score":"X/10","numericScore":0,"grade":"...","isCorrect":true,"overallFeedback":"under 100 words","whyCorrect":"...","whyOthersWrong":"...","format":"mcq"}`;
       } else if (format === 'enumeration') {
-        maxTok = 700;
+        maxTok = 2500;
         const kpList = (keyPoints || []).length ? keyPoints.join('\n') : (modelAnswer || '');
         prompt = `You are a Philippine Bar Exam examiner. Evaluate this Enumeration answer. Keep overallFeedback under 100 words.
 Question: ${question}
@@ -2383,7 +2383,7 @@ Award points proportionally (10 ÷ required items per item). Half credit for par
 ${GRADE_SCALE}
 Respond ONLY with valid JSON: {"score":"X/10","numericScore":0,"grade":"...","itemsRequired":5,"itemsCorrect":3,"itemsMissed":[],"itemsWrong":[],"overallFeedback":"under 100 words","format":"enumeration"}`;
       } else if (format === 'definition') {
-        maxTok = 700;
+        maxTok = 2500;
         prompt = `You are a Philippine Bar Exam examiner. Evaluate this Definition/Distinction answer. Keep overallFeedback under 100 words and each component feedback under 50 words.
 Question: ${question}
 ${modelAnswer ? `Model Answer: ${modelAnswer}` : ''}
@@ -2393,7 +2393,7 @@ Score: Accuracy(4pts) + Completeness(3pts) + Clarity(3pts) = 10.
 ${GRADE_SCALE}
 Respond ONLY with valid JSON: {"score":"X/10","numericScore":0,"grade":"...","breakdown":{"accuracy":{"score":0,"max":4,"feedback":"under 50 words"},"completeness":{"score":0,"max":3,"feedback":"under 50 words"},"clarity":{"score":0,"max":3,"feedback":"under 50 words"}},"overallFeedback":"under 100 words","keyMissed":[],"format":"definition"}`;
       } else {
-        maxTok = 1200;
+        maxTok = 2500;
         prompt = `You are a Philippine Bar Exam examiner. Evaluate using ALAC (Answer 1.5pts, Legal Basis 3pts, Application 4pts, Conclusion 1.5pts). Keep overallFeedback under 200 words and each component feedback under 50 words.
 Question: ${question}
 ${modelAnswer ? `Reference Answer: ${modelAnswer}` : ''}
