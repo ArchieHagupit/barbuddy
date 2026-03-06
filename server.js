@@ -170,38 +170,62 @@ function deepMerge(defaults, overrides) {
 let TAB_SETTINGS = JSON.parse(JSON.stringify(DEFAULT_TAB_SETTINGS));
 
 // ── Universal JSON extractor ─────────────────────────────────
-// Strips code fences from edges first, then falls back to brace extraction.
 function extractJSON(text) {
   if (!text) return null;
 
-  // Step 1: Try raw parse first
-  const trimmed = text.trim();
-  try { return JSON.parse(trimmed); } catch(_) {}
+  // Sanitize: remove BOM and control characters before anything else
+  let t = text
+    .replace(/^\uFEFF/, '')
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .trim();
 
-  // Step 2: Strip code fences from start and end
-  let cleaned = trimmed;
-  cleaned = cleaned.replace(/^```(?:json)?[\r\n]*/i, '');
-  cleaned = cleaned.replace(/[\r\n]*```\s*$/i, '');
-  cleaned = cleaned.trim();
-
-  try { return JSON.parse(cleaned); } catch(_) {}
-
-  // Step 3: Extract { } block directly
-  const firstBrace = cleaned.indexOf('{');
-  const lastBrace  = cleaned.lastIndexOf('}');
-  if (firstBrace !== -1 && lastBrace > firstBrace) {
-    try { return JSON.parse(cleaned.slice(firstBrace, lastBrace + 1)); } catch(_) {}
+  // Strategy 1: Direct parse — log actual error position to help diagnose
+  try { return JSON.parse(t); } catch(e) {
+    const pos = parseInt(e.message.match(/position (\d+)/)?.[1]);
+    if (!isNaN(pos)) console.warn('[extractJSON] Strategy 1 failed:', e.message, '| char code at pos:', t.charCodeAt(pos));
   }
 
-  // Step 4: Extract [ ] array block
-  const firstBracket = cleaned.indexOf('[');
-  const lastBracket  = cleaned.lastIndexOf(']');
-  if (firstBracket !== -1 && lastBracket > firstBracket) {
-    try { return JSON.parse(cleaned.slice(firstBracket, lastBracket + 1)); } catch(_) {}
+  // Strategy 2: Strip markdown fences from start/end
+  let stripped = t
+    .replace(/^```(?:json)?[\r\n]*/i, '')
+    .replace(/[\r\n]*```[\s\S]*$/i, '')
+    .trim();
+  try { return JSON.parse(stripped); } catch(_) {}
+
+  // Strategy 3: Brace-depth scanner — finds outermost { } ignoring trailing text
+  let depth = 0, start = -1, end = -1;
+  for (let i = 0; i < t.length; i++) {
+    if (t[i] === '{') { if (depth === 0) start = i; depth++; }
+    else if (t[i] === '}') { depth--; if (depth === 0 && start !== -1) { end = i; break; } }
+  }
+  if (start !== -1 && end !== -1) {
+    try { return JSON.parse(t.slice(start, end + 1)); } catch(_) {}
   }
 
-  console.error('[extractJSON] All strategies failed. First 200 chars:', trimmed.slice(0, 200));
+  // Strategy 4: Bracket-depth scanner — finds outermost [ ]
+  depth = 0; start = -1; end = -1;
+  for (let i = 0; i < t.length; i++) {
+    if (t[i] === '[') { if (depth === 0) start = i; depth++; }
+    else if (t[i] === ']') { depth--; if (depth === 0 && start !== -1) { end = i; break; } }
+  }
+  if (start !== -1 && end !== -1) {
+    try { return JSON.parse(t.slice(start, end + 1)); } catch(_) {}
+  }
+
+  console.error('[extractJSON] All strategies failed. First 200 chars:', t.slice(0, 200));
   return null;
+}
+
+function sanitizeAIResponse(text) {
+  if (!text) return text;
+  return text
+    .replace(/^\uFEFF/, '')
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .trim();
 }
 
 // Auth/settings state — loaded from Supabase at startup, users+sessions live in DB
@@ -2282,7 +2306,7 @@ async function callClaudeHaikuJSON(prompt, maxTokens = 400) {
         throw new Error('Haiku overloaded after retries');
       }
       if (d.error) throw new Error(d.error.message);
-      const raw = d.content.map(c => c.text || '').join('');
+      const raw = sanitizeAIResponse(d.content.map(c => c.text || '').join(''));
       const parsed = extractJSON(raw);
       if (parsed !== null) return parsed;
       if (attempt < 3) await sleep(1000);
@@ -2755,7 +2779,7 @@ async function callClaudeJSON(messages, maxTokens, retries = 3) {
         content: msgs[msgs.length - 1].content +
           '\n\nCRITICAL: Output ONLY the JSON object/array. Do NOT write any words or sentences. Do NOT use markdown. Start with { or [. If you cannot comply, return {}.'
       }];
-      const raw = await callClaude(attempt === 1 ? msgs : [attemptMsgs[0]], maxTokens);
+      const raw = sanitizeAIResponse(await callClaude(attempt === 1 ? msgs : [attemptMsgs[0]], maxTokens));
       const parsed = extractJSON(raw);
       if (parsed !== null) return parsed;
       console.warn(`[callClaudeJSON] attempt ${attempt}/${retries} — extractJSON failed, retrying`);
