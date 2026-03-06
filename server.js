@@ -170,37 +170,37 @@ function deepMerge(defaults, overrides) {
 let TAB_SETTINGS = JSON.parse(JSON.stringify(DEFAULT_TAB_SETTINGS));
 
 // ── Universal JSON extractor ─────────────────────────────────
-// Claude sometimes returns plain text preambles or markdown fences.
-// Try 5 strategies in order before giving up.
+// Strips code fences from edges first, then falls back to brace extraction.
 function extractJSON(text) {
   if (!text) return null;
 
-  // Strategy 1: Already valid JSON
-  try { return JSON.parse(text.trim()); } catch(_) {}
+  // Step 1: Try raw parse first
+  const trimmed = text.trim();
+  try { return JSON.parse(trimmed); } catch(_) {}
 
-  // Strategy 2: Strip markdown code fences — handles ```json ... ``` and ``` ... ```
-  const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  if (fenceMatch) { try { return JSON.parse(fenceMatch[1].trim()); } catch(_) {} }
+  // Step 2: Strip code fences from start and end
+  let cleaned = trimmed;
+  cleaned = cleaned.replace(/^```(?:json)?[\r\n]*/i, '');
+  cleaned = cleaned.replace(/[\r\n]*```\s*$/i, '');
+  cleaned = cleaned.trim();
 
-  // Strategy 3: Find first { ... } block
-  const firstBrace = text.indexOf('{');
-  const lastBrace  = text.lastIndexOf('}');
-  if (firstBrace !== -1 && lastBrace !== -1) {
-    try { return JSON.parse(text.slice(firstBrace, lastBrace + 1)); } catch(_) {}
+  try { return JSON.parse(cleaned); } catch(_) {}
+
+  // Step 3: Extract { } block directly
+  const firstBrace = cleaned.indexOf('{');
+  const lastBrace  = cleaned.lastIndexOf('}');
+  if (firstBrace !== -1 && lastBrace > firstBrace) {
+    try { return JSON.parse(cleaned.slice(firstBrace, lastBrace + 1)); } catch(_) {}
   }
 
-  // Strategy 4: Find [ ... ] array block
-  const firstBracket = text.indexOf('[');
-  const lastBracket  = text.lastIndexOf(']');
-  if (firstBracket !== -1 && lastBracket !== -1) {
-    try { return JSON.parse(text.slice(firstBracket, lastBracket + 1)); } catch(_) {}
+  // Step 4: Extract [ ] array block
+  const firstBracket = cleaned.indexOf('[');
+  const lastBracket  = cleaned.lastIndexOf(']');
+  if (firstBracket !== -1 && lastBracket > firstBracket) {
+    try { return JSON.parse(cleaned.slice(firstBracket, lastBracket + 1)); } catch(_) {}
   }
 
-  // Strategy 5: Remove common prefixes/suffixes (e.g. "Here is the JSON:" or trailing prose)
-  const cleaned = text.replace(/^[^{[]*/, '').replace(/[^}\]]*$/, '').trim();
-  if (cleaned) { try { return JSON.parse(cleaned); } catch(_) {} }
-
-  console.error('[extractJSON] All strategies failed. First 200 chars:', text.slice(0, 200));
+  console.error('[extractJSON] All strategies failed. First 200 chars:', trimmed.slice(0, 200));
   return null;
 }
 
@@ -2261,12 +2261,13 @@ Respond ONLY with valid JSON (no markdown):
 // ── callClaudeHaikuJSON — haiku-only, semaphore-guarded, for fast batch eval ─
 async function callClaudeHaikuJSON(prompt, maxTokens = 400) {
   await aiSemaphore.acquire();
-  const JSON_SUFFIX = '\n\nRespond with ONLY raw JSON. No markdown, no code fences, no explanation before or after. Start your response with { and end with }.';
+  const JSON_SYSTEM = 'You are a JSON-only responder. Never use markdown. Never use code fences. Never use backticks. Always respond with raw JSON starting with { and ending with }.';
+  const JSON_SUFFIX = '\n\nYou MUST respond with ONLY a raw JSON object. Absolutely no markdown. No code fences. No backticks. Your entire response must start with { and end with }. Nothing before or after.';
   try {
     const body = JSON.stringify({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: maxTokens,
-      system: STRICT_SYSTEM_PROMPT,
+      system: JSON_SYSTEM,
       messages: [{ role: 'user', content: prompt + JSON_SUFFIX }],
     });
     for (let attempt = 1; attempt <= 3; attempt++) {
