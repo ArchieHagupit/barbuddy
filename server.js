@@ -2258,6 +2258,9 @@ Respond ONLY with valid JSON (no markdown):
     }
     result.format       = qtype;  // always use detected type (overrides AI-reported format)
     result.questionType = qtype;
+    // Fall back to stored model answer if AI omitted it
+    if (!result.modelAnswer && modelAnswer) result.modelAnswer = modelAnswer;
+    if (!result.keyPoints?.length && keyPoints?.length) result.keyPoints = keyPoints;
     res.json(result);
   } catch(err) { res.status(500).json({ error:err.message }); }
 });
@@ -2370,19 +2373,25 @@ Score: Accuracy(4pts) + Completeness(3pts) + Clarity(3pts) = 10.
 ${GRADE_SCALE}
 Respond ONLY with valid JSON: {"score":"X/10","numericScore":0,"grade":"...","breakdown":{"accuracy":{"score":0,"max":4,"feedback":""},"completeness":{"score":0,"max":3,"feedback":""},"clarity":{"score":0,"max":3,"feedback":""}},"overallFeedback":"...","keyMissed":[],"modelAnswer":"...","format":"definition"}`;
       } else {
-        maxTok = 400;
+        maxTok = 700;
         prompt = `You are a Philippine Bar Exam examiner. Evaluate using ALAC (Answer 1.5pts, Legal Basis 3pts, Application 4pts, Conclusion 1.5pts).
 Question: ${question}
 ${modelAnswer ? `Reference Answer: ${modelAnswer}` : ''}
 ${(keyPoints || []).length ? `Key Points: ${keyPoints.join(', ')}` : ''}
-${refCtx ? `Legal Context: ${refCtx.slice(0, 500)}` : ''}
+${refCtx ? `Legal Context: ${refCtx.slice(0, 400)}` : ''}
 Student Answer: ${answer}
 ${GRADE_SCALE}
-Respond ONLY with valid JSON: {"score":"X/10","numericScore":0,"grade":"...","alac":{"answer":{"score":0,"max":1.5,"feedback":"","studentDid":""},"legalBasis":{"score":0,"max":3,"feedback":"","studentDid":""},"application":{"score":0,"max":4,"feedback":"","studentDid":""},"conclusion":{"score":0,"max":1.5,"feedback":"","studentDid":""}},"overallFeedback":"...","strengths":[],"improvements":[],"keyMissed":[],"modelAnswer":"...","format":"essay"}`;
+Respond ONLY with valid JSON: {"score":"X/10","numericScore":0,"grade":"...","alac":{"answer":{"score":0,"max":1.5,"feedback":"","studentDid":""},"legalBasis":{"score":0,"max":3,"feedback":"","studentDid":""},"application":{"score":0,"max":4,"feedback":"","studentDid":""},"conclusion":{"score":0,"max":1.5,"feedback":"","studentDid":""}},"overallFeedback":"...","strengths":[],"improvements":[],"keyMissed":[],"modelAnswer":"ANSWER: ...\nLEGAL BASIS: ...\nAPPLICATION: ...\nCONCLUSION: ...","format":"essay"}`;
       }
 
       const result = await callClaudeHaikuJSON(prompt, maxTok);
-      if (result) { result.format = qtype; result.questionType = qtype; }
+      if (result) {
+        result.format = qtype;
+        result.questionType = qtype;
+        // Use stored model answer as fallback when AI omits or truncates it
+        if (!result.modelAnswer && modelAnswer) result.modelAnswer = modelAnswer;
+        if (!result.keyPoints?.length && keyPoints?.length) result.keyPoints = keyPoints;
+      }
       return result || { score: '0/10', numericScore: 0, grade: 'Error', overallFeedback: 'Evaluation failed — please retry.', keyMissed: [] };
     } catch (e) {
       console.error(`[evaluate-batch] Q${idx + 1} failed:`, e.message);

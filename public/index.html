@@ -3211,7 +3211,7 @@ function alacScoreCls(score, key){
 }
 // Parse "ANSWER: ... LEGAL BASIS: ... APPLICATION: ... CONCLUSION: ..." into sections
 function renderModelAnswer(text){
-  if(!text) return '';
+  if(!text) return '<em style="color:#777;font-size:13px;">No model answer available for this question.</em>';
   const markers=['ANSWER','LEGAL BASIS','APPLICATION','CONCLUSION'];
   const hasAny=markers.some(m=>text.includes(m+':'));
   if(!hasAny) return `<span class="alac-model">${h(text)}</span>`;
@@ -3728,7 +3728,11 @@ async function endMockSession(){
     </div>
     <h3 style="font-family:var(--fd);font-size:20px;font-weight:700;color:var(--gold-l);margin-bottom:14px;text-align:left;">📋 Question Review</h3>
     ${mockQs.map((q,i)=>{
-      const s=scores[i],sub=SUBJS.find(x=>x.key===q.subject)||{name:q.subject,cls:'sg-gen'},ns=s.numericScore||0;
+      // Merge original question's modelAnswer/keyPoints into score so renderEvalCard can show them
+      const s={...scores[i]};
+      if(!s.modelAnswer&&q.modelAnswer)s.modelAnswer=q.modelAnswer;
+      if(!s.keyPoints?.length&&q.keyPoints?.length)s.keyPoints=q.keyPoints;
+      const sub=SUBJS.find(x=>x.key===q.subject)||{name:q.subject,cls:'sg-gen'},ns=s.numericScore||0;
       const qText=q.prompt||q.q||'';
       const isSit=(q.type==='situational')&&q.context;
       const qBadgeCls=ns>=7?'qsb-high':ns>=5?'qsb-mid':'qsb-low';
