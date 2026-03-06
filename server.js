@@ -2033,42 +2033,31 @@ app.post('/api/mockbar/generate', async (req, res) => {
 //   'situational' → has fact pattern → ALAC scoring
 //   'definition'  → "define X", "distinguish X from Y" → Accuracy/Completeness/Clarity
 //   'conceptual'  → "explain X", "what is the purpose of X" → same A/C/C scoring
-//   'enumeration' → "enumerate", "what are the requisites" → proportional item scoring
-//   'truefalse'   → T/F statement → correct/incorrect + explanation
-//   'mcq'         → multiple choice → correct choice + reasoning
+//   'situational' → fact pattern present or situational keywords → ALAC scoring
+//   'conceptual'  → all other questions → Accuracy/Completeness/Clarity scoring
 function detectQuestionType(questionText, context, modelAnswer) {
-  const q   = (questionText  || '').toLowerCase().trim();
-  const ctx = (context       || '').toLowerCase().trim();
-  const ans = (modelAnswer   || '').toLowerCase();
-
-  // ── Explicit format signals (highest priority) ──
-  if (/true or false|true\/false|\bt\/f\b|state whether/i.test(q)) return 'truefalse';
-  if (/which of the following|choose the correct|select the best|\ba\.\s|\bb\.\s|\bc\.\s|\ba\)\s|\bb\)\s|\bc\)\s/.test(q) || (q.includes('(a)') && q.includes('(b)'))) return 'mcq';
-
-  // ── Enumeration signals ──
-  if (/enumerate|(list|state|name|give) (the |at least |all )?(requisites|elements|requirements|grounds|instances|cases|kinds|classifications|stages|characteristics|effects|exceptions|limitations)|what are the (requisites|elements|requirements|grounds|instances|cases|kinds|classifications|stages|characteristics|effects|exceptions|limitations)/.test(q)) return 'enumeration';
+  const q   = (questionText || '').toLowerCase().trim();
+  const ctx = (context      || '').toLowerCase().trim();
+  const ans = (modelAnswer  || '').toLowerCase();
 
   // ── Situational — context (fact pattern) is the strongest signal ──
-  const hasFacts = ctx.length > 80;
+  const hasFacts       = ctx.length > 80;
   const hasCaseParties = /filed|sued|plaintiff|defendant|petitioner|respondent|labor arbiter|nlrc|\brtc\b|\bca\b|supreme court/i.test(ctx);
   if (hasFacts || hasCaseParties) return 'situational';
 
-  // ── Definition signals ──
-  if (/^define\b|^what is (a |an |the |meant by |understood by )|^what do you (mean|understand) by|^distinguish (between|and)|^differentiate (between)?|^what do you understand by/i.test(q)) return 'definition';
+  // ── Situational keywords in question text ──
+  const situationalKw = ['rule on', 'decide', 'resolve', 'is he liable', 'is she liable',
+    'is it valid', 'is the contract', 'may he', 'may she', 'can he', 'what crime',
+    'what offense', 'the facts show', 'in the case', 'plaintiff', 'defendant',
+    'accused', 'complainant'];
+  if (situationalKw.some(kw => q.includes(kw))) return 'situational';
 
-  // ── Conceptual / Explanatory signals ──
-  if (/^explain (the |a |an )?(concept|doctrine|principle|rule|theory|basis|rationale|purpose|significance|nature|scope)|^describe (the |a |an )?|^what is the (purpose|effect|nature|significance|rationale|basis|scope) of|^when (is|are|does|can|may) (a|an|the) /i.test(q)) return 'conceptual';
-
-  // Broad "what is / what are" without fact-pattern markers → treat as definition
-  if (/^(what is|what are)\b/.test(q) && !/(liable|remedy|obligation of|consequence|entitled|right of)/.test(q)) return 'definition';
-
-  // ── Model answer signals (fallback) ──
-  const ansWords = ans.split(/\s+/).filter(w => w.length > 0).length;
+  // ── Model answer ALAC signal ──
   const hasALAC  = /(answer:|legal basis:|application:|conclusion:)/i.test(ans);
+  const ansWords = ans.split(/\s+/).filter(w => w.length > 0).length;
   if (hasALAC && ansWords > 100) return 'situational';
-  if (ansWords > 0 && ansWords < 60) return 'definition';
 
-  return 'situational'; // default for long-form essay questions
+  return 'conceptual'; // default — conceptual/theoretical questions
 }
 const GRADE_SCALE = `Assign grade based on numericScore (passing score is 7.0/10):
   Excellent:          8.5 and above
@@ -2082,129 +2071,13 @@ app.post('/api/evaluate', async (req, res) => {
   if (!API_KEY) return res.status(500).json({ error:'API key not set' });
   const { question, answer, modelAnswer, keyPoints, subject, context, forceType } = req.body;
   const refCtx = KB.references.filter(r=>r.subject===subject).slice(0,1).map(r=>r.summary||'').join('');
-  const qtype  = forceType || detectQuestionType(question, context, modelAnswer);
-  // Map new type names to existing handler keys
-  const format = qtype === 'situational' ? 'essay'
-               : qtype === 'conceptual'  ? 'definition'
-               : qtype;
+  const qtype = forceType || detectQuestionType(question, context, modelAnswer);
+  const isSituational = qtype === 'situational' || qtype === 'essay' || qtype === 'alac';
   console.log(`[evaluate] type=${qtype} q="${(question||'').slice(0,60)}"`);
   let prompt, maxTok;
 
-  if (format === 'truefalse') {
-    maxTok = 2500;
-    prompt = `You are a Philippine Bar Exam examiner. Evaluate this True or False answer.
-Keep overallFeedback under 100 words. Be concise and direct.
-
-Question: ${question}
-${modelAnswer?`Correct Answer / Explanation: ${modelAnswer}`:''}
-Student Answer: ${answer}
-
-Score out of 10:
-  10/10 — Correct answer WITH a correct explanation of why it is true or false
-  7/10  — Correct answer with a partial or vague explanation
-  5/10  — Correct answer (True/False) but no explanation given
-  0/10  — Wrong answer regardless of explanation
-
-${GRADE_SCALE}
-
-Respond ONLY with valid JSON (no markdown):
-{
-  "score": "X/10", "numericScore": 0, "grade": "Excellent|Good|Satisfactory|Needs Improvement|Poor",
-  "isCorrect": true,
-  "overallFeedback": "Brief assessment under 100 words",
-  "correctAnswer": "What the correct answer is and why",
-  "format": "truefalse"
-}`;
-
-  } else if (format === 'mcq') {
-    maxTok = 2500;
-    prompt = `You are a Philippine Bar Exam examiner. Evaluate this Multiple Choice answer.
-Keep overallFeedback under 100 words. Be concise and direct.
-
-Question: ${question}
-${modelAnswer?`Correct Answer: ${modelAnswer}`:''}
-Student Answer: ${answer}
-
-Score out of 10:
-  10/10 — Correct choice WITH correct legal reasoning
-  7/10  — Correct choice but weak or incomplete reasoning
-  5/10  — Wrong choice but reasoning shows partial understanding of the applicable law
-  0/10  — Wrong choice with no reasoning or completely wrong reasoning
-
-${GRADE_SCALE}
-
-Respond ONLY with valid JSON (no markdown):
-{
-  "score": "X/10", "numericScore": 0, "grade": "Excellent|Good|Satisfactory|Needs Improvement|Poor",
-  "isCorrect": true,
-  "overallFeedback": "Brief assessment under 100 words",
-  "whyCorrect": "Explanation of why the correct answer is right, with legal basis",
-  "whyOthersWrong": "Brief note on why other options are incorrect",
-  "format": "mcq"
-}`;
-
-  } else if (format === 'enumeration') {
-    maxTok = 2500;
-    const kpList = (keyPoints||[]).length ? keyPoints.join('\n') : (modelAnswer||'');
-    prompt = `You are a Philippine Bar Exam examiner. Evaluate this Enumeration answer.
-Keep overallFeedback under 100 words. Be concise and direct.
-
-Question: ${question}
-${kpList?`Expected Points / Key Items:\n${kpList}`:''}
-Student Answer: ${answer}
-
-Count how many required points the student correctly stated.
-Award points proportionally — divide 10 by the number of required items to get points per item.
-Award full item credit if the student stated the substance correctly even if wording differs.
-Award half item credit if partially correct.
-
-${GRADE_SCALE}
-
-Respond ONLY with valid JSON (no markdown):
-{
-  "score": "X/10", "numericScore": 0, "grade": "Excellent|Good|Satisfactory|Needs Improvement|Poor",
-  "itemsRequired": 5,
-  "itemsCorrect": 3,
-  "itemsMissed": ["missed item 1", "missed item 2"],
-  "itemsWrong": ["incorrect item stated by student if any"],
-  "overallFeedback": "Brief assessment under 100 words",
-  "format": "enumeration"
-}`;
-
-  } else if (format === 'definition') {
-    maxTok = 2500;
-    prompt = `You are a Philippine Bar Exam examiner. Evaluate this Definition or Distinction answer.
-Keep overallFeedback under 100 words and each component feedback under 50 words. Be concise and direct.
-
-Question: ${question}
-${modelAnswer?`Model Answer: ${modelAnswer}`:''}
-${(keyPoints||[]).length?`Key Points: ${keyPoints.join(', ')}`:''}
-Student Answer: ${answer}
-
-Score out of 10 using these components:
-  Accuracy     (4 pts): Is the definition or distinction legally correct?
-  Completeness (3 pts): Are all essential elements or points of difference included?
-  Clarity      (3 pts): Is it stated clearly and precisely in legal language?
-
-For distinguish/differentiate questions, evaluate whether the student correctly identified the key points of difference between the two concepts.
-
-${GRADE_SCALE}
-
-Respond ONLY with valid JSON (no markdown):
-{
-  "score": "X/10", "numericScore": 0, "grade": "Excellent|Good|Satisfactory|Needs Improvement|Poor",
-  "breakdown": {
-    "accuracy":     { "score": 0.0, "max": 4, "feedback": "under 50 words" },
-    "completeness": { "score": 0.0, "max": 3, "feedback": "under 50 words" },
-    "clarity":      { "score": 0.0, "max": 3, "feedback": "under 50 words" }
-  },
-  "overallFeedback": "Brief assessment under 100 words",
-  "keyMissed": ["key element or distinction the student missed"],
-  "format": "definition"
-}`;
-
-  } else {
-    // essay / situational — full ALAC
+  if (isSituational) {
+    // ── ALAC evaluation (situational / essay) ─────────────────
     maxTok = 3000;
     prompt = `You are a Philippine Bar Exam examiner. Evaluate this student answer using the ALAC method (Answer, Legal Basis, Application, Conclusion) which is the standard format required in the Philippine Bar Exam.
 Keep overallFeedback under 200 words. Keep each ALAC component feedback under 50 words. Be concise and direct.
@@ -2266,6 +2139,36 @@ Respond ONLY with valid JSON (no markdown):
   "keyMissed": ["specific law or case they should have cited"],
   "format": "essay"
 }`;
+  } else {
+    // ── Conceptual evaluation ─────────────────────────────────
+    maxTok = 2500;
+    prompt = `You are a Philippine Bar Exam examiner. Evaluate this conceptual/theoretical answer.
+Keep overallFeedback under 100 words and each component feedback under 50 words. Be concise and direct.
+
+Question: ${question}
+${modelAnswer?`Model Answer: ${modelAnswer}`:''}
+${(keyPoints||[]).length?`Key Points: ${keyPoints.join(', ')}`:''}
+Student Answer: ${answer}
+
+Score out of 10 using these components:
+  Accuracy     (4 pts): Is the answer legally correct and on-point?
+  Completeness (3 pts): Are all essential elements or points included?
+  Clarity      (3 pts): Is it stated clearly and precisely in legal language?
+
+${GRADE_SCALE}
+
+Respond ONLY with valid JSON (no markdown):
+{
+  "score": "X/10", "numericScore": 0, "grade": "Excellent|Good|Satisfactory|Needs Improvement|Poor",
+  "breakdown": {
+    "accuracy":     { "score": 0.0, "max": 4, "feedback": "under 50 words" },
+    "completeness": { "score": 0.0, "max": 3, "feedback": "under 50 words" },
+    "clarity":      { "score": 0.0, "max": 3, "feedback": "under 50 words" }
+  },
+  "overallFeedback": "Brief assessment under 100 words",
+  "keyMissed": ["key element the student missed"],
+  "format": "conceptual"
+}`;
   }
 
   try {
@@ -2278,8 +2181,8 @@ Respond ONLY with valid JSON (no markdown):
     // Fall back to stored model answer if AI omitted it
     if (!result.modelAnswer && modelAnswer) result.modelAnswer = modelAnswer;
     if (!result.keyPoints?.length && keyPoints?.length) result.keyPoints = keyPoints;
-    // Generate structured ALAC model answer for situational/essay questions
-    if ((qtype === 'situational' || qtype === 'essay') && result.modelAnswer) {
+    // Generate structured ALAC model answer for situational questions
+    if (isSituational && result.modelAnswer) {
       const alacResult = await generateALACModelAnswer(question, context, result.modelAnswer, subject);
       if (alacResult) {
         result.alacModelAnswer     = alacResult.components;
@@ -2431,49 +2334,11 @@ app.post('/api/evaluate-batch', requireAuth, async (req, res) => {
     }
     try {
       const refCtx = KB.references.filter(r => r.subject === subject).slice(0, 1).map(r => r.summary || '').join('');
-      const qtype  = detectQuestionType(question, context, modelAnswer);
-      const format = qtype === 'situational' ? 'essay' : qtype === 'conceptual' ? 'definition' : qtype;
+      const qtype = detectQuestionType(question, context, modelAnswer);
+      const isSit = qtype === 'situational' || qtype === 'essay' || qtype === 'alac';
       let prompt, maxTok;
 
-      if (format === 'truefalse') {
-        maxTok = 2500;
-        prompt = `You are a Philippine Bar Exam examiner. Evaluate this True or False answer. Keep overallFeedback under 100 words.
-Question: ${question}
-${modelAnswer ? `Correct Answer: ${modelAnswer}` : ''}
-Student Answer: ${answer}
-Score: 10=correct+explanation, 7=correct+vague, 5=correct+no explanation, 0=wrong.
-${GRADE_SCALE}
-Respond ONLY with valid JSON: {"score":"X/10","numericScore":0,"grade":"...","isCorrect":true,"overallFeedback":"under 100 words","correctAnswer":"...","format":"truefalse"}`;
-      } else if (format === 'mcq') {
-        maxTok = 2500;
-        prompt = `You are a Philippine Bar Exam examiner. Evaluate this Multiple Choice answer. Keep overallFeedback under 100 words.
-Question: ${question}
-${modelAnswer ? `Correct Answer: ${modelAnswer}` : ''}
-Student Answer: ${answer}
-Score: 10=correct+reasoning, 7=correct+weak reason, 5=wrong+partial understanding, 0=wrong.
-${GRADE_SCALE}
-Respond ONLY with valid JSON: {"score":"X/10","numericScore":0,"grade":"...","isCorrect":true,"overallFeedback":"under 100 words","whyCorrect":"...","whyOthersWrong":"...","format":"mcq"}`;
-      } else if (format === 'enumeration') {
-        maxTok = 2500;
-        const kpList = (keyPoints || []).length ? keyPoints.join('\n') : (modelAnswer || '');
-        prompt = `You are a Philippine Bar Exam examiner. Evaluate this Enumeration answer. Keep overallFeedback under 100 words.
-Question: ${question}
-${kpList ? `Expected Points:\n${kpList}` : ''}
-Student Answer: ${answer}
-Award points proportionally (10 ÷ required items per item). Half credit for partial.
-${GRADE_SCALE}
-Respond ONLY with valid JSON: {"score":"X/10","numericScore":0,"grade":"...","itemsRequired":5,"itemsCorrect":3,"itemsMissed":[],"itemsWrong":[],"overallFeedback":"under 100 words","format":"enumeration"}`;
-      } else if (format === 'definition') {
-        maxTok = 2500;
-        prompt = `You are a Philippine Bar Exam examiner. Evaluate this Definition/Distinction answer. Keep overallFeedback under 100 words and each component feedback under 50 words.
-Question: ${question}
-${modelAnswer ? `Model Answer: ${modelAnswer}` : ''}
-${(keyPoints || []).length ? `Key Points: ${keyPoints.join(', ')}` : ''}
-Student Answer: ${answer}
-Score: Accuracy(4pts) + Completeness(3pts) + Clarity(3pts) = 10.
-${GRADE_SCALE}
-Respond ONLY with valid JSON: {"score":"X/10","numericScore":0,"grade":"...","breakdown":{"accuracy":{"score":0,"max":4,"feedback":"under 50 words"},"completeness":{"score":0,"max":3,"feedback":"under 50 words"},"clarity":{"score":0,"max":3,"feedback":"under 50 words"}},"overallFeedback":"under 100 words","keyMissed":[],"format":"definition"}`;
-      } else {
+      if (isSit) {
         maxTok = 2500;
         prompt = `You are a Philippine Bar Exam examiner. Evaluate using ALAC (Answer 1.5pts, Legal Basis 3pts, Application 4pts, Conclusion 1.5pts). Keep overallFeedback under 200 words and each component feedback under 50 words.
 Question: ${question}
@@ -2483,6 +2348,16 @@ ${refCtx ? `Legal Context: ${refCtx.slice(0, 400)}` : ''}
 Student Answer: ${answer}
 ${GRADE_SCALE}
 Respond ONLY with valid JSON: {"score":"X/10","numericScore":0,"grade":"...","alac":{"answer":{"score":0,"max":1.5,"feedback":"under 50 words","studentDid":""},"legalBasis":{"score":0,"max":3,"feedback":"under 50 words","studentDid":""},"application":{"score":0,"max":4,"feedback":"under 50 words","studentDid":""},"conclusion":{"score":0,"max":1.5,"feedback":"under 50 words","studentDid":""}},"overallFeedback":"under 200 words","strengths":[],"improvements":[],"keyMissed":[],"format":"essay"}`;
+      } else {
+        maxTok = 2500;
+        prompt = `You are a Philippine Bar Exam examiner. Evaluate this conceptual/theoretical answer. Keep overallFeedback under 100 words and each component feedback under 50 words.
+Question: ${question}
+${modelAnswer ? `Model Answer: ${modelAnswer}` : ''}
+${(keyPoints || []).length ? `Key Points: ${keyPoints.join(', ')}` : ''}
+Student Answer: ${answer}
+Score: Accuracy(4pts) + Completeness(3pts) + Clarity(3pts) = 10.
+${GRADE_SCALE}
+Respond ONLY with valid JSON: {"score":"X/10","numericScore":0,"grade":"...","breakdown":{"accuracy":{"score":0,"max":4,"feedback":"under 50 words"},"completeness":{"score":0,"max":3,"feedback":"under 50 words"},"clarity":{"score":0,"max":3,"feedback":"under 50 words"}},"overallFeedback":"under 100 words","keyMissed":[],"format":"conceptual"}`;
       }
 
       const result = await callClaudeHaikuJSON(prompt, maxTok);
@@ -2491,7 +2366,7 @@ Respond ONLY with valid JSON: {"score":"X/10","numericScore":0,"grade":"...","al
         result.questionType = qtype;
         if (!result.modelAnswer && modelAnswer) result.modelAnswer = modelAnswer;
         if (!result.keyPoints?.length && keyPoints?.length) result.keyPoints = keyPoints;
-        if ((qtype === 'situational' || qtype === 'essay') && result.modelAnswer) {
+        if (isSit && result.modelAnswer) {
           const alacResult = await generateALACModelAnswer(question, context, result.modelAnswer, subject);
           if (alacResult) {
             result.alacModelAnswer      = alacResult.components;
@@ -2952,7 +2827,18 @@ function saveContent() { /* no-op — CONTENT is in-memory only */ }
 
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
+async function migrateOldQuestionTypes() {
+  const oldTypes = ['mcq', 'truefalse', 'true_false', 'enumeration', 'definition', 'identification'];
+  const { error } = await supabase
+    .from('questions')
+    .update({ type: 'conceptual' })
+    .in('type', oldTypes);
+  if (error) console.warn('[migrate] Type migration warning:', error.message);
+  else console.log('[migrate] Question types normalized to situational/conceptual');
+}
+
 initializeApp().then(() => {
+  migrateOldQuestionTypes().catch(e => console.warn('[migrate] Skipped:', e.message));
   app.listen(PORT, () => {
     const totalQ        = KB.pastBar.reduce((a, pb) => a + (pb.questions?.length || pb.qCount || 0), 0);
     const subjsWithData = [...new Set(KB.pastBar.map(pb => pb.subject))].join(', ') || 'none';

@@ -1320,8 +1320,8 @@ select.form-input{cursor:pointer;}
         </select>
         <select id="adminQType" style="background:var(--card2);color:var(--white);border:1px solid var(--bdr2);border-radius:8px;padding:6px 8px;font-size:12px;min-width:110px;">
           <option value="">All Types</option>
-          <option value="essay">Essay</option>
-          <option value="mcq">MCQ</option>
+          <option value="situational">Situational (ALAC)</option>
+          <option value="conceptual">Conceptual</option>
         </select>
         <button class="btn-gold" onclick="loadAdminQuestions(0)" style="padding:6px 14px;font-size:12px;">Search</button>
       </div>
@@ -1369,8 +1369,8 @@ select.form-input{cursor:pointer;}
     <div style="flex:1;">
       <div style="font-size:11px;color:var(--muted);margin-bottom:4px;">Type</div>
       <select id="editQType" style="width:100%;background:var(--card2);color:var(--white);border:1px solid var(--bdr2);border-radius:8px;padding:7px 10px;font-size:13px;">
-        <option value="essay">Essay</option>
-        <option value="mcq">MCQ</option>
+        <option value="situational">Situational (ALAC)</option>
+        <option value="conceptual">Conceptual</option>
       </select>
     </div>
     <div style="flex:1;">
@@ -1451,7 +1451,7 @@ const VISITED = [];      // [{subjKey, topicName, title, type}] — recent activ
 let totalQDone=0, totalCorrect=0, mockSessions=0;
 let curSubj=null, curTopic=null, curPage=0;
 let quizPool=[];         // flat list of {type,subject,topic,data} loaded from CACHE for practice panel
-let activeQuiz=null, qIdx=0, qScore=0, qMode='mcq';
+let activeQuiz=null, qIdx=0, qScore=0, qMode='essay';
 let mockQs=[], mockIdx=0, mockAnswers=[], mockTimer=null, mockLeft=0;
 let mockScores=[], mockSubjectsUsed=[], mockSessionDate=null;
 let mockTimeLimitSecs=0; // original time limit in seconds (0 = no limit)
@@ -2241,8 +2241,7 @@ function renderQuizTab(subj, container) {
         <div class="pl-head">
           <h3>✍️ Practice</h3>
           <div class="q-type-tabs">
-            <div class="qtt on" id="qmode-mcq" onclick="setQMode('mcq')"><span class="qtt-ic">🔘</span>MCQ</div>
-            <div class="qtt" id="qmode-essay" onclick="setQMode('essay')"><span class="qtt-ic">✍️</span>Essay</div>
+            <div class="qtt on" id="qmode-essay" onclick="setQMode('essay')"><span class="qtt-ic">✍️</span>Essay</div>
           </div>
         </div>
         <div class="qn-list" id="quizList"></div>
@@ -3079,7 +3078,6 @@ function buildQuizPool(subjFilter) {
   Object.entries(CACHE).forEach(([subj,topics])=>{
     if (subjFilter && subj !== subjFilter) return;
     Object.entries(topics).forEach(([topic,data])=>{
-      if(data.mcq?.questions?.length) quizPool.push({type:'mcq',subject:subj,topic,data:data.mcq});
       if(data.essay?.questions?.length) quizPool.push({type:'essay',subject:subj,topic,data:data.essay});
     });
   });
@@ -3087,14 +3085,14 @@ function buildQuizPool(subjFilter) {
   updateDash();
 }
 
-function setQMode(m){qMode=m;['mcq','essay'].forEach(x=>{const el=document.getElementById('qmode-'+x);if(el)el.classList.toggle('on',x===m);});renderQuizList();}
+function setQMode(m){qMode=m;['essay'].forEach(x=>{const el=document.getElementById('qmode-'+x);if(el)el.classList.toggle('on',x===m);});renderQuizList();}
 function renderQuizList(){
   const list=document.getElementById('quizList');
   if(!list) return;  // element only exists while Quiz tab is active
   const items=quizPool.filter(q=>q.type===qMode);
   if(!items.length){list.innerHTML=`<div style="padding:16px 12px;text-align:center;color:var(--muted);font-size:12px;line-height:1.6;">No ${qMode} quizzes cached yet.</div>`;return;}
   list.innerHTML=items.map((q,i)=>{const sub=SUBJS.find(s=>s.key===q.subject)||{cls:'sg-gen',name:q.subject};
-    return `<div class="qn-item${activeQuiz===i?' active':''}" onclick="openQuizItem(${i})"><div class="qn-icon">${qMode==='mcq'?'🔘':'✍️'}</div><div class="qn-info"><div class="qn-title">${h(q.topic)}</div><div class="qn-sub"><span class="sbg ${sub.cls}" style="font-size:9px;">${sub.name}</span> ${q.data.questions?.length||0} Qs</div></div></div>`;
+    return `<div class="qn-item${activeQuiz===i?' active':''}" onclick="openQuizItem(${i})"><div class="qn-icon">✍️</div><div class="qn-info"><div class="qn-title">${h(q.topic)}</div><div class="qn-sub"><span class="sbg ${sub.cls}" style="font-size:9px;">${sub.name}</span> ${q.data.questions?.length||0} Qs</div></div></div>`;
   }).join('');
 }
 function openQuizItem(i){activeQuiz=i;qIdx=0;qScore=0;renderQuizList();const qh=document.getElementById('qmHead');if(qh)qh.style.display='flex';const qt=document.getElementById('qmTitle');if(qt)qt.textContent=quizPool[i]?.topic||'Quiz';const qm=document.getElementById('qmMeta');if(qm)qm.textContent=`${quizPool[i]?.data?.questions?.length||0} questions`;renderQuizQ();}
@@ -3106,92 +3104,39 @@ function renderQuizQ(){
   if(!body)return;
   if(qIdx>=qs.length){showQuizResults();return;}
   const cur=qs[qIdx],sub=SUBJS.find(s=>s.key===pool.subject)||{cls:'sg-gen',name:pool.subject};
-  if(pool.type==='mcq'){
-    body.innerHTML=`<div style="display:flex;gap:7px;margin-bottom:14px;flex-wrap:wrap;"><span class="sbg ${sub.cls}">${sub.name}</span><span class="tag tg-q">Bar MCQ</span></div>
-      <div class="q-prog-track"><div class="q-prog-fill" style="width:${(qIdx/qs.length)*100}%"></div></div>
-      <div class="q-prog-meta"><span>Q${qIdx+1} of ${qs.length}</span><span>Score: ${qScore}/${qIdx}</span></div>
-      <div class="q-question">${h(cur.q)}</div>
-      <div class="q-opts">${cur.options.map((o,i)=>`<div class="q-opt" id="qo${i}" onclick="pickMCQ(${i})">${h(o)}</div>`).join('')}</div>
-      <div class="q-feedback" id="qfb"></div>
-      <div style="display:flex;justify-content:flex-end;margin-top:14px;"><button class="btn-gold" id="qnxt" style="display:none;" onclick="nextQ()">Next →</button></div>`;
-  }else{
-    body.innerHTML=`<div style="display:flex;gap:7px;margin-bottom:14px;flex-wrap:wrap;"><span class="sbg ${sub.cls}">${sub.name}</span><span class="tag tg-e">Essay</span></div>
-      <div class="q-prog-track"><div class="q-prog-fill" style="width:${(qIdx/qs.length)*100}%"></div></div>
-      <div class="q-prog-meta"><span>Q${qIdx+1} of ${qs.length}</span><span>Write answer → AI feedback</span></div>
-      ${(cur.type==='situational'&&cur.context&&cur.context.trim())
-        ? `<div class="facts-box"><div class="facts-label">📋 Facts</div><div class="facts-text">${h(cur.context)}</div></div>
-           <div class="question-label">❓ Question</div>
-           <div class="question-text">${h(cur.prompt||cur.q||'')}</div>`
-        : `<div class="question-text" style="font-size:17px;">${h(cur.prompt||cur.q||'')}</div>`
-      }
-      <textarea class="essay-box" id="essayBox" placeholder="Write your answer…"></textarea>
-      <div style="display:flex;gap:8px;margin-top:10px;">
-        <button class="btn-gold" id="essFB" onclick="submitEssay()">🤖 Get AI Feedback</button>
-        <button class="btn-ghost" onclick="nextQ()">Skip →</button>
-      </div>
-      <div class="ai-fb" id="aiFB"></div>
-      <div style="display:flex;justify-content:flex-end;margin-top:8px;"><button class="btn-gold" id="essNext" style="display:none;" onclick="nextQ()">Next →</button></div>`;
-  }
-}
-function pickMCQ(i){
-  const pool=quizPool[activeQuiz],cur=pool.data.questions[qIdx];
-  const ok=i===cur.answer;if(ok){qScore++;totalCorrect++;}totalQDone++;
-  document.querySelectorAll('.q-opt').forEach((el,j)=>{if(j===cur.answer)el.classList.add('correct');else if(j===i)el.classList.add('wrong');});
-  const fb=document.getElementById('qfb');fb.className='q-feedback show '+(ok?'ok':'no');
-  fb.innerHTML=(ok?'✅ <strong>Correct!</strong> ':'❌ <strong>Incorrect.</strong> ')+h(cur.explanation);
-  document.getElementById('qnxt').style.display='block';updateDash();
+  body.innerHTML=`<div style="display:flex;gap:7px;margin-bottom:14px;flex-wrap:wrap;"><span class="sbg ${sub.cls}">${sub.name}</span><span class="tag tg-e">Essay</span></div>
+    <div class="q-prog-track"><div class="q-prog-fill" style="width:${(qIdx/qs.length)*100}%"></div></div>
+    <div class="q-prog-meta"><span>Q${qIdx+1} of ${qs.length}</span><span>Write answer → AI feedback</span></div>
+    ${(cur.type==='situational'&&cur.context&&cur.context.trim())
+      ? `<div class="facts-box"><div class="facts-label">📋 Facts</div><div class="facts-text">${h(cur.context)}</div></div>
+         <div class="question-label">❓ Question</div>
+         <div class="question-text">${h(cur.prompt||cur.q||'')}</div>`
+      : `<div class="question-text" style="font-size:17px;">${h(cur.prompt||cur.q||'')}</div>`
+    }
+    <textarea class="essay-box" id="essayBox" placeholder="Write your answer…"></textarea>
+    <div style="display:flex;gap:8px;margin-top:10px;">
+      <button class="btn-gold" id="essFB" onclick="submitEssay()">🤖 Get AI Feedback</button>
+      <button class="btn-ghost" onclick="nextQ()">Skip →</button>
+    </div>
+    <div class="ai-fb" id="aiFB"></div>
+    <div style="display:flex;justify-content:flex-end;margin-top:8px;"><button class="btn-gold" id="essNext" style="display:none;" onclick="nextQ()">Next →</button></div>`;
 }
 // ── Eval format badge ──────────────────────────────────────
 function evalFormatBadge(format){
-  const map={
-    essay:        ['📝 ALAC Scoring',        '#ff8c42','rgba(255,140,66,.12)'],
-    situational:  ['📝 ALAC Scoring',        '#ff8c42','rgba(255,140,66,.12)'],
-    truefalse:    ['✓/✗ T/F Scoring',        '#5b9bd5','rgba(91,155,213,.12)'],
-    mcq:          ['🔘 MCQ Scoring',          '#5b9bd5','rgba(91,155,213,.12)'],
-    enumeration:  ['📋 Enumeration Scoring',  '#14b4a0','rgba(20,180,160,.12)'],
-    definition:   ['📖 Definition Scoring',   '#c9a84c','rgba(201,168,76,.12)'],
-    conceptual:   ['💡 Conceptual Scoring',   '#c9a84c','rgba(201,168,76,.12)'],
-  };
-  const [label,color,bg]=map[format]||map.essay;
+  const isSit=format==='essay'||format==='situational'||format==='alac';
+  const [label,color,bg]=isSit
+    ?['📝 ALAC Scoring','#ff8c42','rgba(255,140,66,.12)']
+    :['💡 Conceptual Scoring','#c9a84c','rgba(201,168,76,.12)'];
   return `<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;background:${bg};color:${color};letter-spacing:.04em;margin-right:6px;">${label}</span>`;
 }
 // ── Dispatcher ─────────────────────────────────────────────
 function renderEvalCard(ev){
   if(!ev) return '';
   const fmt=ev.format||ev.questionType||'essay';
-  if(fmt==='truefalse'||fmt==='mcq') return renderTFMCQCard(ev);
-  if(fmt==='enumeration') return renderEnumCard(ev);
-  if(fmt==='definition'||fmt==='conceptual') return renderDefCard(ev);
-  return renderAlacCard(ev); // situational, essay, default
+  const isSit=fmt==='situational'||fmt==='essay'||fmt==='alac';
+  return isSit?renderAlacCard(ev):renderDefCard(ev);
 }
-// ── True/False & MCQ card ──────────────────────────────────
-function renderTFMCQCard(ev){
-  const gc=ev.grade==='Excellent'?'#14b4a0':ev.grade==='Good'?'#50d090':ev.grade==='Satisfactory'?'#c9a84c':ev.grade==='Needs Improvement'?'#e09050':'#e07080';
-  const ok=ev.isCorrect;
-  return `<div class="ai-fb-head">${evalFormatBadge(ev.format)}<span class="ai-fb-score">${h(ev.score||'?/10')}</span><span style="background:rgba(255,255,255,.08);border-radius:5px;padding:2px 7px;font-family:var(--fm);color:${gc};">${h(ev.grade||'')}</span></div>
-  <div class="ai-fb-content">
-    <div style="font-size:18px;font-weight:700;margin-bottom:12px;color:${ok?'#14b4a0':'#e07080'};">${ok?'✅ CORRECT':'❌ INCORRECT'}</div>
-    ${ev.whyCorrect?`<p style="margin-bottom:6px;"><strong>Why this is correct:</strong></p><p style="color:rgba(248,246,241,.85);line-height:1.7;margin-bottom:10px;">${h(ev.whyCorrect)}</p>`:''}
-    ${ev.whyOthersWrong?`<p style="margin-bottom:4px;"><strong>Why other options are wrong:</strong></p><p style="color:rgba(248,246,241,.7);font-size:13px;line-height:1.7;margin-bottom:10px;">${h(ev.whyOthersWrong)}</p>`:''}
-    ${ev.overallFeedback&&!ev.whyCorrect?`<p style="color:rgba(248,246,241,.85);line-height:1.7;">${h(ev.overallFeedback)}</p>`:''}
-    <details style="margin-top:12px;"><summary style="cursor:pointer;color:var(--gold);font-weight:600;font-size:13px;">📖 Correct Answer</summary>
-    <div style="margin-top:8px;padding:12px;background:rgba(255,255,255,.03);border-radius:9px;">${renderModelAnswer(ev)}</div></details>
-  </div>`;
-}
-// ── Enumeration card ──────────────────────────────────────
-function renderEnumCard(ev){
-  const gc=ev.grade==='Excellent'?'#14b4a0':ev.grade==='Good'?'#50d090':ev.grade==='Satisfactory'?'#c9a84c':ev.grade==='Needs Improvement'?'#e09050':'#e07080';
-  return `<div class="ai-fb-head">${evalFormatBadge(ev.format)}<span class="ai-fb-score">${h(ev.score||'?/10')}</span><span style="background:rgba(255,255,255,.08);border-radius:5px;padding:2px 7px;font-family:var(--fm);color:${gc};">${h(ev.grade||'')}</span></div>
-  <div class="ai-fb-content">
-    <div style="font-size:16px;font-weight:700;margin-bottom:12px;color:${gc};">Items Correct: ${ev.itemsCorrect??'?'} / ${ev.itemsRequired??'?'}</div>
-    ${ev.itemsMissed?.length?`<p style="margin-bottom:6px;"><strong>❌ Items you missed:</strong></p><ul>${ev.itemsMissed.map(s=>`<li>${h(s)}</li>`).join('')}</ul>`:'<p style="color:#14b4a0;font-weight:600;">✅ All items covered!</p>'}
-    ${ev.itemsWrong?.length?`<p style="margin-top:8px;margin-bottom:4px;"><strong>⚠️ Incorrect items stated:</strong></p><ul>${ev.itemsWrong.map(s=>`<li>${h(s)}</li>`).join('')}</ul>`:''}
-    ${ev.overallFeedback?`<p style="margin-top:10px;color:rgba(248,246,241,.8);line-height:1.7;">${h(ev.overallFeedback)}</p>`:''}
-    <details style="margin-top:12px;"><summary style="cursor:pointer;color:var(--gold);font-weight:600;font-size:13px;">📖 Complete Answer</summary>
-    <div style="margin-top:8px;padding:12px;background:rgba(255,255,255,.03);border-radius:9px;">${renderModelAnswer(ev)}</div></details>
-  </div>`;
-}
-// ── Definition / Distinction card ─────────────────────────
+// ── Conceptual card ────────────────────────────────────────
 function renderDefCard(ev){
   const gc=ev.grade==='Excellent'?'#14b4a0':ev.grade==='Good'?'#50d090':ev.grade==='Satisfactory'?'#c9a84c':ev.grade==='Needs Improvement'?'#e09050':'#e07080';
   const bd=ev.breakdown||{};
@@ -3975,15 +3920,6 @@ function buildResultsHtml(){
           </table>`;
         }
       }
-
-      // MCQ / TF extra fields
-      if(s.whyCorrect) card+=`<div style="margin-bottom:6px;font-size:13px;"><strong>Why correct:</strong> ${e(s.whyCorrect)}</div>`;
-      if(s.whyOthersWrong) card+=`<div style="margin-bottom:6px;font-size:13px;color:#555;"><strong>Why others wrong:</strong> ${e(s.whyOthersWrong)}</div>`;
-      if(s.correctAnswer) card+=`<div style="margin-bottom:6px;font-size:13px;"><strong>Correct answer:</strong> ${e(s.correctAnswer)}</div>`;
-
-      // Enumeration extras
-      if(s.itemsRequired!=null) card+=`<div style="margin-bottom:6px;font-size:13px;"><strong>Items correct:</strong> ${s.itemsCorrect||0} / ${s.itemsRequired}</div>`;
-      if(s.itemsMissed?.length) card+=`<div style="font-size:12px;font-weight:bold;color:#b32d2d;margin-bottom:2px;">Items missed:</div><ul style="margin:0 0 10px 20px;font-size:12px;">${s.itemsMissed.map(k=>`<li>${e(k)}</li>`).join('')}</ul>`;
 
       // Strengths
       if(s.strengths?.length) card+=`<div style="background:#f0faf0;border-left:3px solid #4caf50;padding:8px 12px;margin:8px 0;border-radius:4px;"><strong style="color:#2e7d32;font-size:12px;">✅ STRENGTHS</strong><ul style="margin:4px 0 0 0;padding-left:18px;font-size:13px;">${s.strengths.map(x=>`<li style="margin:2px 0;">${e(x)}</li>`).join('')}</ul></div>`;
