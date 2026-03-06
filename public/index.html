@@ -3168,7 +3168,7 @@ function renderTFMCQCard(ev){
     ${ev.whyOthersWrong?`<p style="margin-bottom:4px;"><strong>Why other options are wrong:</strong></p><p style="color:rgba(248,246,241,.7);font-size:13px;line-height:1.7;margin-bottom:10px;">${h(ev.whyOthersWrong)}</p>`:''}
     ${ev.overallFeedback&&!ev.whyCorrect?`<p style="color:rgba(248,246,241,.85);line-height:1.7;">${h(ev.overallFeedback)}</p>`:''}
     <details style="margin-top:12px;"><summary style="cursor:pointer;color:var(--gold);font-weight:600;font-size:13px;">📖 Correct Answer</summary>
-    <div style="margin-top:8px;padding:12px;background:rgba(255,255,255,.03);border-radius:9px;">${renderModelAnswer(ev.modelAnswer||ev.correctAnswer||'')}</div></details>
+    <div style="margin-top:8px;padding:12px;background:rgba(255,255,255,.03);border-radius:9px;">${renderModelAnswer(ev)}</div></details>
   </div>`;
 }
 // ── Enumeration card ──────────────────────────────────────
@@ -3181,7 +3181,7 @@ function renderEnumCard(ev){
     ${ev.itemsWrong?.length?`<p style="margin-top:8px;margin-bottom:4px;"><strong>⚠️ Incorrect items stated:</strong></p><ul>${ev.itemsWrong.map(s=>`<li>${h(s)}</li>`).join('')}</ul>`:''}
     ${ev.overallFeedback?`<p style="margin-top:10px;color:rgba(248,246,241,.8);line-height:1.7;">${h(ev.overallFeedback)}</p>`:''}
     <details style="margin-top:12px;"><summary style="cursor:pointer;color:var(--gold);font-weight:600;font-size:13px;">📖 Complete Answer</summary>
-    <div style="margin-top:8px;padding:12px;background:rgba(255,255,255,.03);border-radius:9px;">${renderModelAnswer(ev.modelAnswer||'')}</div></details>
+    <div style="margin-top:8px;padding:12px;background:rgba(255,255,255,.03);border-radius:9px;">${renderModelAnswer(ev)}</div></details>
   </div>`;
 }
 // ── Definition / Distinction card ─────────────────────────
@@ -3204,7 +3204,7 @@ function renderDefCard(ev){
     </table>
     ${ev.keyMissed?.length?`<p style="margin-top:10px;"><strong>📚 Missed:</strong></p><ul>${ev.keyMissed.map(s=>`<li>${h(s)}</li>`).join('')}</ul>`:''}
     <details style="margin-top:12px;"><summary style="cursor:pointer;color:var(--gold);font-weight:600;font-size:13px;">📖 Model Answer</summary>
-    <div style="margin-top:8px;padding:12px;background:rgba(255,255,255,.03);border-radius:9px;">${renderModelAnswer(ev.modelAnswer||'')}</div></details>
+    <div style="margin-top:8px;padding:12px;background:rgba(255,255,255,.03);border-radius:9px;">${renderModelAnswer(ev)}</div></details>
   </div>`;
 }
 // ALAC color thresholds per component
@@ -3215,37 +3215,65 @@ function alacScoreCls(score, key){
   if(key==='conclusion')  return score>=1.2?'hi':score>=0.7?'mid':'lo';
   return score>=2?'hi':score>=1?'mid':'lo';
 }
-// Render model answer — ALAC-aware with colored sections, plain fallback for other types
-function renderModelAnswer(text, type){
-  if(!text) return '<em style="color:#777;font-size:13px;">No model answer available for this question.</em>';
-  const SECTIONS=[
-    {key:'ANSWER',      label:'A — Answer',      color:'#4a9eff', icon:'⚖️'},
-    {key:'LEGAL BASIS', label:'L — Legal Basis',  color:'#f0c040', icon:'📜'},
-    {key:'APPLICATION', label:'A — Application',  color:'#4caf50', icon:'🔍'},
-    {key:'CONCLUSION',  label:'C — Conclusion',   color:'#ff9800', icon:'✅'},
+// ── ALAC model answer helpers ──────────────────────────────────────────────────
+// Parse "ANSWER: ...\n\nLEGAL BASIS: ..." text into {answer,legalBasis,application,conclusion}
+function parseALACString(text){
+  if(!text) return null;
+  const SECS=[
+    {key:'ANSWER',      field:'answer'},
+    {key:'LEGAL BASIS', field:'legalBasis'},
+    {key:'APPLICATION', field:'application'},
+    {key:'CONCLUSION',  field:'conclusion'},
   ];
-  const upper=text.toUpperCase();
-  const hasALAC=SECTIONS.some(s=>upper.includes(s.key+':'));
-  if(!hasALAC) return `<div class="plain-model-answer">${h(text)}</div>`;
-  // Parse each ALAC section by scanning for marker positions
-  const found=[];
-  SECTIONS.forEach(s=>{
-    const idx=upper.indexOf(s.key+':');
-    if(idx!==-1) found.push({...s,idx,end:idx+s.key.length+1});
+  const up=text.toUpperCase();
+  const found=SECS.map(s=>({...s,idx:up.indexOf(s.key+':')})).filter(s=>s.idx!==-1).sort((a,b)=>a.idx-b.idx);
+  if(found.length<2) return null;
+  const comps={answer:'',legalBasis:'',application:'',conclusion:''};
+  found.forEach((s,i)=>{
+    const start=s.idx+s.key.length+1;
+    const end=found[i+1]?found[i+1].idx:text.length;
+    comps[s.field]=text.slice(start,end).trim();
   });
-  found.sort((a,b)=>a.idx-b.idx);
-  const parts=found.map((s,i)=>{
-    const nextIdx=found[i+1]?found[i+1].idx:text.length;
-    return {...s,content:text.slice(s.end,nextIdx).trim()};
-  }).filter(s=>s.content);
-  if(!parts.length) return `<div class="plain-model-answer">${h(text)}</div>`;
+  return comps;
+}
+// Render an ALAC components object as colored section cards
+function renderALACSections(components){
+  if(!components) return '';
+  const DEFS=[
+    {field:'answer',      label:'A — Answer',      color:'#4a9eff', icon:'⚖️'},
+    {field:'legalBasis',  label:'L — Legal Basis',  color:'#f0c040', icon:'📜'},
+    {field:'application', label:'A — Application',  color:'#4caf50', icon:'🔍'},
+    {field:'conclusion',  label:'C — Conclusion',   color:'#ff9800', icon:'✅'},
+  ];
+  const parts=DEFS.filter(d=>components[d.field]);
+  if(!parts.length) return '';
   return `<div class="alac-model-answer">
     <div class="alac-model-header">📘 Model Answer (ALAC Format)</div>
-    ${parts.map(s=>`<div class="alac-section">
-      <div class="alac-section-label" style="color:${s.color};">${s.icon} ${s.label}</div>
-      <div class="alac-section-content">${h(s.content)}</div>
+    ${parts.map(d=>`<div class="alac-section">
+      <div class="alac-section-label" style="color:${d.color};">${d.icon} ${d.label}</div>
+      <div class="alac-section-content">${h(components[d.field])}</div>
     </div>`).join('')}
   </div>`;
+}
+// Render model answer — prefers structured alacModelAnswer, falls back to ALAC string parse, then plain text
+// Accepts either an evaluation object or a plain string (legacy compat)
+function renderModelAnswer(evaluation, questionType){
+  if(typeof evaluation==='string') evaluation={modelAnswer:evaluation};
+  // 1. Structured components from server
+  if(evaluation.alacModelAnswer){
+    const rendered=renderALACSections(evaluation.alacModelAnswer);
+    if(rendered) return rendered;
+  }
+  // 2. Formatted ALAC string or plain modelAnswer
+  const text=evaluation.modelAnswerFormatted||evaluation.modelAnswer||evaluation.correctAnswer||'';
+  if(!text) return '<em style="color:#777;font-size:13px;">No model answer available for this question.</em>';
+  // 3. Try parsing as ALAC text
+  const comps=parseALACString(text);
+  if(comps){
+    const rendered=renderALACSections(comps);
+    if(rendered) return rendered;
+  }
+  return `<div class="plain-model-answer">${h(text)}</div>`;
 }
 function renderAlacCard(ev){
   const gc=ev.grade==='Excellent'?'#14b4a0':ev.grade==='Good'?'#50d090':ev.grade==='Satisfactory'?'#c9a84c':ev.grade==='Needs Improvement'?'#e09050':'#e07080';
@@ -3273,7 +3301,7 @@ function renderAlacCard(ev){
     ${ev.improvements?.length?`<p><strong>⚠️ Improve:</strong></p><ul>${ev.improvements.map(s=>`<li>${h(s)}</li>`).join('')}</ul>`:''}
     ${ev.keyMissed?.length?`<p><strong>📚 Missed:</strong></p><ul>${ev.keyMissed.map(s=>`<li>${h(s)}</li>`).join('')}</ul>`:''}
     <details style="margin-top:12px;"><summary style="cursor:pointer;color:var(--gold);font-weight:600;font-size:13px;">📖 Model Answer (ALAC Format)</summary>
-    <div style="margin-top:8px;padding:12px;background:rgba(255,255,255,.03);border-radius:9px;">${renderModelAnswer(ev.modelAnswer||'')}</div></details>
+    <div style="margin-top:8px;padding:12px;background:rgba(255,255,255,.03);border-radius:9px;">${renderModelAnswer(ev)}</div></details>
   </div>`;
 }
 async function submitEssay(){
@@ -3893,6 +3921,7 @@ function buildResultsHtml(){
   const qHtml=mockQs.map((q,i)=>{
     const s={...mockScores[i]||{}};
     if(!s.modelAnswer&&q.modelAnswer) s.modelAnswer=q.modelAnswer; // fallback to stored model answer
+    if(!s.alacModelAnswer&&q.alacModelAnswer) s.alacModelAnswer=q.alacModelAnswer;
     const sub=SUBJS.find(x=>x.key===q.subject)||{name:q.subject||'Unknown'};
     const qText=q.prompt||q.q||'';
     const ans=mockAnswers[i]||'';
@@ -3953,11 +3982,24 @@ function buildResultsHtml(){
       // Model answer — render with ALAC sections if structured
       card+=`<div style="font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:.08em;color:#7a6128;margin:12px 0 5px;">MODEL ANSWER</div>`;
       (()=>{
-        const ma=s.modelAnswer||'';
+        // 1. Prefer structured alacModelAnswer components
+        const ac=s.alacModelAnswer;
+        if(ac&&(ac.answer||ac.legalBasis||ac.application||ac.conclusion)){
+          const DEFS=[['A — Answer',ac.answer],['L — Legal Basis',ac.legalBasis],['A — Application',ac.application],['C — Conclusion',ac.conclusion]];
+          let sec='<div class="alac-model-answer"><div class="alac-model-header">Model Answer (ALAC Format)</div>';
+          DEFS.forEach(([label,content])=>{
+            if(content) sec+=`<div class="alac-section"><div class="alac-section-label">${label}</div><div class="alac-section-content">${e(content)}</div></div>`;
+          });
+          sec+='</div>';
+          card+=sec;
+          return;
+        }
+        // 2. Fall back to plain text with ALAC string parsing
+        const ma=s.modelAnswerFormatted||s.modelAnswer||'';
         if(!ma){card+=`<div style="background:#f0f8f0;border:1px solid #b0d8b0;border-radius:4px;padding:10px 14px;font-size:13px;line-height:1.7;margin-bottom:10px;">—</div>`;return;}
         const PSEC=[{k:'ANSWER',l:'A — Answer'},{k:'LEGAL BASIS',l:'L — Legal Basis'},{k:'APPLICATION',l:'A — Application'},{k:'CONCLUSION',l:'C — Conclusion'}];
         const up=ma.toUpperCase();
-        const found=PSEC.map(s=>({...s,idx:up.indexOf(s.k+':')})).filter(s=>s.idx!==-1).sort((a,b)=>a.idx-b.idx);
+        const found=PSEC.map(ps=>({...ps,idx:up.indexOf(ps.k+':')})).filter(ps=>ps.idx!==-1).sort((a,b)=>a.idx-b.idx);
         if(found.length<2){card+=`<div style="background:#f0f8f0;border:1px solid #b0d8b0;border-radius:4px;padding:10px 14px;font-size:13px;line-height:1.7;margin-bottom:10px;">${e(ma)}</div>`;return;}
         let sec='<div class="alac-model-answer"><div class="alac-model-header">Model Answer (ALAC Format)</div>';
         found.forEach((f,i)=>{

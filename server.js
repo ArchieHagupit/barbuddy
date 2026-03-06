@@ -2278,43 +2278,89 @@ Respond ONLY with valid JSON (no markdown):
     // Fall back to stored model answer if AI omitted it
     if (!result.modelAnswer && modelAnswer) result.modelAnswer = modelAnswer;
     if (!result.keyPoints?.length && keyPoints?.length) result.keyPoints = keyPoints;
-    // Reformat plain-text model answer into ALAC for situational/essay questions
+    // Generate structured ALAC model answer for situational/essay questions
     if ((qtype === 'situational' || qtype === 'essay') && result.modelAnswer) {
-      result.modelAnswer = await formatModelAnswerAsALAC(question, context, result.modelAnswer);
+      const alacResult = await generateALACModelAnswer(question, context, result.modelAnswer, subject);
+      if (alacResult) {
+        result.alacModelAnswer     = alacResult.components;
+        result.modelAnswerFormatted = alacResult.formatted;
+        result.modelAnswer          = alacResult.formatted;
+      }
     }
     res.json(result);
   } catch(err) { res.status(500).json({ error:err.message }); }
 });
 
-// ── ALAC model answer formatter ───────────────────────────────
-// Reformats a plain-text model answer into ALAC structure for situational questions.
-// Skips immediately if already formatted or if model answer is absent.
-async function formatModelAnswerAsALAC(question, context, modelAnswer) {
-  if (!modelAnswer) return modelAnswer;
-  const upper = modelAnswer.toUpperCase();
-  if (['ANSWER:', 'LEGAL BASIS:', 'APPLICATION:', 'CONCLUSION:'].some(kw => upper.includes(kw))) {
-    return modelAnswer; // already ALAC — no extra call needed
+// ── ALAC model answer generator ────────────────────────────────────────────────
+// Returns { formatted, components: {answer, legalBasis, application, conclusion} }
+// - If plainModelAnswer already has >=3 ALAC markers, parses into components directly
+// - Otherwise calls AI to reformat into ALAC structure
+async function generateALACModelAnswer(questionText, contextText, plainModelAnswer, subject) {
+  if (!plainModelAnswer) return null;
+
+  // Helper: scan ALAC text into a components object
+  function parseComponents(text) {
+    const SECS = [
+      { key: 'ANSWER',      field: 'answer' },
+      { key: 'LEGAL BASIS', field: 'legalBasis' },
+      { key: 'APPLICATION', field: 'application' },
+      { key: 'CONCLUSION',  field: 'conclusion' },
+    ];
+    const up = text.toUpperCase();
+    const found = SECS.map(s => ({ ...s, idx: up.indexOf(s.key + ':') }))
+      .filter(s => s.idx !== -1)
+      .sort((a, b) => a.idx - b.idx);
+    const comps = { answer: '', legalBasis: '', application: '', conclusion: '' };
+    found.forEach((s, i) => {
+      const start = s.idx + s.key.length + 1;
+      const end = found[i + 1] ? found[i + 1].idx : text.length;
+      comps[s.field] = text.slice(start, end).trim();
+    });
+    return comps;
   }
-  const prompt = `You are a Philippine bar exam coach. Reformat this model answer into strict ALAC format.
 
-ALAC FORMAT:
-ANSWER: [Direct yes/no ruling — 1-2 sentences]
-LEGAL BASIS: [Cite the specific law, article, provision, or case — 1-2 sentences]
-APPLICATION: [Apply the law to the specific facts of this case — 2-4 sentences]
-CONCLUSION: [Restate the final ruling — 1 sentence]
+  const upper = plainModelAnswer.toUpperCase();
+  const matchCount = ['ANSWER:', 'LEGAL BASIS:', 'APPLICATION:', 'CONCLUSION:'].filter(kw => upper.includes(kw)).length;
 
-Question: ${question}
-${context ? 'Facts: ' + context : ''}
-Model Answer to reformat: ${modelAnswer}
+  // Already in ALAC format — parse without an extra AI call
+  if (matchCount >= 3) {
+    return { formatted: plainModelAnswer, components: parseComponents(plainModelAnswer) };
+  }
 
-Respond ONLY with raw JSON: {"alacFormatted":"ANSWER: ...\\n\\nLEGAL BASIS: ...\\n\\nAPPLICATION: ...\\n\\nCONCLUSION: ..."}`;
+  // Ask AI to reformat into structured ALAC
+  const prompt = `You are a Philippine bar exam coach. Convert this model answer into strict ALAC format.
+
+Subject: ${subject || 'Philippine Law'}
+Question: ${questionText}
+${contextText ? 'Facts: ' + contextText : ''}
+Model Answer: ${plainModelAnswer}
+
+Respond ONLY with raw JSON (no markdown, no backticks):
+{"answer":"[Direct yes/no ruling — 1-2 sentences]","legalBasis":"[Cite specific law, article, provision, or case — 1-2 sentences]","application":"[Apply the law to the specific facts — 2-4 sentences]","conclusion":"[Restate the final ruling — 1 sentence]"}`;
+
   try {
-    const result = await callClaudeJSON([{ role: 'user', content: prompt }], 600);
-    if (result?.alacFormatted) return result.alacFormatted;
-  } catch(e) {
-    console.warn('[formatModelAnswerAsALAC] failed:', e.message);
+    const res = await callClaudeJSON([{ role: 'user', content: prompt }], 800);
+    if (res?.answer) {
+      const components = {
+        answer:      res.answer || '',
+        legalBasis:  res.legalBasis || '',
+        application: res.application || '',
+        conclusion:  res.conclusion || '',
+      };
+      const formatted = [
+        `ANSWER: ${components.answer}`,
+        `LEGAL BASIS: ${components.legalBasis}`,
+        `APPLICATION: ${components.application}`,
+        `CONCLUSION: ${components.conclusion}`,
+      ].filter(s => !s.match(/:\s*$/)).join('\n\n');
+      return { formatted, components };
+    }
+  } catch (e) {
+    console.warn('[generateALACModelAnswer] AI call failed:', e.message);
   }
-  return modelAnswer;
+
+  // Fallback: return plain text with parsed components (may be empty if no markers)
+  return { formatted: plainModelAnswer, components: parseComponents(plainModelAnswer) };
 }
 
 // ── callClaudeHaikuJSON — haiku-only, semaphore-guarded, for fast batch eval ─
@@ -2446,7 +2492,12 @@ Respond ONLY with valid JSON: {"score":"X/10","numericScore":0,"grade":"...","al
         if (!result.modelAnswer && modelAnswer) result.modelAnswer = modelAnswer;
         if (!result.keyPoints?.length && keyPoints?.length) result.keyPoints = keyPoints;
         if ((qtype === 'situational' || qtype === 'essay') && result.modelAnswer) {
-          result.modelAnswer = await formatModelAnswerAsALAC(question, context, result.modelAnswer);
+          const alacResult = await generateALACModelAnswer(question, context, result.modelAnswer, subject);
+          if (alacResult) {
+            result.alacModelAnswer      = alacResult.components;
+            result.modelAnswerFormatted  = alacResult.formatted;
+            result.modelAnswer           = alacResult.formatted;
+          }
         }
       }
       return result || { score: '0/10', numericScore: 0, grade: 'Error', overallFeedback: 'Evaluation failed — please retry.', keyMissed: [] };
