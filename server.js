@@ -177,45 +177,107 @@ function extractJSON(text) {
   let t = text
     .replace(/^\uFEFF/, '')
     .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')
-    .replace(/\r\n/g, '\n')
-    .replace(/\r/g, '\n')
     .trim();
 
-  // Strategy 1: Direct parse — log actual error position to help diagnose
-  try { return JSON.parse(t); } catch(e) {
+  // Strategy 1: Direct parse
+  try {
+    return JSON.parse(t);
+  } catch(e) {
     const pos = parseInt(e.message.match(/position (\d+)/)?.[1]);
-    if (!isNaN(pos)) console.warn('[extractJSON] Strategy 1 failed:', e.message, '| char code at pos:', t.charCodeAt(pos));
+    if (!isNaN(pos)) {
+      console.warn('[extractJSON] Strategy 1 failed:', e.message, '| char code at pos:', t.charCodeAt(pos));
+    } else {
+      console.warn('[extractJSON] Strategy 1 failed:', e.message);
+    }
   }
 
-  // Strategy 2: Strip markdown fences from start/end
+  // Strategy 2: Strip markdown fences
   let stripped = t
     .replace(/^```(?:json)?[\r\n]*/i, '')
     .replace(/[\r\n]*```[\s\S]*$/i, '')
     .trim();
   try { return JSON.parse(stripped); } catch(_) {}
 
-  // Strategy 3: Brace-depth scanner — finds outermost { } ignoring trailing text
-  let depth = 0, start = -1, end = -1;
-  for (let i = 0; i < t.length; i++) {
-    if (t[i] === '{') { if (depth === 0) start = i; depth++; }
-    else if (t[i] === '}') { depth--; if (depth === 0 && start !== -1) { end = i; break; } }
-  }
-  if (start !== -1 && end !== -1) {
-    try { return JSON.parse(t.slice(start, end + 1)); } catch(_) {}
+  // Strategy 3: Brace-matched extraction (string-aware, handles trailing text)
+  {
+    let depth = 0, start = -1, inStr = false, esc = false;
+    for (let i = 0; i < t.length; i++) {
+      const ch = t[i];
+      if (esc)          { esc = false; continue; }
+      if (ch === '\\')  { esc = true;  continue; }
+      if (ch === '"')   { inStr = !inStr; continue; }
+      if (inStr)        continue;
+      if (ch === '{') {
+        if (depth === 0) start = i;
+        depth++;
+      } else if (ch === '}') {
+        depth--;
+        if (depth === 0 && start !== -1) {
+          try { return JSON.parse(t.slice(start, i + 1)); } catch(_) { break; }
+        }
+      }
+    }
   }
 
-  // Strategy 4: Bracket-depth scanner — finds outermost [ ]
-  depth = 0; start = -1; end = -1;
-  for (let i = 0; i < t.length; i++) {
-    if (t[i] === '[') { if (depth === 0) start = i; depth++; }
-    else if (t[i] === ']') { depth--; if (depth === 0 && start !== -1) { end = i; break; } }
-  }
-  if (start !== -1 && end !== -1) {
-    try { return JSON.parse(t.slice(start, end + 1)); } catch(_) {}
-  }
+  // Strategy 4: Aggressive repair then parse
+  try {
+    const repaired = repairJSON(t);
+    if (repaired) return JSON.parse(repaired);
+  } catch(_) {}
 
-  console.error('[extractJSON] All strategies failed. First 200 chars:', t.slice(0, 200));
+  console.error('[extractJSON] All strategies failed. First 300 chars:', t.slice(0, 300));
   return null;
+}
+
+function repairJSON(text) {
+  if (!text) return null;
+  let t = text.replace(/^\uFEFF/, '').trim();
+
+  // Strip markdown fences
+  t = t.replace(/^```(?:json)?[\r\n]*/i, '').replace(/[\r\n]*```[\s\S]*$/i, '').trim();
+
+  // Find outermost braces
+  const start = t.indexOf('{');
+  const end   = t.lastIndexOf('}');
+  if (start === -1 || end === -1) return null;
+  t = t.slice(start, end + 1);
+
+  // Fix 1: Remove trailing commas before } or ]
+  t = t.replace(/,(\s*[}\]])/g, '$1');
+
+  // Fix 2: Escape unescaped control chars inside strings (char-by-char)
+  let result = '', inStr = false, escaped = false;
+  for (let i = 0; i < t.length; i++) {
+    const ch = t[i], code = t.charCodeAt(i);
+    if (escaped)       { result += ch; escaped = false; continue; }
+    if (ch === '\\')   { result += ch; escaped = true;  continue; }
+    if (ch === '"')    { inStr = !inStr; result += ch; continue; }
+    if (inStr) {
+      if      (code === 10) result += '\\n';
+      else if (code === 13) result += '\\r';
+      else if (code === 9)  result += '\\t';
+      else result += ch;
+    } else {
+      result += ch;
+    }
+  }
+
+  // Fix 3: Close any open string and open braces (handles truncation)
+  let depth = 0, inString = false, isEscaped = false;
+  for (let i = 0; i < result.length; i++) {
+    const ch = result[i];
+    if (isEscaped)    { isEscaped = false; continue; }
+    if (ch === '\\')  { isEscaped = true;  continue; }
+    if (ch === '"')   { inString = !inString; continue; }
+    if (!inString) {
+      if (ch === '{') depth++;
+      if (ch === '}') depth--;
+    }
+  }
+  if (inString) result += '"';
+  while (depth > 0) { result += '}'; depth--; }
+
+  return result;
 }
 
 function sanitizeAIResponse(text) {
@@ -2089,6 +2151,7 @@ app.post('/api/evaluate', async (req, res) => {
     maxTok = 3000;
     prompt = `You are a Philippine Bar Exam examiner. Evaluate this student answer using the ALAC method (Answer, Legal Basis, Application, Conclusion) which is the standard format required in the Philippine Bar Exam.
 Keep overallFeedback under 200 words. Keep each ALAC component feedback under 50 words. Be concise and direct.
+CRITICAL JSON OUTPUT RULES: Use single quotes inside all string values (never double quotes inside strings). No newlines inside string values. No trailing commas. Keep all feedback values on a single line.
 
 Question: ${question}
 ${maSection}
@@ -2132,6 +2195,7 @@ C — Conclusion (1.5 pts): Clear restatement of the answer with finality. Shows
 
 ${GRADE_SCALE}
 
+In your JSON response, all string values must use single quotes for any internal quotation. Example: use 'the court held' not "the court held". Keep each feedback field to one line.
 Respond ONLY with valid JSON (no markdown):
 {
   "score": "X/10", "numericScore": 7, "grade": "Excellent|Good|Satisfactory|Needs Improvement|Poor",
@@ -2153,6 +2217,7 @@ Respond ONLY with valid JSON (no markdown):
     maxTok = 2500;
     prompt = `You are a Philippine Bar Exam examiner. Evaluate this conceptual/theoretical answer.
 Keep overallFeedback under 100 words and each component feedback under 50 words. Be concise and direct.
+CRITICAL JSON OUTPUT RULES: Use single quotes inside all string values (never double quotes inside strings). No newlines inside string values. No trailing commas. Keep all feedback values on a single line.
 
 Question: ${question}
 ${maSection}
@@ -2166,6 +2231,7 @@ Score out of 10 using these components:
 
 ${GRADE_SCALE}
 
+In your JSON response, all string values must use single quotes for any internal quotation. Example: use 'the court held' not "the court held". Keep each feedback field to one line.
 Respond ONLY with valid JSON (no markdown):
 {
   "score": "X/10", "numericScore": 0, "grade": "Excellent|Good|Satisfactory|Needs Improvement|Poor",
@@ -2295,7 +2361,7 @@ Respond ONLY with raw JSON (no markdown, no backticks):
 {"answer":"[Direct yes/no ruling — 1-2 sentences]","legalBasis":"[Cite specific law, article, provision, or case — 1-2 sentences]","application":"[Apply the law to the specific facts — 2-4 sentences]","conclusion":"[Restate the final ruling — 1 sentence]"}`;
 
   try {
-    const res = await callClaudeJSON([{ role: 'user', content: prompt }], 800);
+    const res = await callClaudeJSON([{ role: 'user', content: prompt }], 2500);
     if (res?.answer) {
       const components = {
         answer:      res.answer || '',
@@ -2322,8 +2388,8 @@ Respond ONLY with raw JSON (no markdown, no backticks):
 // ── callClaudeHaikuJSON — haiku-only, semaphore-guarded, for fast batch eval ─
 async function callClaudeHaikuJSON(prompt, maxTokens = 400) {
   await aiSemaphore.acquire();
-  const JSON_SYSTEM = 'You are a JSON-only responder. Never use markdown. Never use code fences. Never use backticks. Always respond with raw JSON starting with { and ending with }.';
-  const JSON_SUFFIX = '\n\nYou MUST respond with ONLY a raw JSON object. Absolutely no markdown. No code fences. No backticks. Your entire response must start with { and end with }. Nothing before or after.';
+  const JSON_SYSTEM = 'You are a JSON API endpoint. Output ONLY valid JSON. STRICT RULES: (1) Use single quotes inside string values — NEVER double quotes inside strings. (2) No literal newlines inside string values — use \\n if needed. (3) No trailing commas anywhere. (4) Response must start with { and end with }. (5) No markdown, no code fences, no backticks, no explanations. (6) If feedback contains quotes, use single quotes instead.';
+  const JSON_SUFFIX = '\n\nCRITICAL: Return ONLY raw JSON. No markdown. No backticks. No fences. Start with { and end with }. Use single quotes inside string values (never double quotes inside strings). No trailing commas. No line breaks inside string values.';
   try {
     const body = JSON.stringify({
       model: 'claude-haiku-4-5-20251001',
@@ -2401,6 +2467,7 @@ app.post('/api/evaluate-batch', requireAuth, async (req, res) => {
       if (isSit) {
         maxTok = 2500;
         prompt = `You are a Philippine Bar Exam examiner. Evaluate using ALAC (Answer 1.5pts, Legal Basis 3pts, Application 4pts, Conclusion 1.5pts). Keep overallFeedback under 200 words and each component feedback under 50 words.
+CRITICAL JSON OUTPUT RULES: Use single quotes inside all string values (never double quotes inside strings). No newlines inside string values. No trailing commas. Keep all feedback fields on a single line.
 Question: ${question}
 ${maSection}
 ${(keyPoints || []).length ? `Key Points: ${keyPoints.join(', ')}` : ''}
@@ -2411,6 +2478,7 @@ Respond ONLY with valid JSON: {"score":"X/10","numericScore":0,"grade":"...","al
       } else {
         maxTok = 2500;
         prompt = `You are a Philippine Bar Exam examiner. Evaluate this conceptual/theoretical answer. Keep overallFeedback under 100 words and each component feedback under 50 words.
+CRITICAL JSON OUTPUT RULES: Use single quotes inside all string values (never double quotes inside strings). No newlines inside string values. No trailing commas. Keep all feedback fields on a single line.
 Question: ${question}
 ${maSection}
 ${(keyPoints || []).length ? `Key Points: ${keyPoints.join(', ')}` : ''}
