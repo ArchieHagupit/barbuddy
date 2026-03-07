@@ -816,7 +816,13 @@ select.form-input{cursor:pointer;}
     </div>
     <!-- Register form -->
     <div id="authFormRegister" style="display:none;">
-      <div class="auth-field"><label>Full Name</label><input type="text" id="regName" placeholder="Juan dela Cruz" autocomplete="name"></div>
+      <div class="auth-field" style="margin-bottom:14px;">
+        <label>Name</label>
+        <div style="display:flex;gap:10px;">
+          <input type="text" id="regFirstName" placeholder="First name" autocomplete="given-name" style="flex:1;min-width:0;box-sizing:border-box;background:rgba(255,255,255,.05);border:1px solid var(--bdr2);border-radius:9px;padding:11px 14px;color:var(--white);font-family:var(--fb);font-size:14px;outline:none;transition:border-color .2s;" onfocus="this.style.borderColor='rgba(201,168,76,.5)'" onblur="this.style.borderColor='var(--bdr2)'">
+          <input type="text" id="regLastName"  placeholder="Last name"  autocomplete="family-name" style="flex:1;min-width:0;box-sizing:border-box;background:rgba(255,255,255,.05);border:1px solid var(--bdr2);border-radius:9px;padding:11px 14px;color:var(--white);font-family:var(--fb);font-size:14px;outline:none;transition:border-color .2s;" onfocus="this.style.borderColor='rgba(201,168,76,.5)'" onblur="this.style.borderColor='var(--bdr2)'">
+        </div>
+      </div>
       <div class="auth-field"><label>School / University</label><input type="text" id="regSchool" placeholder="University of the Philippines" autocomplete="organization"></div>
       <div class="auth-field"><label>Email</label><input type="email" id="regEmail" placeholder="you@email.com" autocomplete="email"></div>
       <div class="auth-field"><label>Password</label><input type="password" id="regPassword" placeholder="••••••••" autocomplete="new-password"></div>
@@ -4754,14 +4760,18 @@ async function doLogin() {
 }
 
 async function doRegister() {
-  const name     = document.getElementById('regName').value.trim();
+  const firstName = document.getElementById('regFirstName')?.value.trim();
+  const lastName  = document.getElementById('regLastName')?.value.trim();
+  const name      = firstName && lastName ? `${firstName} ${lastName}` : firstName || lastName || '';
   const school   = document.getElementById('regSchool').value.trim();
   const email    = document.getElementById('regEmail').value.trim();
   const password = document.getElementById('regPassword').value;
   const errEl    = document.getElementById('regErr');
   const btn      = document.getElementById('regBtn');
   errEl.textContent = '';
-  if (!name || !email || !password) { errEl.textContent = 'Please fill in all fields.'; return; }
+  if (!firstName) { errEl.textContent = 'Please enter your first name.'; document.getElementById('regFirstName')?.focus(); return; }
+  if (!lastName)  { errEl.textContent = 'Please enter your last name.';  document.getElementById('regLastName')?.focus();  return; }
+  if (!email || !password) { errEl.textContent = 'Please fill in all fields.'; return; }
   if (password.length < 6) { errEl.textContent = 'Password must be at least 6 characters.'; return; }
   btn.disabled = true; btn.textContent = 'Creating account…';
   try {
