@@ -793,6 +793,11 @@ select.form-input{cursor:pointer;}
 .cp-success{background:rgba(20,180,120,.15);border:1px solid rgba(20,180,120,.3);color:#34d399;padding:10px 14px;border-radius:10px;font-size:13px;text-align:center;margin-top:4px;}
 .cp-btn{background:none;border:none;color:var(--muted);font-size:11px;cursor:pointer;padding:3px 8px;border-radius:6px;transition:all .18s;letter-spacing:.02em;}
 .cp-btn:hover{background:rgba(212,168,67,.12);color:var(--gold-l);}
+/* Admin tab bar */
+#adminTabBar{display:flex;flex-wrap:wrap;gap:4px;padding:14px 16px 0;border-bottom:1px solid #1e2a3a;margin-bottom:20px;background:#0d1b2a;}
+.admin-tab-btn{padding:7px 13px;border-radius:8px 8px 0 0;border:none;background:transparent;color:#667;font-size:0.78rem;font-weight:600;cursor:pointer;transition:all .2s;border-bottom:2px solid transparent;white-space:nowrap;}
+.admin-tab-btn:hover{color:#aab;background:#131f2e;}
+.admin-tab-btn.active{color:#f0c040;border-bottom:2px solid #f0c040;background:#131f2e;}
 </style>
 </head>
 <body>
@@ -1083,6 +1088,20 @@ select.form-input{cursor:pointer;}
   </div>
   <div id="adminLocked" class="admin-locked"><div style="font-size:48px;margin-bottom:14px;">🔒</div><div style="font-family:var(--fd);font-size:20px;color:var(--gold-l);margin-bottom:6px;">Admin Access Required</div><div style="font-size:13px;">Enter your admin key above.</div></div>
   <div id="adminUnlocked" style="display:none;">
+    <!-- Admin Tab Bar -->
+    <div id="adminTabBar">
+      <button onclick="showAdminTab('overview')"   id="adminTab-overview"   class="admin-tab-btn active">🏛 Overview</button>
+      <button onclick="showAdminTab('tabaccess')"  id="adminTab-tabaccess"  class="admin-tab-btn">🔒 Tab Access</button>
+      <button onclick="showAdminTab('syllabus')"   id="adminTab-syllabus"   class="admin-tab-btn">📚 Syllabus</button>
+      <button onclick="showAdminTab('pastbar')"    id="adminTab-pastbar"    class="admin-tab-btn">📜 Past Bar</button>
+      <button onclick="showAdminTab('kb')"         id="adminTab-kb"         class="admin-tab-btn">🧠 Knowledge Base</button>
+      <button onclick="showAdminTab('users')"      id="adminTab-users"      class="admin-tab-btn">👥 Users</button>
+      <button onclick="showAdminTab('results')"    id="adminTab-results"    class="admin-tab-btn">📊 Results</button>
+      <button onclick="showAdminTab('questions')"  id="adminTab-questions"  class="admin-tab-btn">📝 Questions</button>
+      <button onclick="showAdminTab('sources')"    id="adminTab-sources"    class="admin-tab-btn">🗂 Sources</button>
+    </div>
+    <!-- OVERVIEW TAB -->
+    <div id="adminOverviewPanel">
     <!-- Pre-gen status -->
     <div id="adminGenPanel" style="display:none;" class="gen-prog-panel">
       <div class="gpp-head"><div class="spin" style="width:20px;height:20px;border-width:2px;border-top-color:#ff8c42;border-color:rgba(255,140,66,.2);"></div><div class="gpp-title">Pre-generating all lessons &amp; quizzes…</div></div>
@@ -1104,9 +1123,10 @@ select.form-input{cursor:pointer;}
       <p style="font-size:12px;color:var(--muted);margin-bottom:14px;">Quick view of uploaded materials per subject.</p>
       <div class="subj-ov-grid" id="subjOvGridContent"></div>
     </div>
+    </div><!-- /adminOverviewPanel -->
 
     <!-- TAB ACCESS CONTROL -->
-    <div id="tabAccessControlPanel" style="background:var(--card);border:1px solid var(--bdr2);border-radius:16px;padding:20px;margin-bottom:18px;">
+    <div id="tabAccessControlPanel" style="display:none;background:var(--card);border:1px solid var(--bdr2);border-radius:16px;padding:20px;margin-bottom:18px;">
       <h3 style="font-family:var(--fd);font-size:18px;font-weight:700;color:var(--gold-l);margin-bottom:5px;">🔒 Tab Access Control</h3>
       <p style="font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.55;">Enable or disable sections for students. Changes take effect immediately for all logged-in users on their next navigation.</p>
       <!-- Global controls -->
@@ -1130,9 +1150,8 @@ select.form-input{cursor:pointer;}
         <button class="btn-og" onclick="resetTabSettings()" style="font-size:12px;">↺ Reset to Default</button>
       </div>
     </div>
-    <div class="admin-grid">
-      <!-- SYLLABUS BUILDER -->
-      <div class="admin-panel" id="syllabusBuilderPanel" style="grid-column:1/-1;">
+    <!-- SYLLABUS BUILDER -->
+    <div class="admin-panel" id="syllabusBuilderPanel" style="display:none;margin-bottom:18px;">
         <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
           <div>
             <h3 style="margin-bottom:3px;">📋 Syllabus Builder</h3>
@@ -1159,39 +1178,8 @@ select.form-input{cursor:pointer;}
         </div>
         <button class="btn-gold" onclick="showAddSectionForm()" style="width:100%;justify-content:center;">+ Add Section (Roman Numeral)</button>
       </div>
-      <!-- REFERENCES -->
-      <div class="admin-panel">
-        <h3>📂 Reference Materials</h3>
-        <p>Upload reviewers, codals, digests, lecture notes. Stored server-side, used as context when generating lessons and quiz questions. Adding a reference re-generates the affected subject.</p>
-        <label class="form-label">Name</label>
-        <input class="form-input" id="ref-name" placeholder="e.g. Civil Code Reviewer">
-        <label class="form-label">Subject</label>
-        <select class="form-select" id="ref-subject" onchange="showRefGeneralWarning(this.value)">
-          <option value="civil">Civil Law</option><option value="criminal">Criminal Law</option>
-          <option value="political">Political Law</option><option value="labor">Labor Law</option>
-          <option value="commercial">Commercial Law</option><option value="taxation">Taxation</option>
-          <option value="remedial">Remedial Law</option><option value="ethics">Legal Ethics</option>
-          <option disabled>──────────────</option>
-          <option value="general">🌐 General (all subjects — use sparingly)</option>
-          <option value="custom">📁 Custom Subject (non-bar topics)</option>
-        </select>
-        <div id="refGeneralWarning" class="general-ref-warning">⚠️ General materials appear in ALL subject contexts. Tag to a specific subject for better isolation.</div>
-        <label class="form-label">Type</label>
-        <select class="form-select" id="ref-type">
-          <option value="reviewer">Reviewer book</option><option value="codal">Codal / statutes</option>
-          <option value="digest">Case digest</option><option value="notes">Lecture notes</option><option value="other">Other</option>
-        </select>
-        <label class="form-label">Content</label>
-        <textarea class="form-input" id="ref-content" rows="4" placeholder="Paste or upload…" style="resize:vertical;"></textarea>
-        <div style="display:flex;gap:8px;margin-bottom:12px;">
-          <input type="file" id="ref-file" accept=".txt,.md,.pdf,.doc,.docx" style="display:none;" onchange="readFile(this,'ref-content')">
-          <button class="btn-og" onclick="document.getElementById('ref-file').click()">📄 Upload File</button>
-        </div>
-        <div id="ref-status"></div>
-        <button class="btn-gold" onclick="uploadReference()" style="width:100%;justify-content:center;">📂 Save Reference</button>
-      </div>
-      <!-- PAST BAR -->
-      <div class="admin-panel">
+    <!-- PAST BAR -->
+    <div class="admin-panel" id="adminPastBarPanel" style="display:none;margin-bottom:18px;">
         <h3>📜 Past Bar Questions</h3>
         <p>Upload past bar exams with suggested answers. Claude extracts structured Q&A. Questions appear in Mock Bar sessions as authentic past bar items with source attribution.</p>
         <label class="form-label">Name</label>
@@ -1265,8 +1253,8 @@ select.form-input{cursor:pointer;}
           <button class="btn-gold" onclick="saveManualBatch()" style="flex:1;justify-content:center;">💾 Save All</button>
         </div>
       </div>
-      <!-- CURRENT KB -->
-      <div class="admin-panel">
+    <!-- CURRENT KB -->
+    <div class="admin-panel" id="adminKbPanel" style="display:none;margin-bottom:18px;">
         <h3>📚 Current Knowledge Base</h3>
         <p>All uploaded materials stored on the server. Content is cached in your browser for instant access across sessions.</p>
         <div id="adminKbList"><div style="font-size:12px;color:var(--muted);">Loading…</div></div>
@@ -1280,7 +1268,6 @@ select.form-input{cursor:pointer;}
         </div>
         <button class="btn-og" onclick="runKBDiagnostic()" style="font-size:11px;margin-top:8px;border-color:rgba(91,168,255,.4);color:#5ba8ff;">🔍 KB Diagnostic</button>
         <pre id="kbDiagOutput" style="display:none;margin-top:10px;font-size:10px;line-height:1.5;background:rgba(0,0,0,.3);border:1px solid var(--bdr2);border-radius:8px;padding:10px;overflow-x:auto;max-height:300px;overflow-y:auto;color:rgba(248,246,241,.7);white-space:pre-wrap;"></pre>
-      </div>
     </div>
 
     <!-- USER MANAGEMENT PANEL -->
@@ -1349,7 +1336,6 @@ select.form-input{cursor:pointer;}
     </div>
 
   </div>
-</div>
 </div>
 
 </div><!-- .main -->
@@ -2047,6 +2033,43 @@ function navToAdmin() {
   }
 }
 
+function showAdminTab(tabName) {
+  const panelMap = {
+    overview:  'adminOverviewPanel',
+    tabaccess: 'tabAccessControlPanel',
+    syllabus:  'syllabusBuilderPanel',
+    pastbar:   'adminPastBarPanel',
+    kb:        'adminKbPanel',
+    users:     'adminUserPanel',
+    results:   'adminResultsPanel',
+    questions: 'adminQuestionsPanel',
+    sources:   'adminSourcesPanel',
+  };
+  Object.values(panelMap).forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  });
+  const target = document.getElementById(panelMap[tabName]);
+  if (target) target.style.display = 'block';
+  document.querySelectorAll('.admin-tab-btn').forEach(btn => btn.classList.remove('active'));
+  const activeBtn = document.getElementById('adminTab-' + tabName);
+  if (activeBtn) activeBtn.classList.add('active');
+  if (tabName === 'users')     loadAdminUsers();
+  if (tabName === 'results')   loadAdminResults();
+  if (tabName === 'questions') loadAdminQuestions(0);
+  if (tabName === 'sources')   loadAdminSources();
+  if (tabName === 'syllabus')  loadSyllabusBuilder();
+  if (tabName === 'kb')        refreshAdminKB();
+  if (tabName === 'tabaccess') initTabControls();
+  if (tabName === 'overview') {
+    updateSyllabusStatus();
+    const sovGrid = document.getElementById('subjectOverviewGrid');
+    if (sovGrid) { sovGrid.style.display = ''; renderSubjectOverview(); }
+    if (KB.genState?.running) { const p = document.getElementById('adminGenPanel'); if(p) p.style.display='block'; }
+    else if (KB.genState?.finishedAt) { const d = document.getElementById('adminGenDone'); if(d) d.style.display='block'; }
+  }
+}
+
 function autoUnlockAdminUI() {
   const locked   = document.getElementById('adminLocked');
   const unlocked = document.getElementById('adminUnlocked');
@@ -2055,26 +2078,12 @@ function autoUnlockAdminUI() {
   if (unlocked) unlocked.style.display = 'block';
   if (status)   status.textContent     = '✓ Admin Access';
   refreshAdminKB();
-  updateSyllabusStatus();
-  initTabControls();
   updateSidebarAdminVisibility();
-  const sovGrid = document.getElementById('subjectOverviewGrid');
-  if (sovGrid) { sovGrid.style.display = ''; renderSubjectOverview(); }
-  document.getElementById('adminUserPanel').style.display      = 'block';
-  document.getElementById('adminResultsPanel').style.display   = 'block';
-  document.getElementById('adminQuestionsPanel').style.display = 'block';
-  document.getElementById('adminSourcesPanel').style.display   = 'block';
-  loadAdminUsers();
-  loadAdminResults();
-  loadAdminQuestions();
-  loadSyllabusBuilder();
-  loadAdminSources();
   fetch('/api/settings').then(r => r.json()).then(s => {
     const btn = document.getElementById('regToggleBtn');
     if (btn) btn.textContent = s.registrationOpen ? 'Close Registration' : 'Open Registration';
   }).catch(() => {});
-  if (KB.genState?.running) { const p = document.getElementById('adminGenPanel'); if(p) p.style.display='block'; }
-  else if (KB.genState?.finishedAt) { const d = document.getElementById('adminGenDone'); if(d) d.style.display='block'; }
+  showAdminTab('overview');
 }
 
 function navToCustom() {
@@ -4370,25 +4379,14 @@ async function unlockAdmin(){
     document.getElementById('adminLocked').style.display='none';
     document.getElementById('adminUnlocked').style.display='block';
     document.getElementById('adminStatus').textContent='✓ Unlocked';
-    refreshAdminKB();updateSyllabusStatus();initTabControls();
-    // Show admin sidebar button + subject overview
+    refreshAdminKB();
     updateSidebarAdminVisibility();
-    const sovGrid = document.getElementById('subjectOverviewGrid');
-    if (sovGrid) { sovGrid.style.display = ''; renderSubjectOverview(); }
-    // Show admin panels
-    document.getElementById('adminUserPanel').style.display='block';
-    document.getElementById('adminResultsPanel').style.display='block';
-    document.getElementById('adminQuestionsPanel').style.display='block';
-    document.getElementById('adminSourcesPanel').style.display='block';
-    loadAdminUsers();loadAdminResults();loadAdminQuestions();loadSyllabusBuilder();loadAdminSources();
     // Update registration toggle label
     fetch('/api/settings').then(r=>r.json()).then(s=>{
       const btn=document.getElementById('regToggleBtn');
       if(btn)btn.textContent=s.registrationOpen?'Close Registration':'Open Registration';
     }).catch(()=>{});
-    // Show gen panel if running
-    if(KB.genState?.running) document.getElementById('adminGenPanel').style.display='block';
-    else if(KB.genState?.finishedAt) document.getElementById('adminGenDone').style.display='block';
+    showAdminTab('overview');
   }catch(e){document.getElementById('adminStatus').textContent='Error: '+e.message;}
 }
 
