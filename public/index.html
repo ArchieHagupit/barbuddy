@@ -1018,10 +1018,8 @@ select.form-input{cursor:pointer;}
     <div class="mb-setup-card" style="border-color:rgba(255,140,66,.2);">
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
         <button class="btn-mock" onclick="startMockBar()" id="startMockBtn">🚀 Begin Mock Bar</button>
-        <button class="btn-mock" onclick="startSpeedDrill()" id="speedDrillBtn" style="background:linear-gradient(135deg,#6a3de8,#8b5cf6);box-shadow:0 4px 16px rgba(106,61,232,.35);">⚡ Speed Drill</button>
         <div id="mockSourceStats" class="source-stats" style="display:none;"></div>
       </div>
-      <div style="margin-top:8px;font-size:11px;color:var(--muted);line-height:1.5;">⚡ <strong style="color:#a78bfa;">Speed Drill</strong> — 1 random question · 3-minute strict timer · same scoring rules</div>
       <div id="mockStartError" style="display:none;margin-top:10px;padding:10px 14px;background:rgba(224,112,128,.12);border:1px solid rgba(224,112,128,.35);border-radius:10px;color:#e07080;font-size:13px;"></div>
     </div>
 
@@ -1727,18 +1725,6 @@ async function discardExamSession() {
 }
 
 function confirmAbandonExam() {
-  if (window.isSpeedDrill) {
-    if (!confirm('Exit Speed Drill? Your current answer will be lost.')) return;
-    if(mockTimer)clearInterval(mockTimer);
-    ExamSession.stopAutoSave();
-    ExamSession.clearAll().catch(() => {});
-    window.isSpeedDrill = false;
-    document.getElementById('mockSession').classList.remove('on');
-    const subj = window.activeExamSession?.subject || 'civil';
-    window.activeExamSession = null;
-    navToSubject(subj, 'mockbar');
-    return;
-  }
   if (!confirm('Exit exam? Your progress is saved and you can resume later.')) return;
   if (window.activeExamSession) {
     ExamSession.saveLocal(window.activeExamSession);
@@ -3513,7 +3499,6 @@ async function startMockBar(){
   const forcedSubj = document.getElementById('mbSubjectFilterCard')?.dataset.forcedSubj;
   const subjects = forcedSubj ? [forcedSubj] : getMbSubjects();
   console.log('Starting mock bar:', {count, subjects, mbDifficulty});
-  window.isSpeedDrill = false;
   mockSubjectsUsed = subjects; mockSessionDate = new Date(); mockScores = []; window.mockStartTime = Date.now();
   const btn = document.getElementById('startMockBtn');
   btn.disabled=true; btn.textContent='⏳ Building question set…';
@@ -3536,32 +3521,12 @@ async function startMockBar(){
   btn.disabled=false; btn.textContent='🚀 Begin Mock Bar';
 }
 
-async function startSpeedDrill(){
-  const forcedSubj = document.getElementById('mbSubjectFilterCard')?.dataset.forcedSubj;
-  const subjects = forcedSubj ? [forcedSubj] : getMbSubjects();
-  const btn = document.getElementById('speedDrillBtn');
-  btn.disabled=true; btn.textContent='⏳ Loading…';
-  document.getElementById('mockStartError').style.display='none';
-  try{
-    const r = await fetch('/api/mockbar/generate',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({subjects, count:1, includePreGen:false, aiGenerate:false, difficulty:mbDifficulty})});
-    const data = await r.json(); if(data.error) throw new Error(data.error);
-    window.isSpeedDrill = true;
-    startMockSession(data.questions, 3);
-  }catch(err){
-    const errEl=document.getElementById('mockStartError');
-    errEl.textContent='⚠️ '+err.message; errEl.style.display='block';
-  }
-  btn.disabled=false; btn.textContent='⚡ Speed Drill';
-}
-
 // Shared session launcher — used by both startMockBar and startSubjectMockBar
 function startMockSession(questions, timeMin, subjectKey) {
   if (!questions?.length) { alert('No questions available. Upload reference materials for this subject in Admin.'); return; }
   mockQs = questions; mockIdx = 0; mockAnswers = Array(mockQs.length).fill('');
   mockScores = []; mockSubjectsUsed = []; mockSessionDate = new Date().toISOString();
   mockTimeLimitSecs = timeMin > 0 ? timeMin * 60 : 0;
-  window.mockTimerWarnSecs = mockTimeLimitSecs > 0 ? Math.min(300, Math.floor(mockTimeLimitSecs * 0.33)) : 300;
   window.examHighlights = {};
   window.flaggedQuestions = new Set();
   // Navigate to the mock bar page to show the session UI
@@ -3623,7 +3588,7 @@ function runTimer(){
   mockTimer=setInterval(()=>{
     mockLeft--;
     document.getElementById('timer-val').textContent=fmtTime(mockLeft);
-    document.getElementById('ms-timer').classList.toggle('warn',mockLeft<=(window.mockTimerWarnSecs||300));
+    document.getElementById('ms-timer').classList.toggle('warn',mockLeft<=300);
     // Track elapsed time for session restore
     if (window.activeExamSession) {
       window.activeExamSession.timeElapsed = (mockTimeLimitSecs||0) - mockLeft;
@@ -3782,8 +3747,8 @@ async function endMockSession(){
 
   res.innerHTML=`<div class="mock-results">
     ${currentUser?`<div style="background:rgba(201,168,76,.07);border:1px solid rgba(201,168,76,.18);border-radius:9px;padding:8px 14px;margin-bottom:14px;text-align:left;"><div class="result-user">👤 ${h(currentUser.name)}</div><div style="font-size:11px;color:var(--muted);">${new Date().toLocaleDateString('en-PH')}</div></div>`:''}
-    <div style="font-size:32px;margin-bottom:8px;">${window.isSpeedDrill?'⚡':'🏛'}</div>
-    <div style="font-family:var(--fd);font-size:20px;font-weight:700;color:${window.isSpeedDrill?'#a78bfa':'#ff8c42'};margin-bottom:4px;">${window.isSpeedDrill?'Speed Drill Results':'Mock Bar Results'}</div>
+    <div style="font-size:32px;margin-bottom:8px;">🏛</div>
+    <div style="font-family:var(--fd);font-size:20px;font-weight:700;color:#ff8c42;margin-bottom:4px;">Mock Bar Results</div>
     <div class="mr-grade"><span class="score-fraction">${fmt(rawScore)}/${maxScore}</span></div>
     <div style="font-size:16px;font-weight:700;color:${pct>=70?'#14b4a0':pct>=55?'#c9a84c':'#e07080'};margin-bottom:4px;">${pct}% — ${pct>=70?'✅ PASSED':pct>=55?'📖 Keep Studying':'❌ Needs More Review'}</div>
     <div style="font-size:12px;color:var(--muted);font-family:var(--fm);margin-bottom:18px;">Passing score: 70% (${Math.ceil(maxScore*0.7)} / ${maxScore} points)</div>
@@ -3793,11 +3758,7 @@ async function endMockSession(){
       <div class="mr-stat"><div class="n">${numQuestions}</div><div class="l">Questions</div></div>
     </div>
     <div style="display:flex;gap:8px;justify-content:center;margin-bottom:22px;flex-wrap:wrap;">
-      ${window.isSpeedDrill
-        ? `<button class="btn-mock" onclick="window.isSpeedDrill=false;navToSubject(window.lastExamSubject||'overview','mockbar');setTimeout(startSpeedDrill,300);" style="background:linear-gradient(135deg,#6a3de8,#8b5cf6);box-shadow:0 4px 16px rgba(106,61,232,.35);">⚡ Another Drill</button>
-           <button class="btn-ghost" onclick="window.isSpeedDrill=false;navToSubject(window.lastExamSubject||'overview','mockbar')">⏱ Mock Bar Setup</button>`
-        : `<button class="btn-mock" onclick="navToSubject(window.lastExamSubject||'overview','mockbar')">⏱ New Session</button>`
-      }
+      <button class="btn-mock" onclick="navToSubject(window.lastExamSubject||'overview','mockbar')">⏱ New Session</button>
       <button class="btn-ghost" onclick="nav('learn',document.getElementById('tab-learn'))">📖 Back to Learn</button>
       <button class="btn-ghost" onclick="printMockResults()">🖨️ Print</button>
       <button class="btn-ghost" onclick="openModal('emailOverlay')">📧 Email</button>
