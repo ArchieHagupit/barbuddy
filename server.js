@@ -635,7 +635,7 @@ app.post('/api/auth/register', async (req, res) => {
     const { error: insertErr } = await supabase.from('users').insert([{
       id, name: name.trim(), email: emailLower, password_hash: passwordHash,
       is_admin: isPrivileged, is_active: true,
-      status: isPrivileged ? 'active' : 'pending',
+      status: 'active',
       privacy_consent: true, consent_date: now,
       registered_at: now, joined_at: now,
       progress: {}, tab_settings: {},
@@ -643,18 +643,9 @@ app.post('/api/auth/register', async (req, res) => {
     }]);
     if (insertErr) throw insertErr;
 
-    // Privileged accounts (first user / admin email) log in immediately
-    if (isPrivileged) {
-      const token = await createSession(id);
-      return res.json({ token, user: { id, name: name.trim(), email: emailLower, role: 'admin', isAdmin: true } });
-    }
-
-    // Regular users: notify admin and return pending status (no token)
-    sendAdminNewUserEmail({
-      userName: name.trim(), userEmail: emailLower, userSchool: school || null,
-      registeredAt: new Date().toLocaleString('en-PH', { timeZone: 'Asia/Manila' }),
-    }).catch(() => {});
-    return res.json({ success: true, status: 'pending', message: 'Registration submitted. Awaiting admin approval.' });
+    const token = await createSession(id);
+    return res.json({ token, user: { id, name: name.trim(), email: emailLower,
+      role: isPrivileged ? 'admin' : 'student', isAdmin: isPrivileged } });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -667,9 +658,6 @@ app.post('/api/auth/login', async (req, res) => {
     const ok = await bcrypt.compare(password, user.password_hash);
     if (!ok) return res.status(401).json({ error: 'Invalid email or password' });
     if (!user.is_active) return res.status(403).json({ error: 'Account is disabled' });
-    if (user.status === 'pending') {
-      return res.status(403).json({ error: 'pending_approval', message: 'Your account is pending admin approval. You will be notified by email once approved.' });
-    }
     if (user.status === 'rejected' || user.status === 'disabled') {
       return res.status(403).json({ error: 'account_disabled', message: 'Your account has been disabled. Please contact the admin.' });
     }
@@ -928,24 +916,6 @@ app.delete('/api/admin/users/:userId', adminOnly, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-app.patch('/api/admin/users/:userId/approve', adminOnly, async (req, res) => {
-  try {
-    const { data: user } = await supabase.from('users').select('*').eq('id', req.params.userId).single();
-    if (!user) return res.status(404).json({ error: 'User not found' });
-    const { error } = await supabase.from('users').update({ status: 'active', approved_at: new Date().toISOString() }).eq('id', req.params.userId);
-    if (error) throw error;
-    sendUserApprovalEmail({ userName: user.name, userEmail: user.email }).catch(() => {});
-    res.json({ success: true, message: `${user.name} approved. Notification email sent.` });
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
-
-app.patch('/api/admin/users/:userId/reject', adminOnly, async (req, res) => {
-  try {
-    const { error } = await supabase.from('users').update({ status: 'rejected' }).eq('id', req.params.userId);
-    if (error) throw error;
-    res.json({ success: true });
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
 
 // ── ADMIN: Parse uploaded file to text ─────────────────────
 app.post('/api/admin/parse-file', adminOnly, upload.single('file'), async (req, res) => {
@@ -2578,53 +2548,6 @@ Respond ONLY with valid JSON: {"score":"X/10","numericScore":0,"grade":"...","br
   }
 });
 
-// ── Transactional email helpers ───────────────────────────────
-async function sendUserApprovalEmail({ userName, userEmail }) {
-  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) return;
-  const transporter = nodemailer.createTransport({ service:'gmail', auth:{ user:process.env.EMAIL_USER, pass:process.env.EMAIL_PASS } });
-  const appUrl = process.env.APP_URL || 'https://thebarbuddyyy.up.railway.app';
-  try {
-    await transporter.sendMail({
-      from: `"BarBuddy" <${process.env.EMAIL_USER}>`,
-      to: userEmail,
-      subject: '✅ Your BarBuddy Account is Approved!',
-      html: `<div style="font-family:Georgia,serif;max-width:500px;margin:0 auto;background:#0a1628;color:#e0e0f0;padding:32px;border-radius:12px;">
-        <h2 style="color:#f0c040;margin-bottom:8px;">⚖️ BarBuddy</h2>
-        <p style="color:#888;font-size:0.85rem;margin-bottom:24px;">Philippine Bar Exam Companion</p>
-        <h3 style="color:#e0e0f0;">Your account has been approved!</h3>
-        <p style="color:#aab;line-height:1.7;">Hi <strong style="color:#f0c040;">${userName}</strong>,<br><br>
-        Great news! Your BarBuddy account has been reviewed and approved by our admin team. You can now log in and start your bar review.</p>
-        <a href="${appUrl}" style="display:inline-block;margin-top:20px;padding:12px 28px;background:#f0c040;color:#1a1200;font-weight:700;border-radius:8px;text-decoration:none;font-size:0.95rem;">Log In to BarBuddy →</a>
-        <p style="margin-top:32px;color:#556;font-size:0.78rem;">If you did not register at BarBuddy, please disregard this email.</p>
-      </div>`,
-    });
-    console.log('[email] Approval email sent to:', userEmail);
-  } catch(e) { console.error('[email] Failed to send approval email:', e.message); }
-}
-
-async function sendAdminNewUserEmail({ userName, userEmail, userSchool, registeredAt }) {
-  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) return;
-  const adminEmail = process.env.ADMIN_EMAIL || process.env.EMAIL_USER;
-  const transporter = nodemailer.createTransport({ service:'gmail', auth:{ user:process.env.EMAIL_USER, pass:process.env.EMAIL_PASS } });
-  try {
-    await transporter.sendMail({
-      from: `"BarBuddy" <${process.env.EMAIL_USER}>`,
-      to: adminEmail,
-      subject: `🆕 New Registration: ${userName}`,
-      html: `<div style="font-family:Georgia,serif;max-width:500px;margin:0 auto;padding:24px;">
-        <h3>New BarBuddy Registration</h3>
-        <table style="width:100%;border-collapse:collapse;">
-          <tr><td style="padding:8px;font-weight:bold;color:#555;">Name:</td><td style="padding:8px;">${userName}</td></tr>
-          <tr style="background:#f9f9f9;"><td style="padding:8px;font-weight:bold;color:#555;">Email:</td><td style="padding:8px;">${userEmail}</td></tr>
-          <tr><td style="padding:8px;font-weight:bold;color:#555;">School:</td><td style="padding:8px;">${userSchool || 'Not provided'}</td></tr>
-          <tr style="background:#f9f9f9;"><td style="padding:8px;font-weight:bold;color:#555;">Registered:</td><td style="padding:8px;">${registeredAt}</td></tr>
-        </table>
-        <p style="margin-top:20px;">Log in to the admin panel to approve or reject this account.</p>
-      </div>`,
-    });
-    console.log('[email] Admin notified of new registration');
-  } catch(e) { console.error('[email] Admin email failed:', e.message); }
-}
 
 // ── EMAIL RESULTS ────────────────────────────────────────────
 app.post('/api/email-results', async (req, res) => {

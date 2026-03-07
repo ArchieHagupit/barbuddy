@@ -4768,19 +4768,7 @@ async function doRegister() {
     const r = await fetch('/api/auth/register', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ name, email, password, school }) });
     const d = await r.json();
     if (!r.ok) { errEl.textContent = d.error || 'Registration failed.'; return; }
-    // Privileged accounts (first user / admin email) get a token and log in immediately
     if (d.token) { onAuthSuccess(d.token, d.user); return; }
-    // Regular users: show pending message
-    if (d.status === 'pending') {
-      const formEl = document.getElementById('authFormRegister');
-      if (formEl) formEl.innerHTML = `<div style="text-align:center;padding:32px 20px;">
-        <div style="font-size:3rem;margin-bottom:16px;">⏳</div>
-        <h3 style="color:#f0c040;font-size:1.3rem;margin-bottom:12px;">Registration Submitted!</h3>
-        <p style="color:#aab;font-size:0.88rem;line-height:1.6;margin-bottom:20px;">Your account is pending admin approval. You will receive an email notification at <strong style="color:#f0c040;">${email}</strong> once your account has been approved.</p>
-        <p style="color:#778;font-size:0.78rem;">This usually takes less than 24 hours. You may close this window.</p>
-      </div>`;
-      return;
-    }
     errEl.textContent = d.error || 'Registration failed.';
   } catch(e) { errEl.textContent = 'Network error. Try again.'; }
   finally { if (btn.isConnected) { btn.disabled = false; btn.textContent = 'Create Account'; } }
@@ -4981,34 +4969,13 @@ async function loadAdminUsers() {
         </div>`;
     }
 
-    const pendingUsers = users.filter(u => u.status === 'pending');
-    const activeUsers  = users.filter(u => u.status !== 'pending');
-
-    // Pending approval section
-    let pendingHtml = '';
-    if (pendingUsers.length) {
-      const STATUS_COLORS = { active:['#4caf50','rgba(76,175,80,0.12)'], pending:['#fb923c','rgba(249,115,22,0.12)'], rejected:['#f87171','rgba(239,68,68,0.12)'], disabled:['#888','rgba(128,128,128,0.12)'] };
-      pendingHtml = `<div style="margin-bottom:18px;">
-        <div style="font-weight:700;font-size:13px;color:#fb923c;letter-spacing:.08em;text-transform:uppercase;margin-bottom:10px;">⏳ Pending Approval (${pendingUsers.length})</div>
-        ${pendingUsers.map(u => `<div style="display:flex;align-items:center;gap:10px;padding:12px 14px;background:#1a2235;border:1px solid rgba(249,115,22,0.3);border-radius:10px;margin-bottom:8px;flex-wrap:wrap;">
-          <div style="flex:1;min-width:140px;">
-            <div style="font-weight:600;color:#e0e0f0;">${h(u.name)}</div>
-            <div style="font-size:0.78rem;color:#778;">${h(u.email)}${u.school ? ' · ' + h(u.school) : ''}</div>
-            <div style="font-size:0.72rem;color:#556;margin-top:2px;">Registered: ${new Date(u.registeredAt||u.createdAt).toLocaleDateString('en-PH')}</div>
-          </div>
-          <button onclick="approveUser('${u.id}')" style="padding:7px 14px;background:rgba(76,175,80,0.15);color:#4caf50;border:1px solid rgba(76,175,80,0.35);border-radius:8px;font-size:0.8rem;font-weight:600;cursor:pointer;">✅ Approve</button>
-          <button onclick="rejectUser('${u.id}')" style="padding:7px 14px;background:rgba(239,68,68,0.1);color:#f87171;border:1px solid rgba(239,68,68,0.3);border-radius:8px;font-size:0.8rem;cursor:pointer;">✕ Reject</button>
-        </div>`).join('')}
-      </div>`;
-    }
-
-    if (!activeUsers.length && !pendingUsers.length) { el.innerHTML = resetHtml + '<div style="font-size:12px;color:var(--muted);">No registered users yet.</div>'; return; }
+    if (!users.length) { el.innerHTML = resetHtml + '<div style="font-size:12px;color:var(--muted);">No registered users yet.</div>'; return; }
 
     const STATUS_LABEL = { active:'Active', pending:'Pending', rejected:'Rejected', disabled:'Disabled' };
     const STATUS_COLOR = { active:'#4caf50', pending:'#fb923c', rejected:'#f87171', disabled:'#888' };
     const STATUS_BG    = { active:'rgba(76,175,80,0.12)', pending:'rgba(249,115,22,0.12)', rejected:'rgba(239,68,68,0.12)', disabled:'rgba(128,128,128,0.12)' };
 
-    el.innerHTML = resetHtml + pendingHtml + activeUsers.map(u => {
+    el.innerHTML = resetHtml + users.map(u => {
       const avg = u.stats.totalAttempts ? (u.stats.totalScore / u.stats.totalAttempts).toFixed(2) : '—';
       const restrictSummary = getUserAccessSummary(u);
       const isSelf = u.id === currentUser?.id;
@@ -5054,24 +5021,6 @@ async function deleteUser(userId, name) {
   loadAdminUsers();
 }
 
-async function approveUser(userId) {
-  const btn = event.currentTarget;
-  btn.disabled = true; btn.textContent = 'Approving…';
-  try {
-    const r = await adminFetch(`/api/admin/users/${userId}/approve`, { method:'PATCH' });
-    const d = await r.json();
-    if (d.success) { showToast('✅ User approved. Email notification sent.', 'success'); loadAdminUsers(); }
-    else { showToast('Error: ' + (d.error || 'Unknown error'), 'error'); btn.disabled = false; btn.textContent = '✅ Approve'; }
-  } catch(e) { showToast('Network error.', 'error'); btn.disabled = false; btn.textContent = '✅ Approve'; }
-}
-
-async function rejectUser(userId) {
-  if (!confirm('Reject this user? They will not be able to log in.')) return;
-  const r = await adminFetch(`/api/admin/users/${userId}/reject`, { method:'PATCH' });
-  const d = await r.json();
-  if (d.success) { showToast('User rejected.', 'info'); loadAdminUsers(); }
-  else showToast('Error: ' + (d.error || 'Unknown'), 'error');
-}
 
 async function toggleRegistration() {
   const r = await fetch('/api/settings');
