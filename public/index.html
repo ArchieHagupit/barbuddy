@@ -823,10 +823,10 @@ select.form-input{cursor:pointer;}
       <div class="auth-err" id="regErr"></div>
       <!-- Privacy consent — click opens modal -->
       <div style="margin-bottom:16px;">
-        <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;user-select:none;">
-          <input type="checkbox" id="privacyConsent" style="margin-top:3px;width:16px;height:16px;min-width:16px;accent-color:#f0c040;cursor:pointer;" readonly>
+        <div style="display:flex;align-items:flex-start;gap:10px;">
+          <input type="checkbox" id="privacyConsent" style="margin-top:3px;width:16px;height:16px;min-width:16px;accent-color:#f0c040;cursor:pointer;pointer-events:auto;" tabindex="0">
           <span style="font-size:0.78rem;color:#99a;line-height:1.55;">I have read and agree to the <span id="privacyLinkTrigger" style="color:#f0c040;text-decoration:underline;cursor:pointer;">Data Privacy Policy</span> and consent to the collection and processing of my personal data.</span>
-        </label>
+        </div>
       </div>
       <button class="auth-btn" id="regBtn" onclick="doRegister()" disabled style="opacity:0.45;cursor:not-allowed;">Create Account</button>
     </div>
@@ -4794,7 +4794,7 @@ async function doRegister() {
   finally { if (btn.isConnected) { btn.disabled = !document.getElementById('privacyConsent')?.checked; btn.textContent = 'Create Account'; } }
 }
 
-// ── Privacy Consent Modal logic ───────────────────────────────
+// ── Privacy Consent Modal ─────────────────────────────────────
 function openPrivacyModal() {
   const modal = document.getElementById('privacyConsentModal');
   if (modal) { modal.style.display = 'flex'; document.body.style.overflow = 'hidden'; }
@@ -4810,64 +4810,91 @@ function acceptPrivacyConsent() {
   closePrivacyModal();
 }
 function updateRegisterBtn() {
-  const cb  = document.getElementById('privacyConsent');
-  const btn = document.getElementById('regBtn');
+  const cb      = document.getElementById('privacyConsent');
+  const btn     = document.getElementById('regBtn');
   if (!btn) return;
   const checked = cb?.checked || false;
-  btn.disabled      = !checked;
-  btn.style.opacity = checked ? '1' : '0.45';
-  btn.style.cursor  = checked ? 'pointer' : 'not-allowed';
+  btn.disabled            = !checked;
+  btn.style.opacity       = checked ? '1' : '0.45';
+  btn.style.cursor        = checked ? 'pointer' : 'not-allowed';
+  btn.style.pointerEvents = checked ? 'auto' : 'none';
 }
 function resetRegistrationConsent() {
   const cb = document.getElementById('privacyConsent');
   if (cb) cb.checked = false;
   updateRegisterBtn();
 }
+// Expose on window so modal onclick= attributes always find them
+window.openPrivacyModal    = openPrivacyModal;
+window.closePrivacyModal   = closePrivacyModal;
+window.acceptPrivacyConsent = acceptPrivacyConsent;
 
-(function initConsentToggle() {
-  function wireConsent() {
-    const checkbox = document.getElementById('privacyConsent');
-    const link     = document.getElementById('privacyLinkTrigger');
-    if (!checkbox) return;
+function initPrivacyConsent() {
+  const checkbox = document.getElementById('privacyConsent');
+  const link     = document.getElementById('privacyLinkTrigger');
+  if (!checkbox) return;
 
-    // Remove any previous listeners by replacing node
-    const fresh = checkbox.cloneNode(true);
-    checkbox.parentNode.replaceChild(fresh, checkbox);
+  // Clone to drop any previous listeners
+  const cb = checkbox.cloneNode(true);
+  checkbox.parentNode.replaceChild(cb, checkbox);
 
-    // Checkbox click: open modal (prevent self-check), or allow uncheck
-    fresh.addEventListener('click', function(e) {
-      e.preventDefault();
-      if (!this.checked) {
-        openPrivacyModal();
-      } else {
-        this.checked = false;
-        updateRegisterBtn();
-      }
-    });
-
-    // "Data Privacy Policy" link click: open modal
-    if (link) {
-      const freshLink = link.cloneNode(true);
-      link.parentNode.replaceChild(freshLink, link);
-      freshLink.addEventListener('click', function(e) { e.preventDefault(); e.stopPropagation(); openPrivacyModal(); });
+  // 'change' fires AFTER the browser toggles checked — no preventDefault needed.
+  // Immediately uncheck if the user just checked it, then open the modal.
+  cb.addEventListener('change', function() {
+    if (this.checked) {
+      this.checked = false;   // uncheck — modal must confirm first
+      openPrivacyModal();
     }
-
-    // Backdrop click closes modal
-    const modal = document.getElementById('privacyConsentModal');
-    if (modal && !modal._backdropWired) {
-      modal._backdropWired = true;
-      modal.addEventListener('click', function(e) { if (e.target === this) closePrivacyModal(); });
-    }
-
     updateRegisterBtn();
+  });
+
+  // "Data Privacy Policy" underline link
+  if (link) {
+    const freshLink = link.cloneNode(true);
+    link.parentNode.replaceChild(freshLink, link);
+    freshLink.addEventListener('click', function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      openPrivacyModal();
+    });
   }
 
-  document.addEventListener('DOMContentLoaded', wireConsent);
+  // Backdrop mousedown closes modal (mousedown beats click for overlays)
+  const modal = document.getElementById('privacyConsentModal');
+  if (modal && !modal._backdropWired) {
+    modal._backdropWired = true;
+    modal.addEventListener('mousedown', function(e) {
+      if (e.target === this) closePrivacyModal();
+    });
+  }
+
+  updateRegisterBtn();
+}
+
+// Wire on tab switch (registration form toggled in via display:block)
+(function() {
   const _orig = window.switchAuthTab;
   window.switchAuthTab = function(tab) {
     if (_orig) _orig(tab);
-    if (tab === 'register') setTimeout(wireConsent, 0);
+    if (tab === 'register') setTimeout(initPrivacyConsent, 0);
   };
+
+  // MutationObserver fallback — fires when #privacyConsent enters DOM
+  const obs = new MutationObserver(function(mutations) {
+    for (const m of mutations) {
+      for (const node of m.addedNodes) {
+        if (node.nodeType !== 1) continue;
+        if (node.id === 'privacyConsent' || node.querySelector?.('#privacyConsent')) {
+          setTimeout(initPrivacyConsent, 30);
+          return;
+        }
+      }
+    }
+  });
+  obs.observe(document.body, { childList: true, subtree: true });
+
+  // Also try on DOMContentLoaded in case form is already in DOM
+  document.addEventListener('DOMContentLoaded', initPrivacyConsent);
 }());
 
 async function onAuthSuccess(token, user) {
