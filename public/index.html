@@ -821,16 +821,12 @@ select.form-input{cursor:pointer;}
       <div class="auth-field"><label>Email</label><input type="email" id="regEmail" placeholder="you@email.com" autocomplete="email"></div>
       <div class="auth-field"><label>Password</label><input type="password" id="regPassword" placeholder="••••••••" autocomplete="new-password"></div>
       <div class="auth-err" id="regErr"></div>
-      <!-- Privacy consent -->
-      <div style="background:rgba(240,192,64,0.06);border:1px solid rgba(240,192,64,0.2);border-radius:10px;padding:14px 16px;margin-bottom:12px;">
-        <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;">
-          <input type="checkbox" id="privacyConsent" style="margin-top:3px;width:16px;height:16px;flex-shrink:0;accent-color:#f0c040;cursor:pointer;">
-          <span style="font-size:0.78rem;color:#aab;line-height:1.55;">By registering, I consent to the collection, processing, and storage of my personal data by BarBuddy for purposes related to account registration, access to services, and platform management, in accordance with the <strong style="color:#f0c040;">Data Privacy Act of 2012</strong> and its implementing rules and regulations.</span>
+      <!-- Privacy consent — click opens modal -->
+      <div style="margin-bottom:16px;">
+        <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;user-select:none;">
+          <input type="checkbox" id="privacyConsent" style="margin-top:3px;width:16px;height:16px;min-width:16px;accent-color:#f0c040;cursor:pointer;" readonly>
+          <span style="font-size:0.78rem;color:#99a;line-height:1.55;">I have read and agree to the <span id="privacyLinkTrigger" style="color:#f0c040;text-decoration:underline;cursor:pointer;">Data Privacy Policy</span> and consent to the collection and processing of my personal data.</span>
         </label>
-      </div>
-      <!-- Pending approval notice -->
-      <div style="background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.25);border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:0.78rem;color:#93c5fd;line-height:1.55;">
-        📋 <strong>Account Approval Required</strong><br>New accounts require admin approval before you can access BarBuddy. Once approved, you will receive a notification email. This usually takes less than 24 hours.
       </div>
       <button class="auth-btn" id="regBtn" onclick="doRegister()" disabled style="opacity:0.45;cursor:not-allowed;">Create Account</button>
     </div>
@@ -4798,21 +4794,74 @@ async function doRegister() {
   finally { if (btn.isConnected) { btn.disabled = !document.getElementById('privacyConsent')?.checked; btn.textContent = 'Create Account'; } }
 }
 
-// Enable/disable register button based on consent checkbox
+// ── Privacy Consent Modal logic ───────────────────────────────
+function openPrivacyModal() {
+  const modal = document.getElementById('privacyConsentModal');
+  if (modal) { modal.style.display = 'flex'; document.body.style.overflow = 'hidden'; }
+}
+function closePrivacyModal() {
+  const modal = document.getElementById('privacyConsentModal');
+  if (modal) { modal.style.display = 'none'; document.body.style.overflow = ''; }
+}
+function acceptPrivacyConsent() {
+  const cb = document.getElementById('privacyConsent');
+  if (cb) cb.checked = true;
+  updateRegisterBtn();
+  closePrivacyModal();
+}
+function updateRegisterBtn() {
+  const cb  = document.getElementById('privacyConsent');
+  const btn = document.getElementById('regBtn');
+  if (!btn) return;
+  const checked = cb?.checked || false;
+  btn.disabled      = !checked;
+  btn.style.opacity = checked ? '1' : '0.45';
+  btn.style.cursor  = checked ? 'pointer' : 'not-allowed';
+}
+function resetRegistrationConsent() {
+  const cb = document.getElementById('privacyConsent');
+  if (cb) cb.checked = false;
+  updateRegisterBtn();
+}
+
 (function initConsentToggle() {
   function wireConsent() {
-    const consent = document.getElementById('privacyConsent');
-    const btn     = document.getElementById('regBtn');
-    if (!consent || !btn) return;
-    function update() {
-      btn.disabled       = !consent.checked;
-      btn.style.opacity  = consent.checked ? '1' : '0.45';
-      btn.style.cursor   = consent.checked ? 'pointer' : 'not-allowed';
+    const checkbox = document.getElementById('privacyConsent');
+    const link     = document.getElementById('privacyLinkTrigger');
+    if (!checkbox) return;
+
+    // Remove any previous listeners by replacing node
+    const fresh = checkbox.cloneNode(true);
+    checkbox.parentNode.replaceChild(fresh, checkbox);
+
+    // Checkbox click: open modal (prevent self-check), or allow uncheck
+    fresh.addEventListener('click', function(e) {
+      e.preventDefault();
+      if (!this.checked) {
+        openPrivacyModal();
+      } else {
+        this.checked = false;
+        updateRegisterBtn();
+      }
+    });
+
+    // "Data Privacy Policy" link click: open modal
+    if (link) {
+      const freshLink = link.cloneNode(true);
+      link.parentNode.replaceChild(freshLink, link);
+      freshLink.addEventListener('click', function(e) { e.preventDefault(); e.stopPropagation(); openPrivacyModal(); });
     }
-    consent.addEventListener('change', update);
-    update();
+
+    // Backdrop click closes modal
+    const modal = document.getElementById('privacyConsentModal');
+    if (modal && !modal._backdropWired) {
+      modal._backdropWired = true;
+      modal.addEventListener('click', function(e) { if (e.target === this) closePrivacyModal(); });
+    }
+
+    updateRegisterBtn();
   }
-  // Wire immediately and also after tab switches reveal the form
+
   document.addEventListener('DOMContentLoaded', wireConsent);
   const _orig = window.switchAuthTab;
   window.switchAuthTab = function(tab) {
@@ -6104,6 +6153,41 @@ function goToFlaggedQuestion(idx) {
   <button class="hl-color-btn" data-color="#ffb6c1" style="width:18px;height:18px;border-radius:50%;background:#ffb6c1;border:2px solid transparent;cursor:pointer;" title="Pink"></button>
   <button class="hl-color-btn" data-color="#87ceeb" style="width:18px;height:18px;border-radius:50%;background:#87ceeb;border:2px solid transparent;cursor:pointer;" title="Blue"></button>
   <button id="hl-remove-btn" style="display:none;margin-left:4px;padding:2px 8px;font-size:11px;background:rgba(239,68,68,0.2);color:#f87171;border:1px solid rgba(239,68,68,0.3);border-radius:6px;cursor:pointer;">Remove</button>
+</div>
+
+<!-- ── Privacy Consent Modal ─────────────────────────────── -->
+<div id="privacyConsentModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:99999;align-items:center;justify-content:center;padding:20px;">
+  <div style="background:#0f1923;border:1px solid #2a3347;border-radius:18px;padding:0;max-width:500px;width:100%;max-height:90vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,0.6);">
+    <!-- Header -->
+    <div style="padding:22px 24px 16px;border-bottom:1px solid #1e2d42;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+      <div>
+        <div style="font-size:1.1rem;font-weight:700;color:#f0c040;margin-bottom:3px;">⚖️ Data Privacy Consent</div>
+        <div style="font-size:0.75rem;color:#667;letter-spacing:0.5px;">Republic Act No. 10173</div>
+      </div>
+      <button onclick="closePrivacyModal()" style="width:32px;height:32px;border-radius:50%;background:#1a2235;border:1px solid #2a3347;color:#778;font-size:1rem;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;">✕</button>
+    </div>
+    <!-- Body -->
+    <div style="padding:20px 24px;overflow-y:auto;flex:1;">
+      <!-- Privacy notice -->
+      <div style="background:rgba(240,192,64,0.05);border:1px solid rgba(240,192,64,0.2);border-radius:12px;padding:16px 18px;margin-bottom:20px;">
+        <div style="font-size:0.75rem;font-weight:700;color:#f0c040;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;">📋 Privacy Notice</div>
+        <p style="font-size:0.84rem;color:#bbc;line-height:1.7;margin:0;">By registering, I consent to the collection, processing, and storage of my personal data by <strong style="color:#e0e0f0;">BarBuddy</strong> for purposes related to account registration, access to services, and platform management, in accordance with the <strong style="color:#f0c040;">Data Privacy Act of 2012</strong> and its implementing rules and regulations.</p>
+      </div>
+      <div style="height:1px;background:#1e2d42;margin-bottom:20px;"></div>
+      <!-- Approval notice -->
+      <div style="background:rgba(59,130,246,0.07);border:1px solid rgba(59,130,246,0.25);border-radius:12px;padding:16px 18px;margin-bottom:8px;">
+        <div style="font-size:0.75rem;font-weight:700;color:#60a5fa;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;">⏳ Account Approval Required</div>
+        <p style="font-size:0.84rem;color:#bbc;line-height:1.7;margin:0 0 10px 0;">New accounts require <strong style="color:#e0e0f0;">admin approval</strong> before you can access BarBuddy.</p>
+        <p style="font-size:0.84rem;color:#bbc;line-height:1.7;margin:0;">Once your registration is reviewed and approved, you will receive a <strong style="color:#e0e0f0;">notification email</strong> at the address you provided. This typically takes less than <strong style="color:#f0c040;">24 hours.</strong></p>
+      </div>
+      <div style="font-size:0.75rem;color:#556;text-align:center;padding:10px 0 4px;font-style:italic;">Make sure to use a valid email address to receive your approval notification.</div>
+    </div>
+    <!-- Footer -->
+    <div style="padding:16px 24px 20px;border-top:1px solid #1e2d42;display:flex;gap:10px;flex-shrink:0;">
+      <button onclick="closePrivacyModal()" style="flex:1;padding:12px;background:#1a2235;color:#778;border:1px solid #2a3347;border-radius:10px;font-size:0.88rem;cursor:pointer;font-weight:500;">Cancel</button>
+      <button onclick="acceptPrivacyConsent()" style="flex:2;padding:12px;background:linear-gradient(135deg,#f0c040,#d4a017);color:#1a1200;border:none;border-radius:10px;font-size:0.88rem;font-weight:700;cursor:pointer;letter-spacing:0.3px;">✅ I Agree — Continue with Registration</button>
+    </div>
+  </div>
 </div>
 
 </body>
