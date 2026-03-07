@@ -821,14 +821,8 @@ select.form-input{cursor:pointer;}
       <div class="auth-field"><label>Email</label><input type="email" id="regEmail" placeholder="you@email.com" autocomplete="email"></div>
       <div class="auth-field"><label>Password</label><input type="password" id="regPassword" placeholder="••••••••" autocomplete="new-password"></div>
       <div class="auth-err" id="regErr"></div>
-      <!-- Privacy consent — click opens modal -->
-      <div style="margin-bottom:16px;">
-        <div style="display:flex;align-items:flex-start;gap:10px;">
-          <input type="checkbox" id="privacyConsent" style="margin-top:3px;width:16px;height:16px;min-width:16px;accent-color:#f0c040;cursor:pointer;pointer-events:auto;" tabindex="0">
-          <span style="font-size:0.78rem;color:#99a;line-height:1.55;">I have read and agree to the <strong style="color:#f0c040;">Data Privacy Act of 2012</strong> and consent to the collection and processing of my personal data.</span>
-        </div>
-      </div>
-      <button class="auth-btn" id="regBtn" onclick="doRegister()" disabled style="opacity:0.45;cursor:not-allowed;">Create Account</button>
+      <p style="font-size:0.72rem;color:#667;text-align:center;margin:0 0 14px 0;line-height:1.55;font-style:italic;">By clicking <strong style="color:#aab;">Create Account</strong>, you consent to the collection, processing, and storage of your personal data in accordance with the <strong style="color:#aab;">Data Privacy Act of 2012</strong>.</p>
+      <button class="auth-btn" id="regBtn" onclick="doRegister()">Create Account</button>
     </div>
     <!-- Forgot password form -->
     <div id="authFormForgot" style="display:none;">
@@ -4766,9 +4760,7 @@ async function doRegister() {
   const password = document.getElementById('regPassword').value;
   const errEl    = document.getElementById('regErr');
   const btn      = document.getElementById('regBtn');
-  const consent  = document.getElementById('privacyConsent');
   errEl.textContent = '';
-  if (!consent?.checked) { errEl.textContent = 'Please accept the data privacy consent to continue.'; return; }
   if (!name || !email || !password) { errEl.textContent = 'Please fill in all fields.'; return; }
   if (password.length < 6) { errEl.textContent = 'Password must be at least 6 characters.'; return; }
   btn.disabled = true; btn.textContent = 'Creating account…';
@@ -4791,83 +4783,9 @@ async function doRegister() {
     }
     errEl.textContent = d.error || 'Registration failed.';
   } catch(e) { errEl.textContent = 'Network error. Try again.'; }
-  finally { if (btn.isConnected) { btn.disabled = !document.getElementById('privacyConsent')?.checked; btn.textContent = 'Create Account'; } }
+  finally { if (btn.isConnected) { btn.disabled = false; btn.textContent = 'Create Account'; } }
 }
 
-// ── Privacy Consent Modal ─────────────────────────────────────
-function openPrivacyModal() {
-  const modal = document.getElementById('privacyConsentModal');
-  if (modal) { modal.style.display = 'flex'; document.body.style.overflow = 'hidden'; }
-}
-function closePrivacyModal() {
-  const modal = document.getElementById('privacyConsentModal');
-  if (modal) { modal.style.display = 'none'; document.body.style.overflow = ''; }
-}
-function acceptPrivacyConsent() {
-  const cb = document.getElementById('privacyConsent');
-  if (cb) cb.checked = true;
-  updateRegisterBtn();
-  closePrivacyModal();
-}
-function updateRegisterBtn() {
-  const cb      = document.getElementById('privacyConsent');
-  const btn     = document.getElementById('regBtn');
-  if (!btn) return;
-  const checked = cb?.checked || false;
-  btn.disabled            = !checked;
-  btn.style.opacity       = checked ? '1' : '0.45';
-  btn.style.cursor        = checked ? 'pointer' : 'not-allowed';
-  btn.style.pointerEvents = checked ? 'auto' : 'none';
-}
-function resetRegistrationConsent() {
-  const cb = document.getElementById('privacyConsent');
-  if (cb) cb.checked = false;
-  updateRegisterBtn();
-}
-// Expose on window so modal onclick= attributes always find them
-window.openPrivacyModal    = openPrivacyModal;
-window.closePrivacyModal   = closePrivacyModal;
-window.acceptPrivacyConsent = acceptPrivacyConsent;
-
-function initPrivacyConsent() {
-  const checkbox = document.getElementById('privacyConsent');
-  if (!checkbox) return;
-
-  // Clone to drop any previous listeners
-  const cb = checkbox.cloneNode(true);
-  checkbox.parentNode.replaceChild(cb, checkbox);
-
-  // Simple: checking the box enables the Register button
-  cb.addEventListener('change', updateRegisterBtn);
-
-  updateRegisterBtn();
-}
-
-// Wire on tab switch (registration form toggled in via display:block)
-(function() {
-  const _orig = window.switchAuthTab;
-  window.switchAuthTab = function(tab) {
-    if (_orig) _orig(tab);
-    if (tab === 'register') setTimeout(initPrivacyConsent, 0);
-  };
-
-  // MutationObserver fallback — fires when #privacyConsent enters DOM
-  const obs = new MutationObserver(function(mutations) {
-    for (const m of mutations) {
-      for (const node of m.addedNodes) {
-        if (node.nodeType !== 1) continue;
-        if (node.id === 'privacyConsent' || node.querySelector?.('#privacyConsent')) {
-          setTimeout(initPrivacyConsent, 30);
-          return;
-        }
-      }
-    }
-  });
-  obs.observe(document.body, { childList: true, subtree: true });
-
-  // Also try on DOMContentLoaded in case form is already in DOM
-  document.addEventListener('DOMContentLoaded', initPrivacyConsent);
-}());
 
 async function onAuthSuccess(token, user) {
   sessionToken = token;
@@ -6154,40 +6072,6 @@ function goToFlaggedQuestion(idx) {
   <button id="hl-remove-btn" style="display:none;margin-left:4px;padding:2px 8px;font-size:11px;background:rgba(239,68,68,0.2);color:#f87171;border:1px solid rgba(239,68,68,0.3);border-radius:6px;cursor:pointer;">Remove</button>
 </div>
 
-<!-- ── Privacy Consent Modal ─────────────────────────────── -->
-<div id="privacyConsentModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:99999;align-items:center;justify-content:center;padding:20px;">
-  <div style="background:#0f1923;border:1px solid #2a3347;border-radius:18px;padding:0;max-width:500px;width:100%;max-height:90vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,0.6);">
-    <!-- Header -->
-    <div style="padding:22px 24px 16px;border-bottom:1px solid #1e2d42;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
-      <div>
-        <div style="font-size:1.1rem;font-weight:700;color:#f0c040;margin-bottom:3px;">⚖️ Data Privacy Consent</div>
-        <div style="font-size:0.75rem;color:#667;letter-spacing:0.5px;">Republic Act No. 10173</div>
-      </div>
-      <button onclick="closePrivacyModal()" style="width:32px;height:32px;border-radius:50%;background:#1a2235;border:1px solid #2a3347;color:#778;font-size:1rem;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;">✕</button>
-    </div>
-    <!-- Body -->
-    <div style="padding:20px 24px;overflow-y:auto;flex:1;">
-      <!-- Privacy notice -->
-      <div style="background:rgba(240,192,64,0.05);border:1px solid rgba(240,192,64,0.2);border-radius:12px;padding:16px 18px;margin-bottom:20px;">
-        <div style="font-size:0.75rem;font-weight:700;color:#f0c040;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;">📋 Privacy Notice</div>
-        <p style="font-size:0.84rem;color:#bbc;line-height:1.7;margin:0;">By registering, I consent to the collection, processing, and storage of my personal data by <strong style="color:#e0e0f0;">BarBuddy</strong> for purposes related to account registration, access to services, and platform management, in accordance with the <strong style="color:#f0c040;">Data Privacy Act of 2012</strong> and its implementing rules and regulations.</p>
-      </div>
-      <div style="height:1px;background:#1e2d42;margin-bottom:20px;"></div>
-      <!-- Approval notice -->
-      <div style="background:rgba(59,130,246,0.07);border:1px solid rgba(59,130,246,0.25);border-radius:12px;padding:16px 18px;margin-bottom:8px;">
-        <div style="font-size:0.75rem;font-weight:700;color:#60a5fa;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;">⏳ Account Approval Required</div>
-        <p style="font-size:0.84rem;color:#bbc;line-height:1.7;margin:0 0 10px 0;">New accounts require <strong style="color:#e0e0f0;">admin approval</strong> before you can access BarBuddy.</p>
-        <p style="font-size:0.84rem;color:#bbc;line-height:1.7;margin:0;">Once your registration is reviewed and approved, you will receive a <strong style="color:#e0e0f0;">notification email</strong> at the address you provided. This typically takes less than <strong style="color:#f0c040;">24 hours.</strong></p>
-      </div>
-      <div style="font-size:0.75rem;color:#556;text-align:center;padding:10px 0 4px;font-style:italic;">Make sure to use a valid email address to receive your approval notification.</div>
-    </div>
-    <!-- Footer -->
-    <div style="padding:16px 24px 20px;border-top:1px solid #1e2d42;display:flex;gap:10px;flex-shrink:0;">
-      <button onclick="closePrivacyModal()" style="flex:1;padding:12px;background:#1a2235;color:#778;border:1px solid #2a3347;border-radius:10px;font-size:0.88rem;cursor:pointer;font-weight:500;">Cancel</button>
-      <button onclick="acceptPrivacyConsent()" style="flex:2;padding:12px;background:linear-gradient(135deg,#f0c040,#d4a017);color:#1a1200;border:none;border-radius:10px;font-size:0.88rem;font-weight:700;cursor:pointer;letter-spacing:0.3px;">✅ I Agree — Continue with Registration</button>
-    </div>
-  </div>
-</div>
 
 </body>
 </html>
