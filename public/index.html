@@ -825,7 +825,7 @@ select.form-input{cursor:pointer;}
       <div style="margin-bottom:16px;">
         <div style="display:flex;align-items:flex-start;gap:10px;">
           <input type="checkbox" id="privacyConsent" style="margin-top:3px;width:16px;height:16px;min-width:16px;accent-color:#f0c040;cursor:pointer;pointer-events:auto;" tabindex="0">
-          <span style="font-size:0.78rem;color:#99a;line-height:1.55;">I have read and agree to the <span id="privacyLinkTrigger" style="color:#f0c040;text-decoration:underline;cursor:pointer;">Data Privacy Policy</span> and consent to the collection and processing of my personal data.</span>
+          <span style="font-size:0.78rem;color:#99a;line-height:1.55;">I have read and agree to the <strong style="color:#f0c040;">Data Privacy Act of 2012</strong> and consent to the collection and processing of my personal data.</span>
         </div>
       </div>
       <button class="auth-btn" id="regBtn" onclick="doRegister()" disabled style="opacity:0.45;cursor:not-allowed;">Create Account</button>
@@ -4831,42 +4831,14 @@ window.acceptPrivacyConsent = acceptPrivacyConsent;
 
 function initPrivacyConsent() {
   const checkbox = document.getElementById('privacyConsent');
-  const link     = document.getElementById('privacyLinkTrigger');
   if (!checkbox) return;
 
   // Clone to drop any previous listeners
   const cb = checkbox.cloneNode(true);
   checkbox.parentNode.replaceChild(cb, checkbox);
 
-  // 'change' fires AFTER the browser toggles checked — no preventDefault needed.
-  // Immediately uncheck if the user just checked it, then open the modal.
-  cb.addEventListener('change', function() {
-    if (this.checked) {
-      this.checked = false;   // uncheck — modal must confirm first
-      openPrivacyModal();
-    }
-    updateRegisterBtn();
-  });
-
-  // "Data Privacy Policy" underline link
-  if (link) {
-    const freshLink = link.cloneNode(true);
-    link.parentNode.replaceChild(freshLink, link);
-    freshLink.addEventListener('click', function(e) {
-      e.preventDefault();
-      e.stopPropagation();
-      openPrivacyModal();
-    });
-  }
-
-  // Backdrop mousedown closes modal (mousedown beats click for overlays)
-  const modal = document.getElementById('privacyConsentModal');
-  if (modal && !modal._backdropWired) {
-    modal._backdropWired = true;
-    modal.addEventListener('mousedown', function(e) {
-      if (e.target === this) closePrivacyModal();
-    });
-  }
+  // Simple: checking the box enables the Register button
+  cb.addEventListener('change', updateRegisterBtn);
 
   updateRegisterBtn();
 }
