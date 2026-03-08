@@ -1725,6 +1725,18 @@ async function discardExamSession() {
 }
 
 function confirmAbandonExam() {
+  if (window.isSpeedDrill) {
+    if (!confirm('Exit Speed Drill? Your current answer will be lost.')) return;
+    if (mockTimer) clearInterval(mockTimer);
+    ExamSession.stopAutoSave();
+    ExamSession.clearAll().catch(() => {});
+    const subj = window.activeExamSession?.subject || 'civil';
+    window.isSpeedDrill = false;
+    window.activeExamSession = null;
+    document.getElementById('mockSession').classList.remove('on');
+    navToSubject(subj, 'speeddrill');
+    return;
+  }
   if (!confirm('Exit exam? Your progress is saved and you can resume later.')) return;
   if (window.activeExamSession) {
     ExamSession.saveLocal(window.activeExamSession);
@@ -2007,7 +2019,7 @@ function updateBreadcrumb(subj, mode) {
   if (!subj) { bc.innerHTML = ''; return; }
   const subjInfo = ALL_SUBJS.find(s => s.key === subj);
   const subjName = subjInfo?.name || subj;
-  const modeLabel = mode === 'learn' ? '📖 Learn' : mode === 'quiz' ? '✏️ Quiz' : mode === 'mockbar' ? '⏱ Mock Bar' : '';
+  const modeLabel = mode === 'learn' ? '📖 Learn' : mode === 'quiz' ? '✏️ Quiz' : mode === 'mockbar' ? '⏱ Mock Bar' : mode === 'speeddrill' ? '⚡ Speed Drill' : '';
   bc.innerHTML = `<span class="tb-bc-subj">${h(subjName)}</span>
     ${modeLabel ? `<span class="tb-bc-sep">›</span><span class="tb-bc-mode">${modeLabel}</span>` : ''}`;
 }
@@ -2159,19 +2171,26 @@ function renderSubjectHeader(subj) {
 function renderSubjectTabs(subj, activeMode) {
   const ts = window.TAB_SETTINGS?.subjects?.[subj] || {};
   const tabs = [
-    { mode:'learn',   icon:'📖', label:'Learn'   },
-    { mode:'quiz',    icon:'✏️',  label:'Quiz'    },
-    { mode:'mockbar', icon:'⏱',  label:'Mock Bar' },
+    { mode:'learn',      icon:'📖', label:'Learn'       },
+    { mode:'quiz',       icon:'✏️',  label:'Quiz'        },
+    { mode:'mockbar',    icon:'⏱',  label:'Mock Bar'    },
+    { mode:'speeddrill', icon:'⚡', label:'Speed Drill' },
   ];
   const bar = document.getElementById('subject-tab-bar');
   if (!bar) return;
   bar.innerHTML = tabs.map(t => {
-    const enabled = ts[t.mode] !== false;
+    const enabled = t.mode === 'speeddrill' ? true : ts[t.mode] !== false;
     const isActive = t.mode === activeMode;
+    const drillStyle = t.mode === 'speeddrill'
+      ? (isActive
+          ? 'color:#a78bfa;background:linear-gradient(135deg,rgba(139,92,246,.25),rgba(106,61,232,.15));border-color:rgba(139,92,246,.4);box-shadow:0 2px 8px rgba(139,92,246,.2);'
+          : 'color:#7c6fa0;')
+      : '';
     return `<button id="stab-${t.mode}"
       class="subject-tab${isActive?' active':''}${!enabled?' tab-disabled':''}"
       onclick="switchSubjectTab('${subj}','${t.mode}')"
-      ${!enabled?'disabled':''}>
+      ${!enabled?'disabled':''}
+      style="${drillStyle}">
       ${t.icon} ${t.label}${!enabled?' 🔒':''}
     </button>`;
   }).join('');
@@ -2180,19 +2199,29 @@ function renderSubjectTabs(subj, activeMode) {
 function switchSubjectTab(subj, mode) {
   // If disabled, auto-pick first enabled
   const ts = window.TAB_SETTINGS?.subjects?.[subj] || {};
-  if (ts[mode] === false) {
+  if (mode !== 'speeddrill' && ts[mode] === false) {
     const first = ['learn','quiz','mockbar'].find(m => ts[m] !== false);
     if (first) { switchSubjectTab(subj, first); return; }
   }
   currentMode = mode;
   document.querySelectorAll('.subject-tab').forEach(t => t.classList.remove('active'));
-  document.getElementById('stab-' + mode)?.classList.add('active');
+  const activeTab = document.getElementById('stab-' + mode);
+  if (activeTab) {
+    activeTab.classList.add('active');
+    if (mode === 'speeddrill') {
+      activeTab.style.color = '#a78bfa';
+      activeTab.style.background = 'linear-gradient(135deg,rgba(139,92,246,.25),rgba(106,61,232,.15))';
+      activeTab.style.borderColor = 'rgba(139,92,246,.4)';
+      activeTab.style.boxShadow = '0 2px 8px rgba(139,92,246,.2)';
+    }
+  }
   updateBreadcrumb(subj, mode);
   const content = document.getElementById('subject-tab-content');
   if (!content) return;
-  if (mode === 'learn')    renderLearnTab(subj, content);
-  if (mode === 'quiz')     renderQuizTab(subj, content);
-  if (mode === 'mockbar')  renderMockBarTab(subj, content);
+  if (mode === 'learn')      renderLearnTab(subj, content);
+  if (mode === 'quiz')       renderQuizTab(subj, content);
+  if (mode === 'mockbar')    renderMockBarTab(subj, content);
+  if (mode === 'speeddrill') renderSpeedDrillTab(subj, content);
 }
 
 function renderLearnTab(subj, container) {
@@ -2377,6 +2406,76 @@ async function startSubjectMockBar(subj) {
     if (btn) { btn.disabled = false; btn.textContent = '⚡ Start ' + s + ' Mock Bar'; }
     alert('Error: ' + e.message);
   }
+}
+
+function renderSpeedDrillTab(subj, container) {
+  if (!container) return;
+  const s = SUBJS.find(x => x.key === subj);
+  const subjName = h(s?.name || subj);
+  const subjColor = s?.color || '#8b5cf6';
+  container.innerHTML = `
+    <div style="max-width:520px;">
+      <div class="mb-setup-card" style="border-color:rgba(139,92,246,.25);background:linear-gradient(135deg,rgba(139,92,246,.07),rgba(106,61,232,.04));">
+        <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;">
+          <div style="font-size:36px;line-height:1;">⚡</div>
+          <div>
+            <div style="font-family:var(--fd);font-size:18px;font-weight:700;color:#c4b5fd;margin-bottom:3px;">Speed Drill</div>
+            <div style="font-size:12px;color:var(--muted);line-height:1.55;">Answer 1 randomly selected question within 3 minutes.</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:12px;margin-bottom:18px;flex-wrap:wrap;">
+          <div style="flex:1;min-width:100px;background:rgba(139,92,246,.12);border:1px solid rgba(139,92,246,.22);border-radius:10px;padding:12px;text-align:center;">
+            <div style="font-size:22px;font-weight:800;color:#a78bfa;font-family:var(--fd);">1</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:2px;">Question</div>
+          </div>
+          <div style="flex:1;min-width:100px;background:rgba(139,92,246,.12);border:1px solid rgba(139,92,246,.22);border-radius:10px;padding:12px;text-align:center;">
+            <div style="font-size:22px;font-weight:800;color:#a78bfa;font-family:var(--fd);">3:00</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:2px;">Time Limit</div>
+          </div>
+          <div style="flex:1;min-width:100px;background:rgba(139,92,246,.12);border:1px solid rgba(139,92,246,.22);border-radius:10px;padding:12px;text-align:center;">
+            <div style="font-size:22px;font-weight:800;color:#a78bfa;font-family:var(--fd);">AI</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:2px;">Scored</div>
+          </div>
+        </div>
+        <div style="font-size:12px;color:var(--muted);line-height:1.65;margin-bottom:18px;padding:10px 12px;background:rgba(255,255,255,.03);border-radius:8px;border-left:3px solid rgba(139,92,246,.4);">
+          Same scoring rules as Mock Bar (0–10 pts per question). Timer turns red with 60 seconds remaining. When time runs out, your answer is auto-submitted.
+        </div>
+        <div id="sdStartError" style="display:none;margin-bottom:12px;padding:10px 14px;background:rgba(224,112,128,.12);border:1px solid rgba(224,112,128,.35);border-radius:10px;color:#e07080;font-size:13px;"></div>
+        <button id="sdStartBtn" onclick="startSubjectSpeedDrill('${subj}')"
+          style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px;padding:14px;font-family:var(--fd);font-size:15px;font-weight:700;color:#fff;background:linear-gradient(135deg,#6a3de8,#8b5cf6);border:none;border-radius:11px;cursor:pointer;box-shadow:0 4px 18px rgba(106,61,232,.4);transition:opacity .2s;">
+          ⚡ Start ${subjName} Speed Drill
+        </button>
+      </div>
+    </div>`;
+}
+
+async function startSubjectSpeedDrill(subj) {
+  const btn = document.getElementById('sdStartBtn');
+  const errEl = document.getElementById('sdStartError');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Loading question…'; }
+  if (errEl) errEl.style.display = 'none';
+  try {
+    const r = await fetch('/api/mockbar/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ subjects: [subj], count: 1, includePreGen: false, aiGenerate: false, difficulty: mbDifficulty }),
+    });
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    window.isSpeedDrill = true;
+    startMockSession(d.questions, 3, subj);
+  } catch(e) {
+    if (errEl) { errEl.textContent = '⚠️ ' + e.message; errEl.style.display = ''; }
+    const s = SUBJS.find(x => x.key === subj)?.name || subj;
+    if (btn) { btn.disabled = false; btn.textContent = '⚡ Start ' + s + ' Speed Drill'; }
+  }
+}
+
+function drillAgain() {
+  const subj = window.lastExamSubject || 'civil';
+  window.isSpeedDrill = false;
+  navToSubject(subj, 'speeddrill');
+  setTimeout(() => startSubjectSpeedDrill(subj), 300);
 }
 
 function showLockedMessage(subj, mode) {
@@ -3758,7 +3857,11 @@ async function endMockSession(){
       <div class="mr-stat"><div class="n">${numQuestions}</div><div class="l">Questions</div></div>
     </div>
     <div style="display:flex;gap:8px;justify-content:center;margin-bottom:22px;flex-wrap:wrap;">
-      <button class="btn-mock" onclick="navToSubject(window.lastExamSubject||'overview','mockbar')">⏱ New Session</button>
+      ${window.isSpeedDrill
+        ? `<button onclick="drillAgain()" style="display:flex;align-items:center;gap:7px;padding:11px 20px;font-family:var(--fd);font-size:13px;font-weight:700;color:#fff;background:linear-gradient(135deg,#6a3de8,#8b5cf6);border:none;border-radius:10px;cursor:pointer;box-shadow:0 4px 14px rgba(106,61,232,.35);">⚡ Drill Again</button>
+           <button class="btn-ghost" onclick="window.isSpeedDrill=false;navToSubject(window.lastExamSubject||'overview','speeddrill')">⏱ Back to Setup</button>`
+        : `<button class="btn-mock" onclick="navToSubject(window.lastExamSubject||'overview','mockbar')">⏱ New Session</button>`
+      }
       <button class="btn-ghost" onclick="nav('learn',document.getElementById('tab-learn'))">📖 Back to Learn</button>
       <button class="btn-ghost" onclick="printMockResults()">🖨️ Print</button>
       <button class="btn-ghost" onclick="openModal('emailOverlay')">📧 Email</button>
