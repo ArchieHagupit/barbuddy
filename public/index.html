@@ -3291,6 +3291,9 @@ function effectiveScore(s){
   }
   return s.numericScore||0;
 }
+function gradeFromScore(n){
+  return n>=8.5?'Excellent':n>=7.0?'Good':n>=5.5?'Satisfactory':n>=4.0?'Needs Improvement':'Poor';
+}
 // ALAC color thresholds per component
 function alacScoreCls(score, key){
   if(key==='answer')      return score>=1.2?'hi':score>=0.7?'mid':'lo';
@@ -4038,12 +4041,15 @@ function buildResultsHtml(){
     const hasAlac=!!(al.answer||al.legalBasis||al.application||al.conclusion);
     const isSit=(q.type==='situational')&&q.context;
     const pageBreak=i<mockQs.length-1?'page-break-after:always;':'';
-    const scoreColor=(s.numericScore||0)>=7?'#1a7a5e':(s.numericScore||0)>=5?'#8b6914':'#b32d2d';
+    const qEffScore=effectiveScore(s);
+    const qScoreStr=`${+qEffScore.toFixed(1)}/10`;
+    const qGrade=gradeFromScore(qEffScore);
+    const scoreColor=qEffScore>=7?'#1a7a5e':qEffScore>=5?'#8b6914':'#b32d2d';
 
     let card='';
     if(ans.trim()){
       // Score + overall feedback
-      card+=`<div style="margin-bottom:8px;"><span style="font-size:15px;font-weight:bold;color:${scoreColor};">${e(s.score||'?/10')} — ${e(s.grade||'')}</span></div>`;
+      card+=`<div style="margin-bottom:8px;"><span style="font-size:15px;font-weight:bold;color:${scoreColor};">${e(qScoreStr)} — ${e(qGrade)}</span></div>`;
       card+=`<div style="font-size:13px;line-height:1.7;margin-bottom:10px;">${e(s.overallFeedback||'')}</div>`;
 
       // ALAC breakdown table
@@ -4125,7 +4131,7 @@ function buildResultsHtml(){
         <span style="font-size:17px;font-weight:bold;color:#7a6128;">Q${i+1}</span>
         <span style="background:#eee;border-radius:4px;padding:2px 8px;font-size:12px;color:#333;">${e(sub.name)}</span>
         <span style="color:#666;font-size:12px;">${q.isReal?'📜 Past Bar '+(q.year||q.source||''):q.source==='Pre-generated'?'📚 Pre-generated':'🤖 AI Generated'}</span>
-        ${ans.trim()?`<span style="margin-left:auto;font-weight:bold;color:${scoreColor};font-size:14px;">${e(s.score||'?/10')}</span>`:''}
+        ${ans.trim()?`<span style="margin-left:auto;font-weight:bold;color:${scoreColor};font-size:14px;">${e(qScoreStr)}</span>`:''}
       </div>
       ${isSit?`<div style="background:#f0f4ff;border-left:3px solid #3a5abf;padding:10px 14px;margin-bottom:12px;border-radius:4px;"><div style="font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:.08em;color:#3a5abf;margin-bottom:5px;">FACTS</div><div style="font-size:13px;line-height:1.7;">${e(q.context)}</div></div>`:''}
       <div style="font-size:14px;font-weight:bold;line-height:1.7;margin-bottom:14px;">${e(qText)}</div>
