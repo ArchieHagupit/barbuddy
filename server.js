@@ -145,14 +145,14 @@ async function getQuestionsForSubjects(subjects, limit = 800) {
 const DEFAULT_TAB_SETTINGS = {
   overview: true,
   subjects: {
-    civil:      { learn: true, quiz: true, mockbar: true },
-    criminal:   { learn: true, quiz: true, mockbar: true },
-    political:  { learn: true, quiz: true, mockbar: true },
-    labor:      { learn: true, quiz: true, mockbar: true },
-    commercial: { learn: true, quiz: true, mockbar: true },
-    taxation:   { learn: true, quiz: true, mockbar: true },
-    remedial:   { learn: true, quiz: true, mockbar: true },
-    ethics:     { learn: true, quiz: true, mockbar: true },
+    civil:      { learn: true, quiz: true, mockbar: true, speeddrill: true },
+    criminal:   { learn: true, quiz: true, mockbar: true, speeddrill: true },
+    political:  { learn: true, quiz: true, mockbar: true, speeddrill: true },
+    labor:      { learn: true, quiz: true, mockbar: true, speeddrill: true },
+    commercial: { learn: true, quiz: true, mockbar: true, speeddrill: true },
+    taxation:   { learn: true, quiz: true, mockbar: true, speeddrill: true },
+    remedial:   { learn: true, quiz: true, mockbar: true, speeddrill: true },
+    ethics:     { learn: true, quiz: true, mockbar: true, speeddrill: true },
     custom:     { mockbar: true },
   },
 };

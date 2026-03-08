@@ -1141,6 +1141,8 @@ select.form-input{cursor:pointer;}
           <button class="tab-global-btn" onclick="setAllOfMode('quiz',false)">✏️ All Quiz ▼</button>
           <button class="tab-global-btn" onclick="setAllOfMode('mockbar',true)">⏱ All Mock ▲</button>
           <button class="tab-global-btn" onclick="setAllOfMode('mockbar',false)">⏱ All Mock ▼</button>
+          <button class="tab-global-btn" onclick="setAllOfMode('speeddrill',true)">⚡ All Speed Drill ▲</button>
+          <button class="tab-global-btn" onclick="setAllOfMode('speeddrill',false)">⚡ All Speed Drill ▼</button>
         </div>
       </div>
       <!-- Per-subject controls rendered by JS -->
@@ -2128,7 +2130,7 @@ function navToSubject(subj, mode) {
 
   // Determine which mode to default to (pick first enabled)
   const ts = window.TAB_SETTINGS;
-  const modesInOrder = ['learn','quiz','mockbar'];
+  const modesInOrder = ['learn','quiz','mockbar','speeddrill'];
   let targetMode = mode || 'learn';
   if (ts?.subjects?.[subj]?.[targetMode] === false) {
     targetMode = modesInOrder.find(m => ts.subjects?.[subj]?.[m] !== false) || 'learn';
@@ -2179,7 +2181,7 @@ function renderSubjectTabs(subj, activeMode) {
   const bar = document.getElementById('subject-tab-bar');
   if (!bar) return;
   bar.innerHTML = tabs.map(t => {
-    const enabled = t.mode === 'speeddrill' ? true : ts[t.mode] !== false;
+    const enabled = ts[t.mode] !== false;
     const isActive = t.mode === activeMode;
     const drillStyle = t.mode === 'speeddrill'
       ? (isActive
@@ -2199,8 +2201,8 @@ function renderSubjectTabs(subj, activeMode) {
 function switchSubjectTab(subj, mode) {
   // If disabled, auto-pick first enabled
   const ts = window.TAB_SETTINGS?.subjects?.[subj] || {};
-  if (mode !== 'speeddrill' && ts[mode] === false) {
-    const first = ['learn','quiz','mockbar'].find(m => ts[m] !== false);
+  if (ts[mode] === false) {
+    const first = ['learn','quiz','mockbar','speeddrill'].find(m => ts[m] !== false);
     if (first) { switchSubjectTab(subj, first); return; }
   }
   currentMode = mode;
@@ -4193,14 +4195,14 @@ function getDefaultTabSettings() {
   return {
     overview: true,
     subjects: {
-      civil:      { learn: true, quiz: true, mockbar: true },
-      criminal:   { learn: true, quiz: true, mockbar: true },
-      political:  { learn: true, quiz: true, mockbar: true },
-      labor:      { learn: true, quiz: true, mockbar: true },
-      commercial: { learn: true, quiz: true, mockbar: true },
-      taxation:   { learn: true, quiz: true, mockbar: true },
-      remedial:   { learn: true, quiz: true, mockbar: true },
-      ethics:     { learn: true, quiz: true, mockbar: true },
+      civil:      { learn: true, quiz: true, mockbar: true, speeddrill: true },
+      criminal:   { learn: true, quiz: true, mockbar: true, speeddrill: true },
+      political:  { learn: true, quiz: true, mockbar: true, speeddrill: true },
+      labor:      { learn: true, quiz: true, mockbar: true, speeddrill: true },
+      commercial: { learn: true, quiz: true, mockbar: true, speeddrill: true },
+      taxation:   { learn: true, quiz: true, mockbar: true, speeddrill: true },
+      remedial:   { learn: true, quiz: true, mockbar: true, speeddrill: true },
+      ethics:     { learn: true, quiz: true, mockbar: true, speeddrill: true },
       custom:     { mockbar: true },
     },
   };
@@ -4220,8 +4222,8 @@ async function applyTabSettings() {
     SUBJS.forEach(s => {
       const subjEl = document.getElementById(`sb-subj-${s.key}`);
       if (!subjEl) return;
-      const allModes = ['learn','quiz','mockbar'];
-      const allDisabled = allModes.every(m => settings.subjects?.[s.key]?.[m] === false);
+      const allModes = ['learn','quiz','mockbar','speeddrill'];
+      const allDisabled = ['learn','quiz','mockbar'].every(m => settings.subjects?.[s.key]?.[m] === false);
       const anyDisabled = allModes.some(m => settings.subjects?.[s.key]?.[m] === false);
       if (!isAdmin && allDisabled) {
         subjEl.style.display = 'none';
@@ -4257,7 +4259,7 @@ async function applyTabSettings() {
       renderSubjectTabs(currentSubject, currentMode || 'learn');
       // If current tab just got disabled, auto-switch
       if (settings.subjects?.[currentSubject]?.[currentMode] === false) {
-        const first = ['learn','quiz','mockbar'].find(m => settings.subjects?.[currentSubject]?.[m] !== false);
+        const first = ['learn','quiz','mockbar','speeddrill'].find(m => settings.subjects?.[currentSubject]?.[m] !== false);
         if (first) switchSubjectTab(currentSubject, first);
       }
     }
@@ -4278,29 +4280,31 @@ function renderTabControls() {
   const container = document.getElementById('tabToggleList');
   if (!container) return;
   const s = pendingTabSettings || getDefaultTabSettings();
-  const modeLabels = { learn: '📖 Learn', quiz: '✏️ Quiz', mockbar: '⏱ Mock Bar' };
+  const modeLabels = { learn: '📖 Learn', quiz: '✏️ Quiz', mockbar: '⏱ Mock Bar', speeddrill: '⚡ Speed Drill' };
   let html = '';
   // Global shortcuts
-  html += `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;">
+  html += `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
     <button class="tab-global-btn" onclick="setAllTabs(true)">✅ Enable All</button>
     <button class="tab-global-btn" onclick="setAllTabs(false)">🔒 Disable All</button>
     <button class="tab-global-btn" onclick="setAllOfMode('learn',false)">Hide All Learn</button>
     <button class="tab-global-btn" onclick="setAllOfMode('quiz',false)">Hide All Quiz</button>
     <button class="tab-global-btn" onclick="setAllOfMode('mockbar',false)">Hide All Mock Bar</button>
+    <button class="tab-global-btn" onclick="setAllOfMode('speeddrill',false)">Hide All Speed Drill</button>
     <button class="tab-global-btn" style="margin-left:auto;color:var(--muted);" onclick="resetTabSettings()">↺ Reset Defaults</button>
   </div>`;
   // Per-subject rows
   SUBJS.forEach(subj => {
     const ss = s.subjects?.[subj.key] || {};
+    const subjModes = subj.key === 'custom' ? ['mockbar'] : ['learn','quiz','mockbar','speeddrill'];
     html += `<div class="tab-ctrl-subject-header">
       <span class="tab-ctrl-subject-dot" style="background:${subj.color};"></span>
       <span style="font-size:13px;font-weight:600;">${subj.name}</span>
     </div>
     <div style="padding-left:16px;margin-bottom:12px;">`;
-    ['learn','quiz','mockbar'].forEach(mode => {
+    subjModes.forEach(mode => {
       const on = ss[mode] !== false;
       html += `<div class="tab-ctrl-row">
-        <span style="font-size:12px;min-width:90px;color:var(--muted);">${modeLabels[mode]}</span>
+        <span style="font-size:12px;min-width:100px;color:var(--muted);">${modeLabels[mode]}</span>
         <div class="tab-ctrl-btns">
           <button class="tct-on${on?' tct-active':''}" onclick="setTabSetting('${subj.key}','${mode}',true)">ON</button>
           <button class="tct-off${!on?' tct-active':''}" onclick="setTabSetting('${subj.key}','${mode}',false)">OFF</button>
@@ -4339,10 +4343,9 @@ function setAllTabs(value) {
   if (!pendingTabSettings) pendingTabSettings = getDefaultTabSettings();
   SUBJS.forEach(s => {
     if (!pendingTabSettings.subjects[s.key]) pendingTabSettings.subjects[s.key] = {};
-    ['learn','quiz','mockbar'].forEach(m => { pendingTabSettings.subjects[s.key][m] = value; });
+    const modes = s.key === 'custom' ? ['mockbar'] : ['learn','quiz','mockbar','speeddrill'];
+    modes.forEach(m => { pendingTabSettings.subjects[s.key][m] = value; });
   });
-  if (!pendingTabSettings.subjects.custom) pendingTabSettings.subjects.custom = {};
-  pendingTabSettings.subjects.custom.mockbar = value;
   renderTabControls();
 }
 
@@ -4385,7 +4388,7 @@ function updateAccessControlBadge() {
   const s = window.TAB_SETTINGS;
   if (!s || !adminKey) { badge.style.display = 'none'; return; }
   const anyDisabled = SUBJS.some(subj =>
-    ['learn','quiz','mockbar'].some(m => s.subjects?.[subj.key]?.[m] === false)
+    ['learn','quiz','mockbar','speeddrill'].some(m => s.subjects?.[subj.key]?.[m] === false)
   ) || s.subjects?.custom?.mockbar === false;
   badge.style.display = anyDisabled ? '' : 'none';
 }
@@ -5652,14 +5655,14 @@ function getDefaultUserTabSettings() {
   return {
     overview: true,
     subjects: {
-      civil:      { learn: true, quiz: true, mockbar: true },
-      criminal:   { learn: true, quiz: true, mockbar: true },
-      political:  { learn: true, quiz: true, mockbar: true },
-      labor:      { learn: true, quiz: true, mockbar: true },
-      commercial: { learn: true, quiz: true, mockbar: true },
-      taxation:   { learn: true, quiz: true, mockbar: true },
-      remedial:   { learn: true, quiz: true, mockbar: true },
-      ethics:     { learn: true, quiz: true, mockbar: true },
+      civil:      { learn: true, quiz: true, mockbar: true, speeddrill: true },
+      criminal:   { learn: true, quiz: true, mockbar: true, speeddrill: true },
+      political:  { learn: true, quiz: true, mockbar: true, speeddrill: true },
+      labor:      { learn: true, quiz: true, mockbar: true, speeddrill: true },
+      commercial: { learn: true, quiz: true, mockbar: true, speeddrill: true },
+      taxation:   { learn: true, quiz: true, mockbar: true, speeddrill: true },
+      remedial:   { learn: true, quiz: true, mockbar: true, speeddrill: true },
+      ethics:     { learn: true, quiz: true, mockbar: true, speeddrill: true },
       custom:     { mockbar: true },
     },
   };
@@ -5670,7 +5673,7 @@ function getUserAccessSummary(u) {
   const s = u.tabSettings;
   let restrictions = 0;
   (SUBJS || []).forEach(subj => {
-    ['learn','quiz','mockbar'].forEach(mode => {
+    ['learn','quiz','mockbar','speeddrill'].forEach(mode => {
       if (s.subjects?.[subj.key]?.[mode] === false) restrictions++;
     });
   });
@@ -5710,10 +5713,10 @@ function renderUserAccessGrid() {
   if (!container) return;
   const s = pendingUserTabSettings || getDefaultUserTabSettings();
   const globalS = window.TAB_SETTINGS || {};
-  const modeLabels = { learn: '📖 Learn', quiz: '✏️ Quiz', mockbar: '⏱ Mock Bar' };
+  const modeLabels = { learn: '📖 Learn', quiz: '✏️ Quiz', mockbar: '⏱ Mock Bar', speeddrill: '⚡ Speed Drill' };
   let html = '';
   SUBJS.forEach(subj => {
-    const modes = subj.key === 'custom' ? ['mockbar'] : ['learn', 'quiz', 'mockbar'];
+    const modes = subj.key === 'custom' ? ['mockbar'] : ['learn', 'quiz', 'mockbar', 'speeddrill'];
     const pillsHtml = modes.map(mode => {
       const globalLocked = globalS.subjects?.[subj.key]?.[mode] === false;
       const personalEnabled = s.subjects?.[subj.key]?.[mode] !== false;
@@ -5744,7 +5747,7 @@ function setAllUserTabs(val) {
   pendingUserTabSettings = getDefaultUserTabSettings();
   if (!val) {
     SUBJS.forEach(subj => {
-      const modes = subj.key === 'custom' ? ['mockbar'] : ['learn', 'quiz', 'mockbar'];
+      const modes = subj.key === 'custom' ? ['mockbar'] : ['learn', 'quiz', 'mockbar', 'speeddrill'];
       modes.forEach(mode => { pendingUserTabSettings.subjects[subj.key][mode] = false; });
     });
     pendingUserTabSettings.overview = false;
