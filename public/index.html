@@ -3282,6 +3282,15 @@ function renderDefCard(ev){
     <div style="margin-top:8px;padding:12px;background:rgba(255,255,255,.03);border-radius:9px;">${renderModelAnswer(ev)}</div></details>
   </div>`;
 }
+// Returns the authoritative numeric score for one question:
+// if ALAC components are present, use their sum; otherwise fall back to the AI-returned numericScore.
+function effectiveScore(s){
+  const al=s.alac||{};
+  if(al.answer||al.legalBasis||al.application||al.conclusion){
+    return (al.answer?.score??0)+(al.legalBasis?.score??0)+(al.application?.score??0)+(al.conclusion?.score??0);
+  }
+  return s.numericScore||0;
+}
 // ALAC color thresholds per component
 function alacScoreCls(score, key){
   if(key==='answer')      return score>=1.2?'hi':score>=0.7?'mid':'lo';
@@ -3844,13 +3853,13 @@ async function endMockSession(){
   }
 
   mockScores=scores;
-  const rawScore=scores.reduce((a,s)=>a+(s.numericScore||0),0);
+  const rawScore=scores.reduce((a,s)=>a+effectiveScore(s),0);
   const numQuestions=scores.length||mockQs.length||1;
   const maxScore=numQuestions*10;
   const avg=Math.round(rawScore/numQuestions*10)/10;
   const pct=maxScore>0?Math.round(rawScore/maxScore*100):0;
   totalQDone+=answered;totalCorrect+=Math.round(pct/100*answered);updateDash();
-  saveMockBarResults(scores.map((s,i)=>({q:(mockQs[i]?.prompt||mockQs[i]?.q||'').slice(0,120),score:s.numericScore||0,max:10})));
+  saveMockBarResults(scores.map((s,i)=>({q:(mockQs[i]?.prompt||mockQs[i]?.q||'').slice(0,120),score:effectiveScore(s),max:10})));
 
   // Pre-fill email modal subject
   const emailSubj=`BarBuddy Mock Bar Results — ${new Date().toLocaleDateString('en-PH')} — ${fmt(rawScore)}/${maxScore} (${pct}%)`;
@@ -4010,7 +4019,7 @@ function buildResultsHtml(){
   const subjStr=(!mockSubjectsUsed.length||mockSubjectsUsed.includes('all'))?'All Subjects':mockSubjectsUsed.map(s=>SUBJS.find(x=>x.key===s)?.name||s).join(', ');
   const userName=window.currentUser?.name||window.loggedInUser?.name||window.user?.name||document.querySelector('.user-name,.topbar-name,#user-display-name,.sidebar-user-name')?.textContent?.trim()||localStorage.getItem('bb_user_name')||(()=>{try{return JSON.parse(localStorage.getItem('bb_user')||'{}').name||'';}catch(e){return'';}})()||'Bar Examinee';
   const answered=mockAnswers.filter(a=>a?.trim()).length;
-  const rawSc=mockScores.reduce((a,s)=>a+(s.numericScore||0),0);
+  const rawSc=mockScores.reduce((a,s)=>a+effectiveScore(s),0);
   const numQ=mockQs.length||mockScores.length||1;
   const maxSc=numQ*10;
   const pct=maxSc>0?Math.round(rawSc/maxSc*100):0;
