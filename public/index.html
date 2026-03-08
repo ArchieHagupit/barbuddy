@@ -3377,7 +3377,7 @@ function renderAlacCard(ev){
   ).join('');
   const computedTotal=(al.answer?.score??0)+(al.legalBasis?.score??0)+(al.application?.score??0)+(al.conclusion?.score??0);
   const totalDisplay=computedTotal>0?`${+computedTotal.toFixed(1)}/10`:(ev.score||'?/10');
-  return `<div class="ai-fb-head">${evalFormatBadge(ev.format||ev.questionType||'essay')}<span class="ai-fb-score">${h(ev.score||'?/10')}</span><span style="background:rgba(255,255,255,.08);border-radius:5px;padding:2px 7px;font-family:var(--fm);color:${gc};">${h(ev.grade||'')}</span></div>
+  return `<div class="ai-fb-head">${evalFormatBadge(ev.format||ev.questionType||'essay')}<span class="ai-fb-score">${h(totalDisplay)}</span><span style="background:rgba(255,255,255,.08);border-radius:5px;padding:2px 7px;font-family:var(--fm);color:${gc};">${h(ev.grade||'')}</span></div>
   <div class="ai-fb-content">
     <table class="alac-table">
       <thead><tr><th>Component</th><th>Score</th><th>Max</th><th>Feedback</th></tr></thead>
