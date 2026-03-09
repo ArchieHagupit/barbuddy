@@ -49,6 +49,7 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .sb-subject.active{background:rgba(212,168,67,.1);color:var(--gold-l);border-left-color:var(--gold)!important;}
 /* Material dot + question count */
 .sb-subj-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;transition:opacity .2s;}
+.sb-subj-name{font-family:var(--fb);}
 .sb-subj-qcount{font-size:10px;font-family:var(--fm);color:var(--muted);margin-left:auto;flex-shrink:0;}
 .sb-lock-icon{font-size:10px;margin-left:auto;opacity:.5;flex-shrink:0;}
 /* Subject page internal tabs */
@@ -142,7 +143,7 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .ov-subj-card:hover{transform:translateY(-2px);box-shadow:var(--shadow-md,0 4px 16px rgba(0,0,0,.2));border-color:var(--bdr-gold,rgba(212,168,67,.25));}
 .ov-subj-top{display:flex;align-items:center;gap:8px;margin-bottom:12px;margin-top:4px;}
 .ov-subj-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
-.ov-subj-name{font-family:var(--fd);font-size:13px;font-weight:700;color:var(--text,var(--white));line-height:1.3;}
+.ov-subj-name{font-family:var(--fb);font-size:13px;font-weight:700;color:var(--text,var(--white));line-height:1.3;}
 .ov-subj-prog-track{height:5px;background:rgba(255,255,255,.07);border-radius:3px;overflow:hidden;margin-bottom:8px;}
 .ov-subj-prog-fill{height:100%;border-radius:3px;transition:width .4s ease;}
 .ov-subj-stats{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);font-family:var(--fm,monospace);margin-bottom:12px;}
@@ -2537,7 +2538,7 @@ function renderSidebar() {
     const qCount = (KB.pastBar||[]).filter(p=>p.subject===s.key).reduce((a,p)=>a+(p.qCount||0),0);
     return `<button class="sb-subject" id="sb-subj-${s.key}" style="border-left-color:${s.color};" onclick="navToSubject('${s.key}')">
       <span class="sb-subj-dot" style="background:${hasMaterials?s.color:'rgba(248,246,241,.2)'};"></span>
-      <span style="flex:1;">${h(s.name)}</span>
+      <span class="sb-subj-name" style="flex:1;">${h(s.name)}</span>
       ${qCount>0?`<span class="sb-subj-qcount">${qCount}q</span>`:''}
       <span class="sb-lock-icon" style="display:none;">🔒</span>
     </button>`;
