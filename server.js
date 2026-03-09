@@ -24,7 +24,7 @@ class Semaphore {
     if (this.queue.length) { this.count++; this.queue.shift()(); }
   }
 }
-const aiSemaphore = new Semaphore(10);
+const aiSemaphore = new Semaphore(20);
 
 // ── Per-submission evaluation progress ──────────────────────
 const evalProgress = new Map(); // submissionId → { total, done, complete }
@@ -2426,6 +2426,10 @@ async function callClaudeHaikuJSON(prompt, maxTokens = 400) {
         throw new Error('Haiku overloaded after retries');
       }
       if (d.error) throw new Error(d.error.message);
+      if (d.usage) {
+        const _tot = d.usage.input_tokens + d.usage.output_tokens;
+        console.log(`[tokens] haiku | in:${d.usage.input_tokens} out:${d.usage.output_tokens} total:${_tot}`);
+      }
       if (d.stop_reason === 'max_tokens') console.warn('[callClaudeHaikuJSON] Response truncated! Used:', d.usage?.output_tokens, 'tokens. Increase maxTokens.');
       const raw = sanitizeAIResponse(d.content.map(c => c.text || '').join(''));
       const parsed = extractJSON(raw);
@@ -2438,52 +2442,93 @@ async function callClaudeHaikuJSON(prompt, maxTokens = 400) {
   }
 }
 
-// ── EVAL PROGRESS polling ─────────────────────────────────────
-app.get('/api/eval-progress/:id', requireAuth, (req, res) => {
-  const progress = evalProgress.get(req.params.id) || { total: 0, done: 0, complete: false };
-  res.json(progress);
-});
+// ── Global evaluation queue ────────────────────────────────────────────────────
+// Handles 30+ concurrent users fairly: FIFO across users, per-user concurrency cap,
+// interleaved so every user gets partial results quickly.
+const EvalQueue = {
+  queue: [],              // [{ submissionId, userId, item, idx, resolve, reject, enqueuedAt }]
+  activeCount: 0,         // currently running API calls
+  maxConcurrent: 20,      // matches semaphore — safe for Haiku at scale
+  perUserActive: new Map(), // userId → currently-running count for that user
+  perUserMax: 5,          // fairness cap: one user can't monopolise all 20 slots
+  evalTimeSamples: [],    // rolling window of completed eval durations (ms)
+  totalProcessed: 0,
+  get avgEvalTimeMs() {
+    if (!this.evalTimeSamples.length) return 3000;
+    return Math.round(this.evalTimeSamples.reduce((a, b) => a + b, 0) / this.evalTimeSamples.length);
+  },
+  recordTime(ms) {
+    this.evalTimeSamples.push(ms);
+    if (this.evalTimeSamples.length > 200) this.evalTimeSamples.shift();
+  },
+};
 
-// ── EVALUATE BATCH — parallel haiku evaluation ────────────────
-app.post('/api/evaluate-batch', requireAuth, async (req, res) => {
-  if (!API_KEY) return res.status(500).json({ error: 'API key not set' });
-  const { questions, submissionId: clientId } = req.body; // [{ question, answer, context, modelAnswer, keyPoints, subject }]
-  if (!Array.isArray(questions) || !questions.length)
-    return res.status(400).json({ error: 'questions array required' });
+// Start as many queued jobs as global + per-user limits allow.
+// Safe to call multiple times — JavaScript is single-threaded so the while-loop
+// is atomic with respect to the async jobs it launches.
+function processEvalQueue() {
+  while (EvalQueue.activeCount < EvalQueue.maxConcurrent && EvalQueue.queue.length > 0) {
+    // Find the first job whose user is under their per-user cap (FIFO within that constraint)
+    const jobIdx = EvalQueue.queue.findIndex(j => {
+      return (EvalQueue.perUserActive.get(j.userId) || 0) < EvalQueue.perUserMax;
+    });
+    if (jobIdx === -1) break; // every remaining job belongs to a user at their cap
 
-  // Client may supply its own submissionId so it can start polling before the response arrives
-  const submissionId = (clientId && /^[a-zA-Z0-9_-]{5,50}$/.test(clientId))
-    ? clientId
-    : 'sub_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
-  evalProgress.set(submissionId, { total: questions.length, done: 0, complete: false });
+    const [job] = EvalQueue.queue.splice(jobIdx, 1);
+    EvalQueue.activeCount++;
+    EvalQueue.perUserActive.set(job.userId, (EvalQueue.perUserActive.get(job.userId) || 0) + 1);
 
-  // Kick off parallel evaluation — do NOT await here so we can return submissionId immediately
-  // We respond with submissionId first, then evaluations arrive via a second request
-  // Actually: we return the submissionId in the final response once all are done.
-  // The client polls /api/eval-progress/:id while waiting.
-  const evalOne = async (item, idx) => {
-    const { question, answer, context, modelAnswer, keyPoints, subject } = item;
-    if (!answer || !answer.trim()) {
-      const prog = evalProgress.get(submissionId);
-      if (prog) { prog.done++; if (prog.done >= prog.total) prog.complete = true; }
-      return { score: '0/10', numericScore: 0, grade: 'Not Answered', overallFeedback: 'No answer provided.', keyMissed: [] };
-    }
-    try {
-      const refCtx = KB.references.filter(r => r.subject === subject).slice(0, 1).map(r => r.summary || '').join('');
-      const qtype = detectQuestionType(question, context, modelAnswer);
-      const isSit = qtype === 'situational' || qtype === 'essay' || qtype === 'alac';
+    const startMs = Date.now();
+    runEvalJob(job)
+      .then(result => job.resolve(result))
+      .catch(err   => job.reject(err))
+      .finally(() => {
+        EvalQueue.activeCount--;
+        EvalQueue.perUserActive.set(job.userId, Math.max(0, (EvalQueue.perUserActive.get(job.userId) || 1) - 1));
+        EvalQueue.recordTime(Date.now() - startMs);
+        EvalQueue.totalProcessed++;
+        processEvalQueue(); // unblock next eligible job
+      });
+  }
+}
 
-      const alternatives    = extractAlternativeAnswers(modelAnswer);
-      const hasAlternatives = alternatives.length > 1;
-      const maSection = hasAlternatives
-        ? `SUGGESTED ANSWER HAS ${alternatives.length} VALID ALTERNATIVES — evaluate the student against whichever they most closely answered. Return "matchedAlternative" as the number (1, 2, …) of the best-matching alternative.\n\n${alternatives.map((a, i) => `ALTERNATIVE ${i + 1}:\n${a}`).join('\n\n')}`
-        : (modelAnswer ? `Reference Answer: ${modelAnswer}` : '');
+// Push one evaluation onto the global queue; returns a Promise that resolves with the score.
+function enqueueEval(submissionId, userId, item, idx) {
+  return new Promise((resolve, reject) => {
+    EvalQueue.queue.push({ submissionId, userId, item, idx, resolve, reject, enqueuedAt: Date.now() });
+    processEvalQueue();
+  });
+}
 
-      let prompt, maxTok;
+// Core per-question evaluation — called by processEvalQueue, never directly.
+async function runEvalJob(job) {
+  const { submissionId, item, idx } = job;
+  const { question, answer, context, modelAnswer, keyPoints, subject } = item;
 
-      if (isSit) {
-        maxTok = 2500;
-        prompt = `You are a Philippine Bar Exam examiner. Evaluate using ALAC (Answer 1.5pts, Legal Basis 3pts, Application 4pts, Conclusion 1.5pts). Keep overallFeedback under 200 words and each component feedback under 50 words.
+  if (!answer || !answer.trim()) {
+    const prog = evalProgress.get(submissionId);
+    if (prog) { prog.done++; if (prog.done >= prog.total) prog.complete = true; }
+    return { score: '0/10', numericScore: 0, grade: 'Not Answered', overallFeedback: 'No answer provided.', keyMissed: [] };
+  }
+
+  // Hoist qtype so the catch block can log it even if it's set inside try
+  let qtype = 'unknown';
+  try {
+    const refCtx = KB.references.filter(r => r.subject === subject).slice(0, 1).map(r => r.summary || '').join('');
+    qtype = detectQuestionType(question, context, modelAnswer);
+    const isSit = qtype === 'situational' || qtype === 'essay' || qtype === 'alac';
+
+    const alternatives    = extractAlternativeAnswers(modelAnswer);
+    const hasAlternatives = alternatives.length > 1;
+    const maSection = hasAlternatives
+      ? `SUGGESTED ANSWER HAS ${alternatives.length} VALID ALTERNATIVES — evaluate the student against whichever they most closely answered. Return "matchedAlternative" as the number (1, 2, …) of the best-matching alternative.\n\n${alternatives.map((a, i) => `ALTERNATIVE ${i + 1}:\n${a}`).join('\n\n')}`
+      : (modelAnswer ? `Reference Answer: ${modelAnswer}` : '');
+
+    let prompt, maxTok;
+
+    if (isSit) {
+      maxTok = 2500;
+      prompt = `You are a Philippine Bar Exam examiner. Evaluate using ALAC (Answer 1.5pts, Legal Basis 3pts, Application 4pts, Conclusion 1.5pts). Keep overallFeedback under 200 words and each component feedback under 50 words.
 CRITICAL JSON OUTPUT RULES: Use single quotes inside all string values (never double quotes inside strings). No newlines inside string values. No trailing commas. Keep all feedback fields on a single line.
 Question: ${question}
 ${maSection}
@@ -2492,9 +2537,9 @@ ${refCtx ? `Legal Context: ${refCtx.slice(0, 400)}` : ''}
 Student Answer: ${answer}
 ${GRADE_SCALE}
 Respond ONLY with valid JSON: {"score":"X/10","numericScore":0,"grade":"...","alac":{"answer":{"score":0,"max":1.5,"feedback":"under 50 words","studentDid":""},"legalBasis":{"score":0,"max":3,"feedback":"under 50 words","studentDid":""},"application":{"score":0,"max":4,"feedback":"under 50 words","studentDid":""},"conclusion":{"score":0,"max":1.5,"feedback":"under 50 words","studentDid":""}},"overallFeedback":"under 200 words","strengths":[],"improvements":[],"keyMissed":[],"matchedAlternative":1,"format":"essay"}`;
-      } else {
-        maxTok = 2500;
-        prompt = `You are a Philippine Bar Exam examiner. Evaluate this conceptual/theoretical answer. Keep overallFeedback under 100 words and each component feedback under 50 words.
+    } else {
+      maxTok = 2500;
+      prompt = `You are a Philippine Bar Exam examiner. Evaluate this conceptual/theoretical answer. Keep overallFeedback under 100 words and each component feedback under 50 words.
 CRITICAL JSON OUTPUT RULES: Use single quotes inside all string values (never double quotes inside strings). No newlines inside string values. No trailing commas. Keep all feedback fields on a single line.
 Question: ${question}
 ${maSection}
@@ -2503,51 +2548,119 @@ Student Answer: ${answer}
 Score: Accuracy(4pts) + Completeness(3pts) + Clarity(3pts) = 10.
 ${GRADE_SCALE}
 Respond ONLY with valid JSON: {"score":"X/10","numericScore":0,"grade":"...","breakdown":{"accuracy":{"score":0,"max":4,"feedback":"under 50 words"},"completeness":{"score":0,"max":3,"feedback":"under 50 words"},"clarity":{"score":0,"max":3,"feedback":"under 50 words"}},"overallFeedback":"under 100 words","keyMissed":[],"matchedAlternative":1,"format":"conceptual"}`;
-      }
-
-      const result = await callClaudeHaikuJSON(prompt, maxTok);
-      if (result) {
-        result.format = qtype;
-        result.questionType = qtype;
-        if (!result.keyPoints?.length && keyPoints?.length) result.keyPoints = keyPoints;
-
-        // Resolve matched alternative
-        if (hasAlternatives) {
-          const idx = Math.max(0, Math.min((result.matchedAlternative || 1) - 1, alternatives.length - 1));
-          result.modelAnswer              = alternatives[idx];
-          result.modelAnswerOriginal      = modelAnswer;
-          result.usedAlternative          = true;
-          result.matchedAlternativeNumber = idx + 1;
-        } else {
-          if (!result.modelAnswer && modelAnswer) result.modelAnswer = modelAnswer;
-          result.usedAlternative = false;
-        }
-
-        if (isSit && result.modelAnswer) {
-          const alacResult = await generateALACModelAnswer(question, context, result.modelAnswer, subject);
-          if (alacResult) {
-            result.alacModelAnswer      = alacResult.components;
-            result.modelAnswerFormatted  = alacResult.formatted;
-            result.modelAnswer           = alacResult.formatted;
-          }
-        }
-      }
-      if (!result) {
-        console.error(`[evaluate-batch] Q${idx + 1} failed: callClaudeHaikuJSON returned null (all JSON parse retries exhausted). qtype=${qtype} answerLen=${answer?.length}`);
-      }
-      return result || { score: '0/10', numericScore: 0, grade: 'Error', overallFeedback: 'Evaluation failed — please retry.', keyMissed: [], _evalError: true };
-    } catch (e) {
-      console.error(`[evaluate-batch] Q${idx + 1} threw: ${e.message} (${e.name}) qtype=${qtype} answerLen=${answer?.length}`);
-      return { score: '0/10', numericScore: 0, grade: 'Error', overallFeedback: 'Evaluation temporarily unavailable.', keyMissed: [], _evalError: true };
-    } finally {
-      const prog = evalProgress.get(submissionId);
-      if (prog) { prog.done++; if (prog.done >= prog.total) prog.complete = true; }
     }
-  };
+
+    const result = await callClaudeHaikuJSON(prompt, maxTok);
+    if (result) {
+      result.format       = qtype;
+      result.questionType = qtype;
+      if (!result.keyPoints?.length && keyPoints?.length) result.keyPoints = keyPoints;
+
+      if (hasAlternatives) {
+        const altIdx = Math.max(0, Math.min((result.matchedAlternative || 1) - 1, alternatives.length - 1));
+        result.modelAnswer              = alternatives[altIdx];
+        result.modelAnswerOriginal      = modelAnswer;
+        result.usedAlternative          = true;
+        result.matchedAlternativeNumber = altIdx + 1;
+      } else {
+        if (!result.modelAnswer && modelAnswer) result.modelAnswer = modelAnswer;
+        result.usedAlternative = false;
+      }
+
+      if (isSit && result.modelAnswer) {
+        const alacResult = await generateALACModelAnswer(question, context, result.modelAnswer, subject);
+        if (alacResult) {
+          result.alacModelAnswer      = alacResult.components;
+          result.modelAnswerFormatted = alacResult.formatted;
+          result.modelAnswer          = alacResult.formatted;
+        }
+      }
+    }
+
+    if (!result) {
+      console.error(`[evaluate-batch] Q${idx + 1} failed: callClaudeHaikuJSON returned null (all JSON parse retries exhausted). qtype=${qtype} answerLen=${answer?.length}`);
+    }
+    return result || { score: '0/10', numericScore: 0, grade: 'Error', overallFeedback: 'Evaluation failed — please retry.', keyMissed: [], _evalError: true };
+  } catch (e) {
+    console.error(`[evaluate-batch] Q${idx + 1} threw: ${e.message} (${e.name}) qtype=${qtype} answerLen=${answer?.length}`);
+    return { score: '0/10', numericScore: 0, grade: 'Error', overallFeedback: 'Evaluation temporarily unavailable.', keyMissed: [], _evalError: true };
+  } finally {
+    const prog = evalProgress.get(submissionId);
+    if (prog) { prog.done++; if (prog.done >= prog.total) prog.complete = true; }
+  }
+}
+
+// ── EVAL PROGRESS polling (enhanced with queue info) ──────────
+app.get('/api/eval-progress/:id', requireAuth, (req, res) => {
+  const { id } = req.params;
+  const progress = evalProgress.get(id) || { total: 0, done: 0, complete: false };
+  const thisQueued  = EvalQueue.queue.filter(j => j.submissionId === id).length;
+  const otherQueued = EvalQueue.queue.length - thisQueued;
+  const estimatedWaitSec = thisQueued > 0
+    ? Math.ceil((thisQueued * EvalQueue.avgEvalTimeMs) / (EvalQueue.maxConcurrent * 1000))
+    : 0;
+  res.json({
+    ...progress,
+    queuePosition:    Math.max(0, otherQueued),
+    estimatedWaitSec,
+    semaphoreActive:  EvalQueue.activeCount,
+  });
+});
+
+// ── EVAL QUEUE STATUS — SSE for real-time queue position ───────
+app.get('/api/eval-queue-status/:submissionId', requireAuth, (req, res) => {
+  const { submissionId } = req.params;
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+
+  function sendUpdate() {
+    const prog = evalProgress.get(submissionId);
+    if (!prog) {
+      res.write(`data: ${JSON.stringify({ error: 'submission not found' })}\n\n`);
+      return true; // done — close stream
+    }
+    const thisQueued  = EvalQueue.queue.filter(j => j.submissionId === submissionId).length;
+    const otherQueued = EvalQueue.queue.length - thisQueued;
+    const estimatedSecondsRemaining = thisQueued > 0
+      ? Math.ceil((thisQueued * EvalQueue.avgEvalTimeMs) / (EvalQueue.maxConcurrent * 1000))
+      : 0;
+    res.write(`data: ${JSON.stringify({
+      position: otherQueued,
+      done: prog.done,
+      total: prog.total,
+      estimatedSecondsRemaining,
+      semaphoreActive: EvalQueue.activeCount,
+      complete: prog.complete,
+    })}\n\n`);
+    return prog.complete;
+  }
+
+  if (sendUpdate()) { res.end(); return; }
+  const interval = setInterval(() => {
+    if (sendUpdate()) { clearInterval(interval); res.end(); }
+  }, 2000);
+  req.on('close', () => clearInterval(interval));
+});
+
+// ── EVALUATE BATCH — global queue, interleaved across all users ─
+app.post('/api/evaluate-batch', requireAuth, async (req, res) => {
+  if (!API_KEY) return res.status(500).json({ error: 'API key not set' });
+  const { questions, submissionId: clientId } = req.body;
+  if (!Array.isArray(questions) || !questions.length)
+    return res.status(400).json({ error: 'questions array required' });
+
+  const submissionId = (clientId && /^[a-zA-Z0-9_-]{5,50}$/.test(clientId))
+    ? clientId
+    : 'sub_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+  evalProgress.set(submissionId, { total: questions.length, done: 0, complete: false });
 
   try {
-    const scores = await Promise.all(questions.map((q, i) => evalOne(q, i)));
-    // Clean up progress after 5 minutes
+    // Each question is added to the global queue — questions from all active users
+    // are interleaved fairly, and per-user concurrency is capped at perUserMax.
+    const scores = await Promise.all(
+      questions.map((q, i) => enqueueEval(submissionId, req.userId, q, i))
+    );
     setTimeout(() => evalProgress.delete(submissionId), 5 * 60 * 1000);
     res.json({ submissionId, scores });
   } catch (err) {
@@ -2947,6 +3060,10 @@ async function callClaude(messages, max_tokens=2000) {
       body:JSON.stringify({ model, max_tokens, messages, system: STRICT_SYSTEM_PROMPT }),
     });
     const d = await r.json();
+    if (d.usage) {
+      const _tot = d.usage.input_tokens + d.usage.output_tokens;
+      console.log(`[tokens] ${model} | in:${d.usage.input_tokens} out:${d.usage.output_tokens} total:${_tot}`);
+    }
     if (isOverloaded(r.status, d)) {
       if (i < SCHEDULE.length - 1) continue;
       throw new Error('API overloaded — please try again in a few minutes');
@@ -2959,6 +3076,26 @@ async function callClaude(messages, max_tokens=2000) {
 }
 const shuffle = arr => { const a=[...arr]; for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];} return a; };
 const sleep   = ms  => new Promise(r => setTimeout(r, ms));
+
+// ── Admin: Evaluation queue health ──────────────────────────
+app.get('/api/admin/queue-stats', adminOnly, (_req, res) => {
+  const globalQueueDepth  = EvalQueue.queue.length;
+  const activeSubmissions = new Set(EvalQueue.queue.map(j => j.submissionId)).size;
+  const avgMs = EvalQueue.avgEvalTimeMs;
+  const estimatedClearTimeSec = globalQueueDepth > 0
+    ? Math.ceil((globalQueueDepth * avgMs) / (EvalQueue.maxConcurrent * 1000))
+    : 0;
+  res.json({
+    semaphoreMax:          EvalQueue.maxConcurrent,
+    semaphoreActive:       EvalQueue.activeCount,
+    globalQueueDepth,
+    activeSubmissions,
+    estimatedClearTimeSec,
+    avgEvalTimeMs:         Math.round(avgMs),
+    totalProcessed:        EvalQueue.totalProcessed,
+    perUserActive:         Object.fromEntries(EvalQueue.perUserActive),
+  });
+});
 
 // ── API Status — tests Claude reachability with 10s timeout ─
 app.get('/api/status', async (req, res) => {
