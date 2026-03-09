@@ -2262,6 +2262,7 @@ Respond ONLY with valid JSON (no markdown):
   try {
     const result = await callClaudeJSON([{ role:'user', content: prompt }], maxTok);
     if (!result) {
+      console.error(`[evaluate] callClaudeJSON returned null (all JSON parse retries exhausted). qtype=${qtype} answerLen=${answer?.length}`);
       return res.status(422).json({ error:'Evaluation failed — could not parse scoring response. Please try submitting your answer again.' });
     }
     result.format       = qtype;
@@ -2291,7 +2292,10 @@ Respond ONLY with valid JSON (no markdown):
       }
     }
     res.json(result);
-  } catch(err) { res.status(500).json({ error:err.message }); }
+  } catch(err) {
+    console.error(`[evaluate] threw: ${err.message} (${err.name}) qtype=${qtype} answerLen=${answer?.length}`);
+    res.status(500).json({ error:err.message });
+  }
 });
 
 // ── Alternative answer extractor ──────────────────────────────────────────────
@@ -2414,6 +2418,7 @@ async function callClaudeHaikuJSON(prompt, maxTokens = 400) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-api-key': API_KEY, 'anthropic-version': '2023-06-01' },
         body,
+        signal: AbortSignal.timeout(35000), // 35s timeout per attempt
       });
       const d = await r.json();
       if (r.status === 529 || r.status === 429 || d?.error?.type === 'overloaded_error') {
@@ -2527,10 +2532,13 @@ Respond ONLY with valid JSON: {"score":"X/10","numericScore":0,"grade":"...","br
           }
         }
       }
-      return result || { score: '0/10', numericScore: 0, grade: 'Error', overallFeedback: 'Evaluation failed — please retry.', keyMissed: [] };
+      if (!result) {
+        console.error(`[evaluate-batch] Q${idx + 1} failed: callClaudeHaikuJSON returned null (all JSON parse retries exhausted). qtype=${qtype} answerLen=${answer?.length}`);
+      }
+      return result || { score: '0/10', numericScore: 0, grade: 'Error', overallFeedback: 'Evaluation failed — please retry.', keyMissed: [], _evalError: true };
     } catch (e) {
-      console.error(`[evaluate-batch] Q${idx + 1} failed:`, e.message);
-      return { score: '0/10', numericScore: 0, grade: 'Error', overallFeedback: 'Evaluation temporarily unavailable.', keyMissed: [] };
+      console.error(`[evaluate-batch] Q${idx + 1} threw: ${e.message} (${e.name}) qtype=${qtype} answerLen=${answer?.length}`);
+      return { score: '0/10', numericScore: 0, grade: 'Error', overallFeedback: 'Evaluation temporarily unavailable.', keyMissed: [], _evalError: true };
     } finally {
       const prog = evalProgress.get(submissionId);
       if (prog) { prog.done++; if (prog.done >= prog.total) prog.complete = true; }

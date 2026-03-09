@@ -3252,9 +3252,18 @@ function evalFormatBadge(format){
     :['💡 Conceptual Scoring','#c9a84c','rgba(201,168,76,.12)'];
   return `<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;background:${bg};color:${color};letter-spacing:.04em;margin-right:6px;">${label}</span>`;
 }
+// ── Error card ─────────────────────────────────────────────
+function renderErrorCard(ev){
+  const idx=ev._qIdx!=null?ev._qIdx:-1;
+  const retryBtn=idx>=0
+    ?`<button onclick="retryEvaluation(${idx})" style="background:rgba(201,168,76,.2);border:1px solid rgba(201,168,76,.4);color:#c9a84c;border-radius:6px;padding:3px 11px;font-size:12px;font-weight:700;cursor:pointer;margin-left:8px;">↺ Retry</button>`
+    :'';
+  return `<div class="ai-fb-head" style="color:#e07080;flex-wrap:wrap;gap:8px;">⚠️ Evaluation unavailable.${retryBtn}<div style="font-size:11px;color:var(--muted);width:100%;margin-top:2px;">${h(ev.overallFeedback||'Click Retry to re-evaluate.')}</div></div>`;
+}
 // ── Dispatcher ─────────────────────────────────────────────
 function renderEvalCard(ev){
   if(!ev) return '';
+  if(ev.grade==='Error'||ev._evalError) return renderErrorCard(ev);
   const fmt=ev.format||ev.questionType||'essay';
   const isSit=fmt==='situational'||fmt==='essay'||fmt==='alac';
   return isSit?renderAlacCard(ev):renderDefCard(ev);
@@ -3408,13 +3417,67 @@ async function submitEssay(){
   const pool=quizPool[activeQuiz],cur=pool.data.questions[qIdx];
   const fb=document.getElementById('aiFB');fb.className='ai-fb show';
   fb.innerHTML=`<div class="ai-fb-head"><div class="spin" style="width:16px;height:16px;border-width:2px;"></div> Evaluating…</div>`;
-  try{
-    const r=await fetch('/api/evaluate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:cur.prompt||cur.q,answer:ans,context:cur.context||'',modelAnswer:cur.modelAnswer,keyPoints:cur.keyPoints,subject:pool.subject})});
-    const ev=await r.json();if(ev.error)throw new Error(ev.error);
-    fb.innerHTML=renderEvalCard(ev);
-    document.getElementById('essNext').style.display='block';totalQDone++;updateDash();
-  }catch(err){fb.innerHTML=`<div class="ai-fb-head" style="color:#e07080;">⚠️ ${h(err.message)}</div>`;}
+  const payload={question:cur.prompt||cur.q,answer:ans,context:cur.context||'',modelAnswer:cur.modelAnswer,keyPoints:cur.keyPoints,subject:pool.subject};
+  let lastErr=null;
+  for(let attempt=1;attempt<=3;attempt++){
+    if(attempt>1){
+      fb.innerHTML=`<div class="ai-fb-head"><div class="spin" style="width:16px;height:16px;border-width:2px;"></div> Retrying (${attempt}/3)…</div>`;
+      await new Promise(r=>setTimeout(r,attempt*1000));
+    }
+    try{
+      const controller=new AbortController();
+      const timeoutId=setTimeout(()=>controller.abort(),35000);
+      try{
+        const r=await fetch('/api/evaluate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),signal:controller.signal});
+        clearTimeout(timeoutId);
+        const ev=await r.json();if(ev.error)throw new Error(ev.error);
+        fb.innerHTML=renderEvalCard(ev);
+        document.getElementById('essNext').style.display='block';totalQDone++;updateDash();
+        lastErr=null;break;
+      }finally{clearTimeout(timeoutId);}
+    }catch(err){
+      lastErr=err;
+      console.error(`[submitEssay] attempt ${attempt}/3 failed:`,err.message);
+    }
+  }
+  if(lastErr){
+    console.error('[submitEssay] all 3 retries failed:',lastErr.message);
+    fb.innerHTML=`<div class="ai-fb-head" style="color:#e07080;flex-wrap:wrap;gap:8px;">⚠️ Evaluation unavailable. <button onclick="submitEssay()" style="background:rgba(201,168,76,.2);border:1px solid rgba(201,168,76,.4);color:#c9a84c;border-radius:6px;padding:3px 11px;font-size:12px;font-weight:700;cursor:pointer;">↺ Click to retry</button><div style="font-size:11px;color:var(--muted);width:100%;margin-top:2px;">${h(lastErr.message)}</div></div>`;
+  }
   btn.disabled=false;btn.textContent='🤖 Get AI Feedback';
+}
+async function retryEvaluation(idx){
+  const container=document.getElementById('eval-card-'+idx);
+  if(!container)return;
+  const q=mockQs[idx],ans=mockAnswers[idx]||'';
+  if(!ans.trim()){container.innerHTML=renderErrorCard({grade:'Error',overallFeedback:'No answer was provided for this question.',_qIdx:idx});return;}
+  let lastErr=null;
+  for(let attempt=1;attempt<=3;attempt++){
+    container.innerHTML=`<div class="ai-fb-head"><div class="spin" style="width:16px;height:16px;border-width:2px;"></div> ${attempt===1?'Re-evaluating…':`Retrying (${attempt}/3)…`}</div>`;
+    if(attempt>1) await new Promise(r=>setTimeout(r,attempt*1000));
+    try{
+      const controller=new AbortController();
+      const timeoutId=setTimeout(()=>controller.abort(),35000);
+      try{
+        const r=await fetch('/api/evaluate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q.prompt||q.q,answer:ans,context:q.context||'',modelAnswer:q.modelAnswer,keyPoints:q.keyPoints,subject:q.subject}),signal:controller.signal});
+        clearTimeout(timeoutId);
+        const ev=await r.json();if(ev.error)throw new Error(ev.error);
+        if(!ev.modelAnswer&&q.modelAnswer)ev.modelAnswer=q.modelAnswer;
+        if(!ev.keyPoints?.length&&q.keyPoints?.length)ev.keyPoints=q.keyPoints;
+        ev._qIdx=idx;
+        if(mockScores)mockScores[idx]=ev;
+        container.innerHTML=renderEvalCard(ev);
+        lastErr=null;break;
+      }finally{clearTimeout(timeoutId);}
+    }catch(err){
+      lastErr=err;
+      console.error(`[retryEvaluation] Q${idx+1} attempt ${attempt}/3 failed:`,err.message);
+    }
+  }
+  if(lastErr){
+    console.error(`[retryEvaluation] Q${idx+1} all retries failed:`,lastErr.message);
+    container.innerHTML=renderErrorCard({grade:'Error',overallFeedback:'Evaluation unavailable. Click Retry to try again.',_qIdx:idx});
+  }
 }
 function nextQ(){qIdx++;renderQuizQ();}
 function showQuizResults(){
@@ -3846,10 +3909,24 @@ async function endMockSession(){
     for(let i=0;i<mockQs.length;i++){
       const q=mockQs[i],ans=mockAnswers[i]||'';
       if(!ans.trim()){scores.push({score:'0/10',numericScore:0,grade:'Not Answered',overallFeedback:'No answer provided.',keyMissed:[]});continue;}
-      try{
-        const r=await fetch('/api/evaluate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q.prompt||q.q,answer:ans,context:q.context||'',modelAnswer:q.modelAnswer,keyPoints:q.keyPoints,subject:q.subject})});
-        scores.push(await r.json());
-      }catch(ex){scores.push({score:'?/10',numericScore:0,grade:'Error',overallFeedback:ex.message,keyMissed:[]});}
+      let pushed=false;
+      for(let attempt=1;attempt<=3;attempt++){
+        try{
+          const controller=new AbortController();
+          const tid=setTimeout(()=>controller.abort(),35000);
+          try{
+            const r=await fetch('/api/evaluate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q.prompt||q.q,answer:ans,context:q.context||'',modelAnswer:q.modelAnswer,keyPoints:q.keyPoints,subject:q.subject}),signal:controller.signal});
+            clearTimeout(tid);
+            const ev=await r.json();
+            if(ev.error)throw new Error(ev.error);
+            scores.push(ev);pushed=true;break;
+          }finally{clearTimeout(tid);}
+        }catch(ex){
+          console.error(`[endMock fallback] Q${i+1} attempt ${attempt}/3 failed:`,ex.message);
+          if(attempt<3)await new Promise(r=>setTimeout(r,attempt*1000));
+        }
+      }
+      if(!pushed)scores.push({score:'0/10',numericScore:0,grade:'Error',overallFeedback:'Evaluation unavailable.',keyMissed:[],_evalError:true});
     }
   }
 
@@ -3891,7 +3968,7 @@ async function endMockSession(){
     <h3 style="font-family:var(--fd);font-size:20px;font-weight:700;color:var(--gold-l);margin-bottom:14px;text-align:left;">📋 Question Review</h3>
     ${mockQs.map((q,i)=>{
       // Merge original question's modelAnswer/keyPoints into score so renderEvalCard can show them
-      const s={...scores[i]};
+      const s={...scores[i],_qIdx:i};
       if(!s.modelAnswer&&q.modelAnswer)s.modelAnswer=q.modelAnswer;
       if(!s.keyPoints?.length&&q.keyPoints?.length)s.keyPoints=q.keyPoints;
       const sub=SUBJS.find(x=>x.key===q.subject)||{name:q.subject,cls:'sg-gen'},ns=s.numericScore||0;
@@ -3914,7 +3991,7 @@ async function endMockSession(){
           : `<div class="question-text" style="font-size:14px;margin-bottom:10px;">${h(qText)}</div>`
         }
         ${s.grade==='Not Answered'?'':`
-        <div class="ai-fb show" style="margin-top:8px;">${renderEvalCard(s)}</div>`}
+        <div id="eval-card-${i}" class="ai-fb show" style="margin-top:8px;">${renderEvalCard(s)}</div>`}
         <details style="margin-top:8px;"><summary style="cursor:pointer;color:var(--muted);font-size:12px;font-weight:600;">Your answer</summary>
           <div style="margin-top:6px;padding:10px;background:rgba(255,255,255,.03);border-radius:8px;font-size:12px;line-height:1.7;color:rgba(248,246,241,.8);">${h(mockAnswers[i]||'(no answer)')}</div>
         </details>
