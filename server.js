@@ -834,6 +834,30 @@ app.delete('/api/admin/results/:resultId', adminOnly, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// Update an existing result record after a retry evaluation
+app.patch('/api/results/:resultId', requireAuth, async (req, res) => {
+  try {
+    const { resultId } = req.params;
+    const { score, questions, passed } = req.body || {};
+    if (score === undefined) return res.status(400).json({ error: 'score required' });
+    // Verify the record belongs to this user before updating
+    const { data: existing, error: fetchErr } = await supabase
+      .from('results').select('id, user_id').eq('id', resultId).single();
+    if (fetchErr || !existing) return res.status(404).json({ error: 'Result not found' });
+    if (existing.user_id !== req.userId) return res.status(403).json({ error: 'Forbidden' });
+    const total = questions?.length || 0;
+    const maxPossible = total * 10;
+    const { error } = await supabase.from('results').update({
+      score: parseFloat(score.toFixed ? score.toFixed(2) : score),
+      passed: passed ?? (maxPossible > 0 && score / maxPossible >= 0.7),
+      questions: questions || [],
+      last_updated_at: new Date().toISOString(),
+    }).eq('id', resultId);
+    if (error) throw error;
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── Admin questions CRUD ───────────────────────────────────────
 app.get('/api/admin/questions', adminOnly, async (req, res) => {
   try {

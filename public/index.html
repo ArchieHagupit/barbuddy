@@ -3509,6 +3509,34 @@ function recomputeResultsDisplay(idx,ev){
     qsb.textContent=fmt(ns)+'/10';
   }
   console.log(`[recomputeResults] Q${idx+1} retry updated display — new total: ${fmt(rawScore)}/${maxScore} (${pct}%)`);
+  updateSupabaseResult(rawScore, pct);
+}
+async function updateSupabaseResult(rawScore, pct){
+  if(!window.mockResultId||!sessionToken)return;
+  const numQuestions=mockQs.length;
+  const maxScore=numQuestions*10;
+  // Build per-question summary with ALAC detail for the record
+  const questions=mockScores.map((s,i)=>{
+    const ns=effectiveScore(s);
+    const entry={q:(mockQs[i]?.prompt||mockQs[i]?.q||'').slice(0,120),score:ns,max:10};
+    if(s.alac){entry.alac=s.alac;}
+    return entry;
+  });
+  try{
+    const r=await fetch('/api/results/'+window.mockResultId,{
+      method:'PATCH',
+      headers:{'Content-Type':'application/json','x-session-token':sessionToken},
+      body:JSON.stringify({score:parseFloat(rawScore.toFixed(2)),questions,passed:pct>=70}),
+    });
+    const data=await r.json();
+    if(!data.ok)throw new Error(data.error||'Update failed');
+    console.log('[updateSupabase] Result updated — id:',window.mockResultId,'score:',rawScore);
+    // Refresh admin results list if the results panel is currently visible
+    const adminResultsPanel=document.getElementById('adminResultsPanel');
+    if(adminResultsPanel&&adminResultsPanel.style.display!=='none')loadAdminResults();
+  }catch(e){
+    console.warn('[updateSupabase] Could not update result record:',e.message);
+  }
 }
 function nextQ(){qIdx++;renderQuizQ();}
 function showQuizResults(){
@@ -5187,7 +5215,7 @@ async function saveMockBarResults(scores) {
     subject: currentSubject,
   });
   try {
-    await fetch('/api/results/save', {
+    const r = await fetch('/api/results/save', {
       method: 'POST',
       headers: { 'Content-Type':'application/json', 'x-session-token': sessionToken },
       body: JSON.stringify({
@@ -5198,6 +5226,8 @@ async function saveMockBarResults(scores) {
         timeTakenMs: timeTaken,
       }),
     });
+    const data = await r.json();
+    if (data.id) window.mockResultId = data.id;
   } catch(e) { console.warn('Could not save results:', e.message); }
 }
 
