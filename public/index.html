@@ -1125,6 +1125,21 @@ select.form-input{cursor:pointer;}
       <p style="font-size:12px;color:var(--muted);margin-bottom:14px;">Quick view of uploaded materials per subject.</p>
       <div class="subj-ov-grid" id="subjOvGridContent"></div>
     </div>
+    <!-- ALAC CACHE BACKFILL -->
+    <div style="background:var(--card);border:1px solid var(--bdr2);border-radius:16px;padding:20px;margin-top:18px;">
+      <h3 style="font-family:var(--fd);font-size:16px;font-weight:700;color:var(--gold-l);margin-bottom:4px;">⚡ Pre-generate ALAC Cache</h3>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.55;">Generates and stores ALAC model answers and alternative answer splits for all uncached questions. After running, evaluations skip redundant AI calls for these questions.</p>
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+        <button class="btn-gold" id="backfillAlacBtn" onclick="startAlacBackfill()" style="font-size:13px;padding:8px 18px;">⚡ Start Backfill</button>
+        <span id="backfillAlacStatus" style="font-size:13px;color:var(--muted);"></span>
+      </div>
+      <div id="backfillAlacProgress" style="display:none;margin-top:14px;">
+        <div style="background:var(--card3);border-radius:8px;height:8px;overflow:hidden;margin-bottom:8px;">
+          <div id="backfillAlacBar" style="height:100%;width:0%;background:var(--gold);border-radius:8px;transition:width .4s;"></div>
+        </div>
+        <div id="backfillAlacLabel" style="font-size:12px;color:var(--muted);"></div>
+      </div>
+    </div>
     </div><!-- /adminOverviewPanel -->
 
     <!-- TAB ACCESS CONTROL -->
@@ -3420,7 +3435,7 @@ async function submitEssay(){
   const pool=quizPool[activeQuiz],cur=pool.data.questions[qIdx];
   const fb=document.getElementById('aiFB');fb.className='ai-fb show';
   fb.innerHTML=`<div class="ai-fb-head"><div class="spin" style="width:16px;height:16px;border-width:2px;"></div> Evaluating…</div>`;
-  const payload={question:cur.prompt||cur.q,answer:ans,context:cur.context||'',modelAnswer:cur.modelAnswer,keyPoints:cur.keyPoints,subject:pool.subject};
+  const payload={question:cur.prompt||cur.q,answer:ans,context:cur.context||'',modelAnswer:cur.modelAnswer,keyPoints:cur.keyPoints,subject:pool.subject,questionId:cur.id||null};
   let lastErr=null;
   for(let attempt=1;attempt<=3;attempt++){
     if(attempt>1){
@@ -3462,7 +3477,7 @@ async function retryEvaluation(idx){
       const controller=new AbortController();
       const timeoutId=setTimeout(()=>controller.abort(),35000);
       try{
-        const r=await fetch('/api/evaluate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q.prompt||q.q,answer:ans,context:q.context||'',modelAnswer:q.modelAnswer,keyPoints:q.keyPoints,subject:q.subject}),signal:controller.signal});
+        const r=await fetch('/api/evaluate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q.prompt||q.q,answer:ans,context:q.context||'',modelAnswer:q.modelAnswer,keyPoints:q.keyPoints,subject:q.subject,questionId:q.id||null}),signal:controller.signal});
         clearTimeout(timeoutId);
         const ev=await r.json();if(ev.error)throw new Error(ev.error);
         if(!ev.modelAnswer&&q.modelAnswer)ev.modelAnswer=q.modelAnswer;
@@ -4040,7 +4055,7 @@ async function endMockSession(){
   </div>`;
 
   // Build batch payload
-  const batchPayload=mockQs.map((q,i)=>({question:q.prompt||q.q,answer:mockAnswers[i]||'',context:q.context||'',modelAnswer:q.modelAnswer,keyPoints:q.keyPoints,subject:q.subject}));
+  const batchPayload=mockQs.map((q,i)=>({id:q.id||null,question:q.prompt||q.q,answer:mockAnswers[i]||'',context:q.context||'',modelAnswer:q.modelAnswer,keyPoints:q.keyPoints,subject:q.subject,_cachedAlternatives:q._cachedAlternatives||null,_cachedAlac:q._cachedAlac||null}));
   let scores=[];
   const authHdr=sessionToken||'';
   const submissionId='sub_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);
@@ -4078,7 +4093,7 @@ async function endMockSession(){
             const controller=new AbortController();
             const tid=setTimeout(()=>controller.abort(),35000);
             try{
-              const r=await fetch('/api/evaluate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q.prompt||q.q,answer:ans,context:q.context||'',modelAnswer:q.modelAnswer,keyPoints:q.keyPoints,subject:q.subject}),signal:controller.signal});
+              const r=await fetch('/api/evaluate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q.prompt||q.q,answer:ans,context:q.context||'',modelAnswer:q.modelAnswer,keyPoints:q.keyPoints,subject:q.subject,questionId:q.id||null}),signal:controller.signal});
               clearTimeout(tid);
               const ev=await r.json();
               if(ev.error)throw new Error(ev.error);
@@ -5072,6 +5087,52 @@ async function deleteSyllabus(btn){
   CACHE={};saveLocalCache();
   await loadKB();refreshAdminKB();renderSyllabusTree();updateSyllabusStatus();
 }
+// ── ALAC Cache Backfill ───────────────────────────────────────
+let _backfillPollInterval = null;
+async function startAlacBackfill() {
+  const btn = document.getElementById('backfillAlacBtn');
+  const status = document.getElementById('backfillAlacStatus');
+  const progressWrap = document.getElementById('backfillAlacProgress');
+  const bar = document.getElementById('backfillAlacBar');
+  const label = document.getElementById('backfillAlacLabel');
+
+  btn.disabled = true;
+  status.textContent = 'Starting…';
+
+  try {
+    const r = await fetch('/api/admin/backfill-alac-cache', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-session-token': authHdr } });
+    const d = await r.json();
+    if (d.error) { status.textContent = '❌ ' + d.error; btn.disabled = false; return; }
+    if (!d.started) { status.textContent = d.message || 'Nothing to cache.'; btn.disabled = false; return; }
+
+    progressWrap.style.display = 'block';
+    status.textContent = '';
+
+    // Poll for progress
+    clearInterval(_backfillPollInterval);
+    _backfillPollInterval = setInterval(async () => {
+      try {
+        const pr = await fetch('/api/admin/backfill-alac-cache/status', { headers: { 'x-session-token': authHdr } });
+        const ps = await pr.json();
+        const pct = ps.total > 0 ? Math.round((ps.done / ps.total) * 100) : 0;
+        bar.style.width = pct + '%';
+        if (ps.complete) {
+          label.textContent = `✅ All ${ps.done} questions cached${ps.errors ? ` (${ps.errors} errors)` : ''}.`;
+          status.textContent = '';
+          clearInterval(_backfillPollInterval);
+          btn.disabled = false;
+          btn.textContent = '⚡ Re-run Backfill';
+        } else {
+          label.textContent = `Caching ${ps.done} / ${ps.total} questions…`;
+        }
+      } catch(e) { /* ignore poll errors */ }
+    }, 1500);
+  } catch(e) {
+    status.textContent = '❌ ' + e.message;
+    btn.disabled = false;
+  }
+}
+
 async function retriggerGen(){
   if(!confirm('Regenerate all content? This replaces all existing lessons and quizzes.'))return;
   // Clear local cache
