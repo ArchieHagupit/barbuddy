@@ -5093,12 +5093,13 @@ async function startAlacBackfill() {
   const progressWrap = document.getElementById('backfillAlacProgress');
   const bar = document.getElementById('backfillAlacBar');
   const label = document.getElementById('backfillAlacLabel');
+  const tok = sessionToken || '';
 
   btn.disabled = true;
   status.textContent = 'Starting…';
 
   try {
-    const r = await fetch('/api/admin/backfill-alac-cache', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-session-token': authHdr } });
+    const r = await fetch('/api/admin/backfill-alac-cache', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-session-token': tok } });
     const d = await r.json();
     if (d.error) { status.textContent = '❌ ' + d.error; btn.disabled = false; return; }
     if (!d.started) { status.textContent = d.message || 'Nothing to cache.'; btn.disabled = false; return; }
@@ -5110,7 +5111,7 @@ async function startAlacBackfill() {
     clearInterval(_backfillPollInterval);
     _backfillPollInterval = setInterval(async () => {
       try {
-        const pr = await fetch('/api/admin/backfill-alac-cache/status', { headers: { 'x-session-token': authHdr } });
+        const pr = await fetch('/api/admin/backfill-alac-cache/status', { headers: { 'x-session-token': tok } });
         const ps = await pr.json();
         const pct = ps.total > 0 ? Math.round((ps.done / ps.total) * 100) : 0;
         bar.style.width = pct + '%';
