@@ -3469,6 +3469,7 @@ async function retryEvaluation(idx){
         ev._qIdx=idx;
         if(mockScores)mockScores[idx]=ev;
         container.innerHTML=renderEvalCard(ev);
+        recomputeResultsDisplay(idx,ev);
         lastErr=null;break;
       }finally{clearTimeout(timeoutId);}
     }catch(err){
@@ -3480,6 +3481,34 @@ async function retryEvaluation(idx){
     console.error(`[retryEvaluation] Q${idx+1} all retries failed:`,lastErr.message);
     container.innerHTML=renderErrorCard({grade:'Error',overallFeedback:'Evaluation unavailable. Click Retry to try again.',_qIdx:idx});
   }
+}
+function recomputeResultsDisplay(idx,ev){
+  if(!mockScores||!mockQs.length)return;
+  const numQuestions=mockQs.length;
+  const maxScore=numQuestions*10;
+  const rawScore=mockScores.reduce((a,s)=>a+effectiveScore(s),0);
+  const pct=maxScore>0?Math.round(rawScore/maxScore*100):0;
+  // Update all score-fraction spans inside the results container
+  const res=document.getElementById('mockResults');
+  if(res){res.querySelectorAll('.score-fraction').forEach(el=>{el.textContent=fmt(rawScore)+'/'+maxScore;});}
+  // Update percentage/verdict line
+  const pctEl=document.getElementById('mock-pct-display');
+  if(pctEl){
+    pctEl.style.color=pct>=70?'#14b4a0':pct>=55?'#c9a84c':'#e07080';
+    pctEl.textContent=pct+'% — '+(pct>=70?'✅ PASSED':pct>=55?'📖 Keep Studying':'❌ Needs More Review');
+  }
+  // Update percentage stat card
+  const pctStat=document.getElementById('mock-pct-stat');
+  if(pctStat)pctStat.textContent=pct+'%';
+  // Update question score badge
+  const ns=effectiveScore(ev);
+  const qsb=document.getElementById('mock-qsb-'+idx);
+  if(qsb){
+    const cls=ns>=7?'qsb-high':ns>=5?'qsb-mid':'qsb-low';
+    qsb.className='q-score-badge '+cls;
+    qsb.textContent=fmt(ns)+'/10';
+  }
+  console.log(`[recomputeResults] Q${idx+1} retry updated display — new total: ${fmt(rawScore)}/${maxScore} (${pct}%)`);
 }
 function nextQ(){qIdx++;renderQuizQ();}
 function showQuizResults(){
@@ -3901,40 +3930,59 @@ async function endMockSession(){
     const batchData=await batchRes.json();
     scores=batchData.scores||[];
     if(!scores.length)throw new Error(batchData.error||'No scores returned');
+    // Normalize: pad with error stubs if batch silently missed any questions
+    if(scores.length<mockQs.length){
+      console.warn(`[endMock] batch returned ${scores.length} scores for ${mockQs.length} questions — padding missing`);
+      while(scores.length<mockQs.length){
+        scores.push({score:'0/10',numericScore:0,grade:'Error',overallFeedback:'Evaluation unavailable.',keyMissed:[],_evalError:true});
+      }
+    }
     // Snap progress bar to 100%
     const fillEl=document.getElementById('eval-progress-fill');
     const doneEl=document.getElementById('eval-done');
     if(fillEl)fillEl.style.width='100%';
     if(doneEl)doneEl.textContent=scores.length;
   }catch(e){
-    // Fallback: sequential evaluation
+    // Fallback: sequential evaluation (evaluates ALL questions, never skips)
     console.warn('[endMock] batch failed, falling back to sequential:',e.message);
     scores=[];
     for(let i=0;i<mockQs.length;i++){
       const q=mockQs[i],ans=mockAnswers[i]||'';
-      if(!ans.trim()){scores.push({score:'0/10',numericScore:0,grade:'Not Answered',overallFeedback:'No answer provided.',keyMissed:[]});continue;}
-      let pushed=false;
-      for(let attempt=1;attempt<=3;attempt++){
-        try{
-          const controller=new AbortController();
-          const tid=setTimeout(()=>controller.abort(),35000);
+      if(!ans.trim()){
+        scores.push({score:'0/10',numericScore:0,grade:'Not Answered',overallFeedback:'No answer provided.',keyMissed:[]});
+      } else {
+        let pushed=false;
+        for(let attempt=1;attempt<=3;attempt++){
           try{
-            const r=await fetch('/api/evaluate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q.prompt||q.q,answer:ans,context:q.context||'',modelAnswer:q.modelAnswer,keyPoints:q.keyPoints,subject:q.subject}),signal:controller.signal});
-            clearTimeout(tid);
-            const ev=await r.json();
-            if(ev.error)throw new Error(ev.error);
-            scores.push(ev);pushed=true;break;
-          }finally{clearTimeout(tid);}
-        }catch(ex){
-          console.error(`[endMock fallback] Q${i+1} attempt ${attempt}/3 failed:`,ex.message);
-          if(attempt<3)await new Promise(r=>setTimeout(r,attempt*1000));
+            const controller=new AbortController();
+            const tid=setTimeout(()=>controller.abort(),35000);
+            try{
+              const r=await fetch('/api/evaluate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q.prompt||q.q,answer:ans,context:q.context||'',modelAnswer:q.modelAnswer,keyPoints:q.keyPoints,subject:q.subject}),signal:controller.signal});
+              clearTimeout(tid);
+              const ev=await r.json();
+              if(ev.error)throw new Error(ev.error);
+              scores.push(ev);pushed=true;break;
+            }finally{clearTimeout(tid);}
+          }catch(ex){
+            console.error(`[endMock fallback] Q${i+1} attempt ${attempt}/3 failed:`,ex.message);
+            if(attempt<3)await new Promise(r=>setTimeout(r,attempt*1000));
+          }
         }
+        if(!pushed)scores.push({score:'0/10',numericScore:0,grade:'Error',overallFeedback:'Evaluation unavailable.',keyMissed:[],_evalError:true});
       }
-      if(!pushed)scores.push({score:'0/10',numericScore:0,grade:'Error',overallFeedback:'Evaluation unavailable.',keyMissed:[],_evalError:true});
+      // Update progress bar after each question
+      const seqFill=document.getElementById('eval-progress-fill');
+      const seqDone=document.getElementById('eval-done');
+      const seqTotal=document.getElementById('eval-total');
+      if(seqFill)seqFill.style.width=Math.round(scores.length/mockQs.length*100)+'%';
+      if(seqDone)seqDone.textContent=scores.length;
+      if(seqTotal)seqTotal.textContent=mockQs.length;
     }
   }
 
   mockScores=scores;
+  const errCount=scores.filter(s=>s._evalError).length;
+  console.log(`[endMock] Evaluated ${scores.length-errCount} / ${scores.length} questions. ${errCount} errors.`);
   const rawScore=scores.reduce((a,s)=>a+effectiveScore(s),0);
   const numQuestions=scores.length||mockQs.length||1;
   const maxScore=numQuestions*10;
@@ -3952,11 +4000,11 @@ async function endMockSession(){
     <div style="font-size:32px;margin-bottom:8px;">${window.isSpeedDrill?'⚡':'🏛'}</div>
     <div style="font-family:var(--fd);font-size:20px;font-weight:700;color:${window.isSpeedDrill?'#a78bfa':'#ff8c42'};margin-bottom:4px;">${window.isSpeedDrill?'Speed Drill Results':'Mock Bar Results'}</div>
     <div class="mr-grade"><span class="score-fraction">${fmt(rawScore)}/${maxScore}</span></div>
-    <div style="font-size:16px;font-weight:700;color:${pct>=70?'#14b4a0':pct>=55?'#c9a84c':'#e07080'};margin-bottom:4px;">${pct}% — ${pct>=70?'✅ PASSED':pct>=55?'📖 Keep Studying':'❌ Needs More Review'}</div>
+    <div id="mock-pct-display" style="font-size:16px;font-weight:700;color:${pct>=70?'#14b4a0':pct>=55?'#c9a84c':'#e07080'};margin-bottom:4px;">${pct}% — ${pct>=70?'✅ PASSED':pct>=55?'📖 Keep Studying':'❌ Needs More Review'}</div>
     <div style="font-size:12px;color:var(--muted);font-family:var(--fm);margin-bottom:18px;">Passing score: 70% (${Math.ceil(maxScore*0.7)} / ${maxScore} points)</div>
     <div class="mr-stats">
       <div class="mr-stat"><div class="n"><span class="score-fraction">${fmt(rawScore)}/${maxScore}</span></div><div class="l">Score</div></div>
-      <div class="mr-stat"><div class="n">${pct}%</div><div class="l">Percentage</div></div>
+      <div class="mr-stat"><div id="mock-pct-stat" class="n">${pct}%</div><div class="l">Percentage</div></div>
       <div class="mr-stat"><div class="n">${numQuestions}</div><div class="l">Questions</div></div>
     </div>
     <div style="display:flex;gap:8px;justify-content:center;margin-bottom:22px;flex-wrap:wrap;">
@@ -3983,7 +4031,7 @@ async function endMockSession(){
         <div style="font-size:11px;color:#a08060;margin-bottom:5px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
           Q${i+1} · <span class="sbg ${sub.cls}">${sub.name}</span>
           ${q.isReal?`<span style="font-size:9px;">📜 ${h(q.pastBarName||'Past Bar')}</span>`:q.source==='Pre-generated'?'<span style="font-size:9px;color:var(--teal);">📚 Pre-gen</span>':'<span style="font-size:9px;">🤖 AI</span>'}
-          <span class="q-score-badge ${s.grade==='Not Answered'?'qsb-low':qBadgeCls}" style="margin-left:auto;">${s.grade==='Not Answered'?'Not Answered':fmt(ns)+'/10'}</span>
+          <span id="mock-qsb-${i}" class="q-score-badge ${s.grade==='Not Answered'?'qsb-low':qBadgeCls}" style="margin-left:auto;">${s.grade==='Not Answered'?'Not Answered':fmt(ns)+'/10'}</span>
         </div>
         ${isSit
           ? `<div class="facts-box" style="margin-bottom:16px;">
