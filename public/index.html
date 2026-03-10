@@ -1854,9 +1854,10 @@ window.addEventListener('DOMContentLoaded', async () => {
   await init();
   // After init, always land on overview
   navToOverview();
-  // If already logged in via stored session, check for an interrupted exam
+  // If already logged in via stored session, check for an interrupted exam or pending evaluation
   if (hasSession) {
     checkForInterruptedExam().catch(() => {});
+    resumePendingEvaluation().catch(() => {});
   }
 });
 
@@ -3902,6 +3903,122 @@ function saveMock(){
 function moveMock(d){saveMock();mockIdx=Math.max(0,Math.min(mockQs.length-1,mockIdx+d));renderMockQ();}
 function jumpMock(i){saveMock();mockIdx=i;renderMockQ();}
 
+// ── Poll /api/eval-progress until complete, then fetch /api/eval-results ───────
+// Updates the progress screen UI and handles stall detection along the way.
+async function pollForResults(submissionId, authHdr, expectedCount) {
+  let lastDone = -1;
+  let stalledChecks = 0;
+  let wakeUp = null; // lets "Check Again" button force an immediate poll
+  window._evalForceCheck = () => { if (wakeUp) { const fn = wakeUp; wakeUp = null; fn(); } };
+
+  while (true) {
+    // Wait 3 s, but allow "Check Again" button to wake early
+    await new Promise(r => {
+      const tid = setTimeout(r, 3000);
+      wakeUp = () => { clearTimeout(tid); r(); };
+    });
+    wakeUp = null;
+
+    let data;
+    try {
+      const progRes = await fetch('/api/eval-progress/' + submissionId, { headers: { 'x-session-token': authHdr } });
+      if (!progRes.ok) { stalledChecks++; continue; }
+      data = await progRes.json();
+    } catch(e) { stalledChecks++; continue; }
+
+    const total = data.total || expectedCount;
+    const pct   = total > 0 ? Math.round(data.done / total * 100) : 0;
+
+    // Update progress bar
+    const doneEl  = document.getElementById('eval-done');
+    const totalEl = document.getElementById('eval-total');
+    const fillEl  = document.getElementById('eval-progress-fill');
+    const msgEl   = document.getElementById('eval-message');
+    const noteEl  = document.getElementById('eval-note');
+    if (doneEl)  doneEl.textContent  = data.done;
+    if (totalEl) totalEl.textContent = total;
+    if (fillEl)  fillEl.style.width  = pct + '%';
+
+    // Stall detection — compare before updating lastDone
+    if (data.done === lastDone) { stalledChecks++; } else { stalledChecks = 0; lastDone = data.done; }
+
+    if (msgEl) {
+      if (stalledChecks >= 10) {
+        msgEl.innerHTML = 'Evaluation seems stalled \u2014 <button onclick="window._evalForceCheck&&window._evalForceCheck()" style="background:rgba(201,168,76,.2);border:1px solid rgba(201,168,76,.4);color:#c9a84c;border-radius:6px;padding:3px 11px;font-size:12px;font-weight:700;cursor:pointer;">\u21ba Check Again</button>';
+      } else if (stalledChecks >= 3) {
+        msgEl.textContent = 'Evaluation seems slow \u2014 still processing...';
+      } else if (pct < 30) { msgEl.textContent = 'BarBuddy is reviewing your answers...';
+      } else if (pct < 70) { msgEl.textContent = 'Analyzing your responses...';
+      } else if (pct < 100){ msgEl.textContent = 'Almost done...';
+      } else               { msgEl.textContent = 'Preparing your results!'; }
+    }
+    if (noteEl && data.done > 0 && !data.complete) {
+      const rem = total - data.done;
+      if (rem > 0) noteEl.innerHTML = `Please keep this window open.<br><span style="font-size:11px;color:var(--muted);">~${rem} question${rem !== 1 ? 's' : ''} remaining</span>`;
+    }
+
+    if (data.complete) {
+      const rRes  = await fetch('/api/eval-results/' + submissionId, { headers: { 'x-session-token': authHdr } });
+      const rData = await rRes.json();
+      if (rData.scores) return rData.scores;
+      // Server guarded: complete flag set but results not yet stored — wait one more tick
+      if (!rData.complete) { await new Promise(r => setTimeout(r, 1500)); continue; }
+      throw new Error('Results unavailable after evaluation completed');
+    }
+  }
+}
+
+// ── Resume an evaluation that was in-flight when the page was refreshed ────────
+async function resumePendingEvaluation() {
+  if (!sessionToken) return false;
+  let pending;
+  try { pending = JSON.parse(sessionStorage.getItem('bb_pending_eval') || 'null'); } catch(e) {}
+  if (!pending?.submissionId) return false;
+
+  const { submissionId, total } = pending;
+  const authHdr = sessionToken || '';
+
+  // Verify the submission is still alive on the server
+  try {
+    const pr = await fetch('/api/eval-progress/' + submissionId, { headers: { 'x-session-token': authHdr } });
+    if (!pr.ok) { sessionStorage.removeItem('bb_pending_eval'); return false; }
+    const d = await pr.json();
+    if (!d.total) { sessionStorage.removeItem('bb_pending_eval'); return false; }
+  } catch(e) { sessionStorage.removeItem('bb_pending_eval'); return false; }
+
+  // Show resume progress screen
+  const res = document.getElementById('mockResults');
+  if (!res) return false;
+  res.style.display = 'block';
+  res.innerHTML = `<div id="eval-progress-screen">
+    <div class="eval-icon">⚖️</div>
+    <h2>Evaluation In Progress</h2>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:12px;">Your evaluation is still running — resuming where you left off.</p>
+    <div class="eval-progress-bar"><div id="eval-progress-fill" class="eval-progress-fill" style="width:0%"></div></div>
+    <div class="eval-stats"><span id="eval-done">0</span> / <span id="eval-total">${total}</span> answers evaluated</div>
+    <p class="eval-message" id="eval-message">BarBuddy is reviewing your answers...</p>
+    <p id="eval-note" class="eval-note">Please keep this window open.<br>Results will appear automatically.</p>
+  </div>`;
+
+  try {
+    const scores = await pollForResults(submissionId, authHdr, total);
+    sessionStorage.removeItem('bb_pending_eval');
+    const fillEl = document.getElementById('eval-progress-fill');
+    if (fillEl) fillEl.style.width = '100%';
+    // mockQs/mockAnswers are gone after a refresh — show a clean completion notice
+    res.innerHTML = `<div class="mock-results" style="text-align:center;padding:48px 24px;">
+      <div style="font-size:48px;margin-bottom:12px;">✅</div>
+      <div style="font-family:var(--fd);font-size:22px;font-weight:700;color:var(--gold-l);margin-bottom:10px;">Evaluation Complete!</div>
+      <p style="color:var(--muted);font-size:14px;margin-bottom:24px;">Your ${scores.length} answer${scores.length !== 1 ? 's have' : ' has'} been evaluated and your score has been saved.</p>
+      <button class="btn-mock" onclick="navToSubject(window.lastExamSubject||'overview','mockbar')">⏱ New Session</button>
+    </div>`;
+  } catch(e) {
+    sessionStorage.removeItem('bb_pending_eval');
+    res.innerHTML = `<div style="text-align:center;padding:40px 20px;color:var(--muted);">Could not resume evaluation. Please start a new session.</div>`;
+  }
+  return true;
+}
+
 async function endMockSession(){
   saveMock();
   if(mockTimer)clearInterval(mockTimer);
@@ -3919,58 +4036,34 @@ async function endMockSession(){
     <div class="eval-progress-bar"><div id="eval-progress-fill" class="eval-progress-fill" style="width:0%"></div></div>
     <div class="eval-stats"><span id="eval-done">0</span> / <span id="eval-total">${answered}</span> answers evaluated</div>
     <p class="eval-message" id="eval-message">BarBuddy is reviewing your answers...</p>
-    <p class="eval-note">Please keep this window open.<br>Results will appear automatically.</p>
+    <p id="eval-note" class="eval-note">Please keep this window open.<br>Results will appear automatically.</p>
   </div>`;
 
   // Build batch payload
   const batchPayload=mockQs.map((q,i)=>({question:q.prompt||q.q,answer:mockAnswers[i]||'',context:q.context||'',modelAnswer:q.modelAnswer,keyPoints:q.keyPoints,subject:q.subject}));
   let scores=[];
+  const authHdr=sessionToken||'';
+  const submissionId='sub_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);
   try{
-    const authHdr=sessionToken||'';
-    // Generate submissionId on client so polling can start immediately
-    const submissionId='sub_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);
-    // Start polling loop before the batch request resolves
-    let pollActive=true;
-    const pollOnce=async()=>{
-      try{
-        const progRes=await fetch('/api/eval-progress/'+submissionId,{headers:{'x-session-token':authHdr}});
-        if(!progRes.ok)return;
-        const data=await progRes.json();
-        const pct=data.total>0?Math.round(data.done/data.total*100):0;
-        const doneEl=document.getElementById('eval-done');
-        const fillEl=document.getElementById('eval-progress-fill');
-        const msgEl=document.getElementById('eval-message');
-        if(doneEl)doneEl.textContent=data.done;
-        if(fillEl)fillEl.style.width=pct+'%';
-        if(msgEl){
-          if(pct<30)msgEl.textContent='BarBuddy is reviewing your answers...';
-          else if(pct<70)msgEl.textContent='Analyzing your responses...';
-          else if(pct<100)msgEl.textContent='Almost done...';
-          else msgEl.textContent='Preparing your results!';
-        }
-      }catch(e){}
-      if(pollActive)setTimeout(pollOnce,1000);
-    };
-    setTimeout(pollOnce,800); // first poll after server has time to register the submission
-    // Fire off batch request (server evaluates all in parallel)
-    const batchRes=await fetch('/api/evaluate-batch',{method:'POST',headers:{'Content-Type':'application/json','x-session-token':authHdr},body:JSON.stringify({questions:batchPayload,submissionId})});
-    pollActive=false; // stop polling loop
-    const batchData=await batchRes.json();
-    scores=batchData.scores||[];
-    if(!scores.length)throw new Error(batchData.error||'No scores returned');
-    // Normalize: pad with error stubs if batch silently missed any questions
-    if(scores.length<mockQs.length){
-      console.warn(`[endMock] batch returned ${scores.length} scores for ${mockQs.length} questions — padding missing`);
-      while(scores.length<mockQs.length){
-        scores.push({score:'0/10',numericScore:0,grade:'Error',overallFeedback:'Evaluation unavailable.',keyMissed:[],_evalError:true});
-      }
+    // Persist so a page refresh can resume polling
+    sessionStorage.setItem('bb_pending_eval',JSON.stringify({submissionId,total:mockQs.length}));
+    // POST returns immediately — server enqueues all jobs and replies with { submissionId, total }
+    const startRes=await fetch('/api/evaluate-batch',{method:'POST',headers:{'Content-Type':'application/json','x-session-token':authHdr},body:JSON.stringify({questions:batchPayload,submissionId})});
+    const startData=await startRes.json();
+    if(startData.error)throw new Error(startData.error);
+    // Poll every 3 s, update UI, wait for complete, then fetch scores
+    scores=await pollForResults(submissionId,authHdr,mockQs.length);
+    sessionStorage.removeItem('bb_pending_eval');
+    // Normalize: pad error stubs for any questions the server missed
+    while(scores.length<mockQs.length){
+      scores.push({score:'0/10',numericScore:0,grade:'Error',overallFeedback:'Evaluation unavailable.',keyMissed:[],_evalError:true});
     }
-    // Snap progress bar to 100%
     const fillEl=document.getElementById('eval-progress-fill');
     const doneEl=document.getElementById('eval-done');
     if(fillEl)fillEl.style.width='100%';
     if(doneEl)doneEl.textContent=scores.length;
   }catch(e){
+    sessionStorage.removeItem('bb_pending_eval');
     // Fallback: sequential evaluation (evaluates ALL questions, never skips)
     console.warn('[endMock] batch failed, falling back to sequential:',e.message);
     scores=[];
