@@ -562,8 +562,8 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .score-fraction{display:inline-block;max-width:100%;overflow-wrap:break-word;}
 .score-sub{font-size:clamp(.85rem,2vw,1rem);color:#aab;margin-top:8px;text-align:center;}
 .result-user{font-size:1.1rem;color:#f0c040;font-weight:600;margin-bottom:4px;}
-.mr-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:22px 0;}
-.mr-stat{background:rgba(255,255,255,.04);border:1px solid rgba(212,168,67,.15);border-radius:11px;padding:12px;text-align:center;}
+.mr-stats{display:flex;gap:10px;margin:22px 0;justify-content:center;align-items:center;}
+.mr-stat{background:rgba(255,255,255,.04);border:1px solid rgba(212,168,67,.15);border-radius:11px;padding:12px;text-align:center;min-width:100px;}
 .mr-stat .n{font-family:var(--fd);font-size:22px;font-weight:700;color:var(--gold-l);word-break:break-all;}
 .mr-stat .l{font-size:11px;color:var(--text-muted);margin-top:2px;}
 @media print{.score-big,.mr-grade{font-size:2.5rem!important;}}
@@ -746,7 +746,7 @@ select.form-input{cursor:pointer;}
 @keyframes slideUp{from{opacity:0;transform:translateX(-50%) translateY(20px);}to{opacity:1;transform:translateX(-50%) translateY(0);}}
 @keyframes slideDown{from{opacity:0;transform:translateX(-50%) translateY(-10px);}to{opacity:1;transform:translateX(-50%) translateY(0);}}
 ::-webkit-scrollbar{width:6px;}::-webkit-scrollbar-track{background:transparent;}::-webkit-scrollbar-thumb{background:rgba(212,168,67,.14);border-radius:4px;}
-@media(max-width:900px){.two-col{grid-template-columns:1fr;}.right-col{display:none;}.stat-row{grid-template-columns:repeat(2,1fr);}.split-layout{grid-template-columns:1fr;}.panel-l{display:none;}.mock-config-grid{grid-template-columns:1fr;}.admin-grid{grid-template-columns:1fr;}.mr-stats{grid-template-columns:repeat(2,1fr);}}
+@media(max-width:900px){.two-col{grid-template-columns:1fr;}.right-col{display:none;}.stat-row{grid-template-columns:repeat(2,1fr);}.split-layout{grid-template-columns:1fr;}.panel-l{display:none;}.mock-config-grid{grid-template-columns:1fr;}.admin-grid{grid-template-columns:1fr;}.mr-stats{flex-wrap:wrap;}}
 
 /* ── NEW COMPONENT STYLES ─────────────────────────────────── */
 
@@ -3858,7 +3858,7 @@ async function endMockSession(){
     <h2>Evaluating Your Answers</h2>
     <div class="eval-progress-bar"><div id="eval-progress-fill" class="eval-progress-fill" style="width:0%"></div></div>
     <div class="eval-stats"><span id="eval-done">0</span> / <span id="eval-total">${answered}</span> answers evaluated</div>
-    <p class="eval-message" id="eval-message">AI is reviewing your answers...</p>
+    <p class="eval-message" id="eval-message">BarBuddy is reviewing your answers...</p>
     <p class="eval-note">Please keep this window open.<br>Results will appear automatically.</p>
   </div>`;
 
@@ -3883,7 +3883,7 @@ async function endMockSession(){
         if(doneEl)doneEl.textContent=data.done;
         if(fillEl)fillEl.style.width=pct+'%';
         if(msgEl){
-          if(pct<30)msgEl.textContent='AI is reviewing your answers...';
+          if(pct<30)msgEl.textContent='BarBuddy is reviewing your answers...';
           else if(pct<70)msgEl.textContent='Analyzing your responses...';
           else if(pct<100)msgEl.textContent='Almost done...';
           else msgEl.textContent='Preparing your results!';
