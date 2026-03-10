@@ -973,6 +973,7 @@ select.form-input{cursor:pointer;}
         <button class="mb-preset-btn" data-min="60"  onclick="setMbTime(60,this)">1 hr</button>
         <button class="mb-preset-btn" data-min="120" onclick="setMbTime(120,this)">2 hr</button>
         <button class="mb-preset-btn" data-min="180" onclick="setMbTime(180,this)">3 hr</button>
+        <button class="mb-preset-btn" data-min="240" onclick="setMbTime(240,this)">4 hr</button>
       </div>
     </div>
 
@@ -2323,7 +2324,7 @@ async function renderMockBarTab(subj, container) {
   }
   const s = SUBJS.find(x => x.key === subj);
   const presets = [[5,'5'],[10,'10'],[20,'20']];
-  const timeOpts = [[0,'No limit'],[30,'30 min'],[60,'1 hr'],[120,'2 hr'],[180,'3 hr']];
+  const timeOpts = [[0,'No limit'],[30,'30 min'],[60,'1 hr'],[120,'2 hr'],[180,'3 hr'],[240,'4 hr']];
   const diffOpts = [['balanced','⚖️ Balanced'],['situational','📋 Situational'],['conceptual','💡 Conceptual']];
   container.innerHTML = `
     <div style="max-width:580px;">
