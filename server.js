@@ -28,6 +28,7 @@ const aiSemaphore = new Semaphore(20);
 
 // ── Per-submission evaluation progress ──────────────────────
 const evalProgress = new Map(); // submissionId → { total, done, complete }
+const evalResults  = new Map(); // submissionId → scores array (set after all jobs finish)
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -2667,7 +2668,7 @@ app.get('/api/eval-queue-status/:submissionId', requireAuth, (req, res) => {
   req.on('close', () => clearInterval(interval));
 });
 
-// ── EVALUATE BATCH — global queue, interleaved across all users ─
+// ── EVALUATE BATCH — fire-and-forget; client polls for progress ─
 app.post('/api/evaluate-batch', requireAuth, async (req, res) => {
   if (!API_KEY) return res.status(500).json({ error: 'API key not set' });
   const { questions, submissionId: clientId } = req.body;
@@ -2679,18 +2680,37 @@ app.post('/api/evaluate-batch', requireAuth, async (req, res) => {
     : 'sub_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
   evalProgress.set(submissionId, { total: questions.length, done: 0, complete: false });
 
-  try {
-    // Each question is added to the global queue — questions from all active users
-    // are interleaved fairly, and per-user concurrency is capped at perUserMax.
-    const scores = await Promise.all(
-      questions.map((q, i) => enqueueEval(submissionId, req.userId, q, i))
-    );
-    setTimeout(() => evalProgress.delete(submissionId), 5 * 60 * 1000);
-    res.json({ submissionId, scores });
-  } catch (err) {
-    evalProgress.delete(submissionId);
-    res.status(500).json({ error: err.message });
+  // Return immediately — HTTP connection released, client polls /api/eval-progress/:id
+  res.json({ submissionId, total: questions.length });
+
+  // Run evaluations in the background; store results when all finish
+  Promise.all(questions.map((q, i) => enqueueEval(submissionId, req.userId, q, i)))
+    .then(scores => {
+      evalResults.set(submissionId, scores);
+      // evalProgress.complete is already set true by the last runEvalJob finally-block,
+      // but we set it again here as a safety net in case of any race.
+      const prog = evalProgress.get(submissionId);
+      if (prog) prog.complete = true;
+      // Clean up both maps after 10 minutes
+      setTimeout(() => { evalProgress.delete(submissionId); evalResults.delete(submissionId); }, 10 * 60 * 1000);
+    })
+    .catch(err => {
+      console.error('[evaluate-batch] background error:', err.message);
+      evalProgress.delete(submissionId);
+      evalResults.delete(submissionId);
+    });
+});
+
+// ── FETCH COMPLETED RESULTS — called by client once polling sees complete:true ─
+app.get('/api/eval-results/:submissionId', requireAuth, (req, res) => {
+  const { submissionId } = req.params;
+  const prog = evalProgress.get(submissionId);
+  if (!prog) return res.status(404).json({ error: 'Submission not found or expired' });
+  // Guard against the brief window where complete=true but evalResults isn't stored yet
+  if (!prog.complete || !evalResults.has(submissionId)) {
+    return res.status(202).json({ complete: false, done: prog.done, total: prog.total });
   }
+  res.json({ complete: true, scores: evalResults.get(submissionId) });
 });
 
 
