@@ -5430,7 +5430,7 @@ async function saveMockBarResults(scores) {
         score:       parseFloat(scoreSum.toFixed(2)),
         total,
         subject:     currentSubject || 'Mock Bar',
-        questions:   scores.map(s => ({ q: s.q, score: s.score, max: s.max })),
+        questions:   scores.map(s => ({ q: s.q, score: s.score, max: s.max, improvements: s.improvements||[], keyMissed: s.keyMissed||[] })),
         timeTakenMs: timeTaken,
       }),
     });
