@@ -799,9 +799,28 @@ select.form-input{cursor:pointer;}
 .admin-tab-btn{padding:7px 13px;border-radius:8px 8px 0 0;border:none;background:transparent;color:#667;font-size:0.78rem;font-weight:600;cursor:pointer;transition:all .2s;border-bottom:2px solid transparent;white-space:nowrap;}
 .admin-tab-btn:hover{color:#aab;background:#131f2e;}
 .admin-tab-btn.active{color:#f0c040;border-bottom:2px solid #f0c040;background:#131f2e;}
+.app-background-watermark {
+  position: fixed;
+  top: 50%;
+  left: calc(50% + 90px);
+  transform: translate(-50%, -50%);
+  width: 480px;
+  opacity: 0.035;
+  pointer-events: none;
+  z-index: 0;
+  user-select: none;
+  filter: grayscale(20%);
+}
 </style>
 </head>
 <body>
+
+<img
+  src="/barbuddyemblem.png"
+  class="app-background-watermark"
+  alt=""
+  aria-hidden="true"
+/>
 
 <!-- AUTH WALL -->
 <div id="authWall">
