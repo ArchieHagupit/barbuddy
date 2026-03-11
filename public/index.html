@@ -802,9 +802,11 @@ select.form-input{cursor:pointer;}
 .app-background-watermark {
   position: fixed;
   top: 50%;
-  left: calc(50% + 90px);
+  left: 50%;
   transform: translate(-50%, -50%);
-  width: 480px;
+  width: 100vw;
+  height: 100vh;
+  object-fit: cover;
   opacity: 0.035;
   pointer-events: none;
   z-index: 0;
