@@ -1101,6 +1101,7 @@ select.form-input{cursor:pointer;}
       <button onclick="showAdminTab('results')"    id="adminTab-results"    class="admin-tab-btn">📊 Results</button>
       <button onclick="showAdminTab('questions')"  id="adminTab-questions"  class="admin-tab-btn">📝 Questions</button>
       <button onclick="showAdminTab('sources')"    id="adminTab-sources"    class="admin-tab-btn">🗂 Sources</button>
+      <button onclick="showAdminTab('insights')"   id="adminTab-insights"   class="admin-tab-btn">💡 Insights</button>
     </div>
     <!-- OVERVIEW TAB -->
     <div id="adminOverviewPanel">
@@ -1352,6 +1353,56 @@ select.form-input{cursor:pointer;}
       </div>
       <p style="font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.55;">Enable or disable past bar batches globally. Disabled batches are excluded from all Mock Bar sessions.</p>
       <div id="adminSourcesList"></div>
+    </div>
+
+    <!-- INSIGHTS PANEL -->
+    <div id="adminInsightsPanel" style="background:var(--card);border:1px solid var(--bdr2);border-radius:16px;padding:20px;margin-top:18px;display:none;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
+        <h3 style="font-family:var(--fd);font-size:18px;font-weight:700;color:var(--gold-l);margin:0;">💡 Improve Items</h3>
+        <div style="display:flex;gap:8px;">
+          <button class="btn-og" onclick="exportImproveCSV()" style="font-size:11px;">⬇ Export CSV</button>
+          <button class="btn-og" onclick="loadImproveItems()" style="font-size:11px;">↺ Refresh</button>
+        </div>
+      </div>
+      <!-- Filter controls -->
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+        <input id="improveSearch" class="sp-search" placeholder="Search improve items…" style="flex:1;min-width:180px;padding:6px 10px;font-size:12px;" oninput="renderImproveTable()">
+        <select id="improveSubject" style="background:var(--card2);color:var(--white);border:1px solid var(--bdr2);border-radius:8px;padding:6px 8px;font-size:12px;min-width:130px;" onchange="renderImproveTable()">
+          <option value="">All Subjects</option>
+          <option value="civil">Civil Law</option>
+          <option value="criminal">Criminal Law</option>
+          <option value="political">Political Law</option>
+          <option value="labor">Labor Law</option>
+          <option value="commercial">Commercial Law</option>
+          <option value="taxation">Taxation</option>
+          <option value="remedial">Remedial Law</option>
+          <option value="ethics">Legal Ethics</option>
+        </select>
+        <input id="improveDateFrom" type="date" style="background:var(--card2);color:var(--white);border:1px solid var(--bdr2);border-radius:8px;padding:6px 8px;font-size:12px;" onchange="renderImproveTable()">
+        <input id="improveDateTo" type="date" style="background:var(--card2);color:var(--white);border:1px solid var(--bdr2);border-radius:8px;padding:6px 8px;font-size:12px;" onchange="renderImproveTable()">
+      </div>
+      <!-- Count badge -->
+      <div id="improveCount" style="font-size:12px;color:var(--muted);margin-bottom:10px;"></div>
+      <!-- Table -->
+      <div style="overflow-x:auto;">
+        <table id="improveTable" style="width:100%;border-collapse:collapse;font-size:12px;">
+          <thead>
+            <tr style="border-bottom:1px solid var(--bdr2);text-align:left;">
+              <th style="padding:7px 10px;color:var(--gold);font-weight:600;white-space:nowrap;">Student</th>
+              <th style="padding:7px 10px;color:var(--gold);font-weight:600;white-space:nowrap;">Subject</th>
+              <th style="padding:7px 10px;color:var(--gold);font-weight:600;">Question</th>
+              <th style="padding:7px 10px;color:var(--gold);font-weight:600;">Improve Items</th>
+              <th style="padding:7px 10px;color:var(--gold);font-weight:600;white-space:nowrap;">Date</th>
+            </tr>
+          </thead>
+          <tbody id="improveTableBody"><tr><td colspan="5" style="padding:16px;color:var(--muted);">Loading…</td></tr></tbody>
+        </table>
+      </div>
+      <!-- Aggregated insights -->
+      <div id="improveInsights" style="margin-top:24px;display:none;">
+        <h4 style="font-family:var(--fd);font-size:15px;font-weight:700;color:var(--gold-l);margin:0 0 12px;">Top 10 Most Common Improve Items</h4>
+        <div id="improveInsightsList"></div>
+      </div>
     </div>
 
   </div>
@@ -2076,6 +2127,7 @@ function showAdminTab(tabName) {
     results:   'adminResultsPanel',
     questions: 'adminQuestionsPanel',
     sources:   'adminSourcesPanel',
+    insights:  'adminInsightsPanel',
   };
   Object.values(panelMap).forEach(id => {
     const el = document.getElementById(id);
@@ -2093,6 +2145,7 @@ function showAdminTab(tabName) {
   if (tabName === 'syllabus')  loadSyllabusBuilder();
   if (tabName === 'kb')        refreshAdminKB();
   if (tabName === 'tabaccess') initTabControls();
+  if (tabName === 'insights')  loadImproveItems();
   if (tabName === 'overview') {
     updateSyllabusStatus();
     const sovGrid = document.getElementById('subjectOverviewGrid');
@@ -3534,7 +3587,7 @@ async function updateSupabaseResult(rawScore, pct){
   // Build per-question summary with ALAC detail for the record
   const questions=mockScores.map((s,i)=>{
     const ns=effectiveScore(s);
-    const entry={q:(mockQs[i]?.prompt||mockQs[i]?.q||'').slice(0,120),score:ns,max:10};
+    const entry={q:(mockQs[i]?.prompt||mockQs[i]?.q||'').slice(0,120),score:ns,max:10,improvements:s.improvements||[],keyMissed:s.keyMissed||[]};
     if(s.alac){entry.alac=s.alac;}
     return entry;
   });
@@ -4125,7 +4178,7 @@ async function endMockSession(){
   const avg=Math.round(rawScore/numQuestions*10)/10;
   const pct=maxScore>0?Math.round(rawScore/maxScore*100):0;
   totalQDone+=answered;totalCorrect+=Math.round(pct/100*answered);updateDash();
-  saveMockBarResults(scores.map((s,i)=>({q:(mockQs[i]?.prompt||mockQs[i]?.q||'').slice(0,120),score:effectiveScore(s),max:10})));
+  saveMockBarResults(scores.map((s,i)=>({q:(mockQs[i]?.prompt||mockQs[i]?.q||'').slice(0,120),score:effectiveScore(s),max:10,improvements:s.improvements||[],keyMissed:s.keyMissed||[]})));
 
   // Pre-fill email modal subject
   const emailSubj=`BarBuddy Mock Bar Results — ${new Date().toLocaleDateString('en-PH')} — ${fmt(rawScore)}/${maxScore} (${pct}%)`;
@@ -6147,6 +6200,128 @@ async function exportResultsCSV() {
   });
   const blob = new Blob([lines.join('\n')], { type:'text/csv' });
   const a    = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'barbuddy_results.csv'; a.click();
+}
+
+// ══════════════════════════════════
+// ADMIN: IMPROVE ITEMS INSIGHTS
+// ══════════════════════════════════
+let _improveData = [];  // raw items from server
+
+async function loadImproveItems() {
+  const tbody = document.getElementById('improveTableBody');
+  if (tbody) tbody.innerHTML = '<tr><td colspan="5" style="padding:16px;color:var(--muted);">Loading…</td></tr>';
+  try {
+    const r = await fetch('/api/admin/improve-items', { headers:{'x-admin-key': window._adminKey||''} });
+    _improveData = await r.json();
+    if (!Array.isArray(_improveData)) _improveData = [];
+    renderImproveTable();
+  } catch(e) {
+    if (tbody) tbody.innerHTML = `<tr><td colspan="5" style="padding:16px;color:#e07080;">Failed to load: ${h(e.message)}</td></tr>`;
+  }
+}
+
+function _improveFiltered() {
+  const kw      = (document.getElementById('improveSearch')?.value   || '').toLowerCase().trim();
+  const subj    = (document.getElementById('improveSubject')?.value  || '');
+  const dateFrom = document.getElementById('improveDateFrom')?.value || '';
+  const dateTo   = document.getElementById('improveDateTo')?.value   || '';
+  return _improveData.filter(item => {
+    if (subj && item.subject !== subj) return false;
+    const d = item.date ? item.date.slice(0,10) : '';
+    if (dateFrom && d < dateFrom) return false;
+    if (dateTo   && d > dateTo)   return false;
+    if (kw) {
+      const haystack = [item.studentName, item.subject, item.question, ...(item.improvements||[]), ...(item.keyMissed||[])].join(' ').toLowerCase();
+      if (!haystack.includes(kw)) return false;
+    }
+    return true;
+  });
+}
+
+function renderImproveTable() {
+  const filtered = _improveFiltered();
+  const tbody = document.getElementById('improveTableBody');
+  const countEl = document.getElementById('improveCount');
+
+  // Flatten to individual improve rows for count
+  let totalItems = 0;
+  filtered.forEach(item => { totalItems += (item.improvements||[]).length + (item.keyMissed||[]).length; });
+  if (countEl) countEl.textContent = `${filtered.length} question(s) · ${totalItems} item(s)`;
+
+  if (!filtered.length) {
+    if (tbody) tbody.innerHTML = '<tr><td colspan="5" style="padding:16px;color:var(--muted);">No improve items found.</td></tr>';
+    _renderImproveInsights([]);
+    return;
+  }
+
+  const subjNames = {civil:'Civil Law',criminal:'Criminal Law',political:'Political Law',labor:'Labor Law',commercial:'Commercial Law',taxation:'Taxation',remedial:'Remedial Law',ethics:'Legal Ethics'};
+
+  if (tbody) tbody.innerHTML = filtered.map(item => {
+    const improveBullets = (item.improvements||[]).map(x => `<li style="margin:2px 0;color:#f5f0e8;">${h(x)}</li>`).join('');
+    const missedBullets  = (item.keyMissed||[]).map(x => `<li style="margin:2px 0;color:#f5c6a0;">📚 ${h(x)}</li>`).join('');
+    const allBullets = improveBullets + missedBullets;
+    return `<tr style="border-bottom:1px solid var(--bdr2);vertical-align:top;">
+      <td style="padding:8px 10px;white-space:nowrap;color:var(--text);">${h(item.studentName)}</td>
+      <td style="padding:8px 10px;white-space:nowrap;"><span style="background:rgba(184,134,11,.15);color:var(--gold);border-radius:5px;padding:2px 7px;font-size:11px;">${h(subjNames[item.subject]||item.subject)}</span></td>
+      <td style="padding:8px 10px;max-width:240px;color:var(--muted);font-size:11px;">${h((item.question||'').slice(0,80))}${item.question?.length>80?'…':''}</td>
+      <td style="padding:8px 10px;"><ul style="margin:0;padding-left:16px;font-size:12px;">${allBullets}</ul></td>
+      <td style="padding:8px 10px;white-space:nowrap;color:var(--muted);">${item.date?item.date.slice(0,10):'—'}</td>
+    </tr>`;
+  }).join('');
+
+  _renderImproveInsights(filtered);
+}
+
+function _renderImproveInsights(filtered) {
+  const panel = document.getElementById('improveInsights');
+  const list  = document.getElementById('improveInsightsList');
+  if (!panel || !list) return;
+
+  // Count frequency of each unique improve item (normalize to lowercase for grouping)
+  const freq = {};
+  filtered.forEach(item => {
+    [...(item.improvements||[]), ...(item.keyMissed||[])].forEach(txt => {
+      const key = txt.trim().toLowerCase();
+      if (!key) return;
+      freq[key] = freq[key] || { text: txt.trim(), count: 0 };
+      freq[key].count++;
+    });
+  });
+
+  const ranked = Object.values(freq).sort((a, b) => b.count - a.count).slice(0, 10);
+  if (!ranked.length) { panel.style.display = 'none'; return; }
+
+  panel.style.display = 'block';
+  const maxCount = ranked[0].count;
+  list.innerHTML = ranked.map((item, i) => {
+    const barW = Math.max(4, Math.round(item.count / maxCount * 100));
+    const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i+1}.`;
+    return `<div style="margin-bottom:10px;">
+      <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:3px;">
+        <span style="font-size:13px;min-width:28px;">${medal}</span>
+        <span style="font-size:12px;color:var(--text);flex:1;">${h(item.text)}</span>
+        <span style="font-size:12px;font-weight:700;color:var(--gold);min-width:32px;text-align:right;">${item.count}×</span>
+      </div>
+      <div style="height:5px;background:rgba(255,255,255,.07);border-radius:3px;margin-left:36px;">
+        <div style="height:100%;width:${barW}%;background:var(--gold);border-radius:3px;transition:width .3s;"></div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function exportImproveCSV() {
+  const filtered = _improveFiltered();
+  const lines = ['student_name,subject,question,improve_item,type,date'];
+  filtered.forEach(item => {
+    const row = (type, text) => {
+      const esc = v => '"' + String(v).replace(/"/g, '""') + '"';
+      lines.push([esc(item.studentName), esc(item.subject), esc(item.question), esc(text), esc(type), esc(item.date?item.date.slice(0,10):'')].join(','));
+    };
+    (item.improvements||[]).forEach(t => row('improve', t));
+    (item.keyMissed   ||[]).forEach(t => row('missed',  t));
+  });
+  const blob = new Blob([lines.join('\n')], { type:'text/csv' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'barbuddy_improve_items.csv'; a.click();
 }
 
 // ── CHANGE PASSWORD ──────────────────────────────────────────

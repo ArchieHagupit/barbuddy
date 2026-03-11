@@ -831,6 +831,39 @@ app.get('/api/admin/results/:userId', adminOnly, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── Admin: aggregated Improve items across all results ──────────
+app.get('/api/admin/improve-items', adminOnly, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('results')
+      .select('id, subject, finished_at, questions, users(id, name, email)')
+      .order('finished_at', { ascending: false });
+    if (error) throw error;
+    const items = [];
+    for (const row of data || []) {
+      const studentName = row.users?.name || row.user_id || 'Unknown';
+      const subject     = row.subject     || '';
+      const date        = row.finished_at || '';
+      for (const q of row.questions || []) {
+        const improves = Array.isArray(q.improvements) ? q.improvements : [];
+        const missed   = Array.isArray(q.keyMissed)    ? q.keyMissed    : [];
+        if (improves.length || missed.length) {
+          items.push({
+            resultId:    row.id,
+            studentName,
+            subject,
+            question:    q.q || '',
+            improvements: improves,
+            keyMissed:    missed,
+            date,
+          });
+        }
+      }
+    }
+    res.json(items);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 app.delete('/api/admin/results/:resultId', adminOnly, async (req, res) => {
   try {
     const { error } = await supabase.from('results').delete().eq('id', req.params.resultId);
