@@ -844,6 +844,60 @@ app.get('/api/user/results', requireAuth, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── Spaced repetition: due reviews ────────────────────────────
+app.get('/api/spaced-repetition/due', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('spaced_repetition')
+      .select('id, question_id, subject, last_score, last_attempted_at, next_review_at, review_count, questions(id, question_text, context, model_answer, key_points, subject, source, year, type, max_score, alternative_answers, model_answer_alac)')
+      .eq('user_id', req.userId)
+      .eq('mastered', false)
+      .not('next_review_at', 'is', null)
+      .lte('next_review_at', new Date().toISOString())
+      .order('next_review_at', { ascending: true });
+    if (error) throw error;
+    const items = (data || []).map(row => {
+      const q = row.questions || {};
+      const daysOverdue = row.next_review_at
+        ? Math.max(0, Math.floor((Date.now() - new Date(row.next_review_at)) / 86400000))
+        : 0;
+      return {
+        srId: row.id, questionId: row.question_id, subject: row.subject,
+        lastScore: row.last_score, lastAttemptedAt: row.last_attempted_at,
+        nextReviewAt: row.next_review_at, reviewCount: row.review_count, daysOverdue,
+        question: {
+          id: q.id, q: q.question_text || '', context: q.context || null,
+          modelAnswer: q.model_answer || '', keyPoints: q.key_points || [],
+          subject: row.subject, source: q.source || '', year: q.year || '',
+          type: q.type || 'essay', max: q.max_score || 10,
+          _cachedAlternatives: q.alternative_answers || null,
+          _cachedAlac: q.model_answer_alac || null, isReal: true,
+        },
+      };
+    });
+    res.json(items);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Spaced repetition: stats ──────────────────────────────────
+app.get('/api/spaced-repetition/stats', requireAuth, async (req, res) => {
+  try {
+    const now      = new Date().toISOString();
+    const weekLater = new Date(Date.now() + 7 * 86400000).toISOString();
+    const { data, error } = await supabase
+      .from('spaced_repetition')
+      .select('mastered, next_review_at')
+      .eq('user_id', req.userId);
+    if (error) throw error;
+    const rows = data || [];
+    const total            = rows.length;
+    const mastered         = rows.filter(r => r.mastered).length;
+    const dueNow           = rows.filter(r => !r.mastered && r.next_review_at && r.next_review_at <= now).length;
+    const upcomingThisWeek = rows.filter(r => !r.mastered && r.next_review_at && r.next_review_at > now && r.next_review_at <= weekLater).length;
+    res.json({ total, mastered, dueNow, upcomingThisWeek });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── Admin: aggregated Improve items across all results ──────────
 app.get('/api/admin/improve-items', adminOnly, async (req, res) => {
   try {
@@ -2778,6 +2832,26 @@ Respond ONLY with valid JSON: {"score":"X/10","numericScore":0,"grade":"...","br
         if (_needsAlacCache) cacheUpdate.model_answer_alac   = result.alacModelAnswer;
         supabase.from('questions').update(cacheUpdate).eq('id', questionId)
           .then(({ error: ce }) => { if (ce) console.warn(`[cache-write] Q${idx + 1} failed:`, ce.message); });
+      }
+
+      // ── Spaced repetition upsert (fire-and-forget) ───────────
+      if (questionId && job.userId && !result._evalError) {
+        const al = result.alac || {};
+        const srScore = (al.answer?.score != null)
+          ? Number(((al.answer.score||0)+(al.legalBasis?.score||0)+(al.application?.score||0)+(al.conclusion?.score||0)).toFixed(2))
+          : (result.numericScore || 0);
+        const reviewDays = srScore < 5 ? 3 : srScore < 7 ? 7 : srScore < 8 ? 14 : null;
+        const mastered   = srScore >= 8;
+        const nextReviewAt = reviewDays ? new Date(Date.now() + reviewDays * 86400000).toISOString() : null;
+        const srId = `sr_${job.userId}_${questionId}`;
+        supabase.from('spaced_repetition').select('review_count').eq('id', srId).single()
+          .then(({ data: ex }) => supabase.from('spaced_repetition').upsert({
+            id: srId, user_id: job.userId, question_id: questionId, subject,
+            last_score: srScore, last_attempted_at: new Date().toISOString(),
+            next_review_at: nextReviewAt, review_count: (ex?.review_count || 0) + 1, mastered,
+          }, { onConflict: 'user_id,question_id' }))
+          .then(({ error: e }) => { if (e) console.warn('[sr-upsert]', e.message); })
+          .catch(e => console.warn('[sr-upsert]', e.message));
       }
     }
 

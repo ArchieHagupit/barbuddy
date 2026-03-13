@@ -87,6 +87,25 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .prog-empty-sub{font-size:14px;color:var(--muted);max-width:340px;line-height:1.7;margin-bottom:24px;}
 @media(max-width:700px){.prog-summary-row{grid-template-columns:repeat(2,1fr);} .prog-subj-name{width:90px;font-size:11px;}}
 
+/* ── Spaced Repetition ─────────────────────────────────────── */
+.sb-sr-badge{font-size:9px;font-weight:800;letter-spacing:.02em;background:rgba(224,112,128,.2);color:#e07080;border:1px solid rgba(224,112,128,.35);border-radius:5px;padding:1px 5px;margin-left:4px;flex-shrink:0;font-family:var(--fm);}
+/* SR due widget (inside progress page) */
+.sr-due-widget{border-color:rgba(212,168,67,.3)!important;}
+.sr-due-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--bdr);}
+.sr-due-row:last-child{border-bottom:none;}
+.sr-due-subj{flex:1;font-size:12px;color:var(--white);}
+.sr-due-meta{font-size:11px;color:var(--muted);}
+.sr-due-score{font-size:11px;font-family:var(--fm);color:#e07080;min-width:36px;text-align:right;}
+/* Motivational feedback in mock results */
+.sr-motivation{margin-top:8px;padding:8px 12px;border-radius:8px;font-size:12px;font-weight:600;line-height:1.4;}
+.sr-mastered{background:rgba(46,196,160,.1);border:1px solid rgba(46,196,160,.25);color:#4dd4b0;}
+.sr-improved{background:rgba(91,168,255,.1);border:1px solid rgba(91,168,255,.25);color:#7dc0ff;}
+.sr-retry{background:rgba(224,112,128,.08);border:1px solid rgba(224,112,128,.2);color:#e07080;}
+/* Login/review banner */
+#sr-review-banner{position:fixed;top:64px;left:var(--sw);right:0;z-index:200;background:rgba(15,20,35,.97);border-bottom:1px solid rgba(212,168,67,.3);padding:10px 24px;display:flex;align-items:center;gap:12px;box-shadow:0 3px 12px rgba(0,0,0,.3);}
+.sr-banner-btn{padding:7px 14px;background:rgba(212,168,67,.18);border:1px solid rgba(212,168,67,.4);color:var(--gold-l);border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;font-family:var(--fb);}
+.sr-banner-dismiss{padding:6px 12px;background:transparent;border:1px solid var(--bdr2);color:var(--muted);border-radius:8px;cursor:pointer;font-size:12px;font-family:var(--fb);}
+
 /* Subject page internal tabs */
 .subject-page-header{display:flex;align-items:center;gap:16px;margin-bottom:24px;padding:20px 24px;
   background:linear-gradient(135deg,rgba(212,168,67,.08) 0%,transparent 60%);
@@ -2233,6 +2252,131 @@ function autoUnlockAdminUI() {
   showAdminTab('overview');
 }
 
+// ── Spaced Repetition helpers ─────────────────────────────────
+const _SR_SUBJ_NAMES = {civil:'Civil Law',criminal:'Criminal Law',political:'Political Law',
+  labor:'Labor Law',commercial:'Commercial Law',taxation:'Taxation Law',
+  remedial:'Remedial Law',ethics:'Legal Ethics',custom:'Custom',mixed:'Mixed'};
+
+function refreshSidebarReviewBadges() {
+  SUBJS.forEach(s => {
+    const badge = document.getElementById('sb-sr-' + s.key);
+    if (!badge) return;
+    const count = window._srDueCounts?.[s.key] || 0;
+    if (count > 0) {
+      badge.textContent = count + ' due';
+      badge.style.display = '';
+    } else {
+      badge.style.display = 'none';
+    }
+  });
+}
+
+function showSrReviewBanner(count) {
+  document.getElementById('sr-review-banner')?.remove();
+  const banner = document.createElement('div');
+  banner.id = 'sr-review-banner';
+  banner.innerHTML = `
+    <div style="font-size:18px;flex-shrink:0;">🧠</div>
+    <div style="flex:1;font-size:13px;color:var(--white);">You have <strong style="color:var(--gold-l);">${count}</strong> question${count!==1?'s':''} due for review today.</div>
+    <button class="sr-banner-btn" onclick="navToProgress()">Start Review Session</button>
+    <button class="sr-banner-dismiss" onclick="dismissSrBanner()">Dismiss</button>`;
+  document.body.appendChild(banner);
+}
+
+function dismissSrBanner() {
+  document.getElementById('sr-review-banner')?.remove();
+}
+
+async function checkDueReviews() {
+  if (!sessionToken) return;
+  try {
+    const [dueResp, statsResp] = await Promise.all([
+      fetch('/api/spaced-repetition/due',   { headers: { 'x-session-token': sessionToken } }),
+      fetch('/api/spaced-repetition/stats',  { headers: { 'x-session-token': sessionToken } }),
+    ]);
+    const dueItems = dueResp.ok   ? await dueResp.json()   : [];
+    // (stats unused here but warms the cache; progress page will re-fetch)
+    window._srDueItems = dueItems;
+    window._srDueCounts = {};
+    dueItems.forEach(item => {
+      window._srDueCounts[item.subject] = (window._srDueCounts[item.subject] || 0) + 1;
+    });
+    refreshSidebarReviewBadges();
+    if (dueItems.length > 0) showSrReviewBanner(dueItems.length);
+  } catch(e) { /* non-critical */ }
+}
+
+async function startReviewSession() {
+  const dueItems = window._srDueItems || [];
+  if (!dueItems.length) { showToast('No reviews due right now', 'info'); return; }
+  const questions = dueItems.map(item => item.question).filter(q => q?.q);
+  if (!questions.length) { showToast('Question data unavailable', 'error'); return; }
+  // Store previous scores for comparison in results display
+  window._srReviewData = {};
+  dueItems.forEach(item => {
+    if (item.question?.id) window._srReviewData[item.question.id] = item.lastScore || 0;
+  });
+  window.isReviewSession = true;
+  window.isSpeedDrill    = false;
+  dismissSrBanner();
+  clearSidebarActive();
+  document.getElementById('sb-progress')?.classList.add('active');
+  showPage('mockbar');
+  updateBreadcrumb(null, null);
+  startMockSession(questions, 0, null); // 0 = no time limit
+}
+
+function _renderSRDueWidget(dueItems) {
+  const SUBJ_COLORS = {civil:'var(--c-civil)',criminal:'var(--c-criminal)',political:'var(--c-political)',
+    labor:'var(--c-labor)',commercial:'var(--c-commercial)',taxation:'var(--c-taxation)',
+    remedial:'var(--c-remedial)',ethics:'var(--c-ethics)',custom:'var(--c-custom)',mixed:'var(--muted)'};
+  if (!dueItems.length) {
+    return `<div class="prog-section">
+      <div class="prog-section-title">🧠 Questions Due for Review</div>
+      <div style="font-size:13px;color:#4dd4b0;">✅ You're all caught up! No reviews due today.</div>
+    </div>`;
+  }
+  const preview = dueItems.slice(0, 4).map(item => {
+    const subjName = _SR_SUBJ_NAMES[item.subject] || item.subject;
+    const overdueLabel = item.daysOverdue > 0 ? `${item.daysOverdue} day${item.daysOverdue!==1?'s':''} overdue` : 'due today';
+    const dotColor = SUBJ_COLORS[item.subject] || 'var(--muted)';
+    return `<div class="sr-due-row">
+      <div style="width:7px;height:7px;border-radius:50%;background:${dotColor};flex-shrink:0;"></div>
+      <div class="sr-due-subj">${h(subjName)} question</div>
+      <div class="sr-due-meta">${overdueLabel}</div>
+      <div class="sr-due-score">${(item.lastScore||0).toFixed(1)}/10</div>
+    </div>`;
+  }).join('');
+  const moreCount = dueItems.length > 4 ? dueItems.length - 4 : 0;
+  return `<div class="prog-section sr-due-widget">
+    <div class="prog-section-title">🧠 Questions Due for Review</div>
+    <div style="font-size:13px;color:var(--gold-l);margin-bottom:14px;">You have <strong>${dueItems.length}</strong> question${dueItems.length!==1?'s':''} to revisit today</div>
+    ${preview}
+    ${moreCount > 0 ? `<div style="font-size:11px;color:var(--muted);padding-top:8px;">+${moreCount} more question${moreCount!==1?'s':''}</div>` : ''}
+    <button onclick="startReviewSession()" style="margin-top:14px;width:100%;padding:13px;font-family:var(--fd);font-size:14px;font-weight:700;background:linear-gradient(135deg,rgba(212,168,67,.18),rgba(212,168,67,.08));border:1px solid rgba(212,168,67,.4);color:var(--gold-l);border-radius:11px;cursor:pointer;transition:all .2s;">🚀 Start Review Session</button>
+  </div>`;
+}
+
+function _renderSRStats(srStats) {
+  const { total=0, mastered=0, dueNow=0, upcomingThisWeek=0 } = srStats;
+  const pct = total > 0 ? Math.round(mastered / total * 100) : 0;
+  return `<div class="prog-section">
+    <div class="prog-section-title">📊 Spaced Repetition Stats</div>
+    <div class="prog-summary-row" style="margin-bottom:${total>0?'14px':'0'};">
+      <div class="prog-stat-card"><div class="prog-stat-value">${total}</div><div class="prog-stat-label">Total Tracked</div></div>
+      <div class="prog-stat-card"><div class="prog-stat-value" style="color:#2ec4a0;">${mastered}</div><div class="prog-stat-label">Mastered</div></div>
+      <div class="prog-stat-card"><div class="prog-stat-value" style="color:${dueNow>0?'#e07080':'var(--gold-l)'};">${dueNow}</div><div class="prog-stat-label">Due Now</div></div>
+      <div class="prog-stat-card"><div class="prog-stat-value" style="color:var(--gold-l);">${upcomingThisWeek}</div><div class="prog-stat-label">Due This Week</div></div>
+    </div>
+    ${total > 0 ? `
+    <div class="prog-subj-bar-wrap" style="height:12px;margin-bottom:8px;">
+      <div class="prog-subj-bar" style="width:${pct}%;background:linear-gradient(90deg,#2ec4a0,#4dd4b0);"></div>
+    </div>
+    <div style="font-size:12px;color:var(--muted);">You have mastered ${pct}% of your attempted questions (${mastered}/${total})</div>
+    ` : `<div style="font-size:13px;color:var(--muted);">Complete your first Mock Bar or Speed Drill to start tracking mastery.</div>`}
+  </div>`;
+}
+
 // ── My Progress ────────────────────────────────────────────────
 function navToProgress() {
   currentSubject = null; currentMode = null;
@@ -2525,6 +2669,25 @@ async function renderProgressDashboard() {
       }
     }]
   });
+
+  // ── Inject Spaced Repetition sections ────────────────────────
+  try {
+    const [dueResp, statsResp] = await Promise.all([
+      fetch('/api/spaced-repetition/due',   { headers: { 'x-session-token': sessionToken } }),
+      fetch('/api/spaced-repetition/stats',  { headers: { 'x-session-token': sessionToken } }),
+    ]);
+    const dueItems = dueResp.ok   ? await dueResp.json()   : [];
+    const srStats  = statsResp.ok ? await statsResp.json()  : { total:0, mastered:0, dueNow:0, upcomingThisWeek:0 };
+    window._srDueItems = dueItems;
+    window._srDueCounts = {};
+    dueItems.forEach(item => { window._srDueCounts[item.subject] = (window._srDueCounts[item.subject]||0) + 1; });
+    refreshSidebarReviewBadges();
+    const pp = container.querySelector('.prog-page');
+    if (pp) {
+      pp.insertAdjacentHTML('afterbegin', _renderSRDueWidget(dueItems));
+      pp.insertAdjacentHTML('beforeend',  _renderSRStats(srStats));
+    }
+  } catch(e) { /* non-critical — progress page still works */ }
 }
 
 function navToCustom() {
@@ -2962,10 +3125,12 @@ function renderSidebar() {
   list.innerHTML = SUBJS.map(s => {
     const hasMaterials = (KB.references||[]).some(r=>r.subject===s.key) || (KB.pastBar||[]).some(p=>p.subject===s.key);
     const qCount = (KB.pastBar||[]).filter(p=>p.subject===s.key).reduce((a,p)=>a+(p.qCount||0),0);
+    const srDue = window._srDueCounts?.[s.key] || 0;
     return `<button class="sb-subject" id="sb-subj-${s.key}" style="border-left-color:${s.color};" onclick="navToSubject('${s.key}')">
       <span class="sb-subj-dot" style="background:${hasMaterials?s.color:'rgba(248,246,241,.2)'};"></span>
       <span class="sb-subj-name" style="flex:1;">${h(s.name)}</span>
       ${qCount>0?`<span class="sb-subj-qcount">${qCount}q</span>`:''}
+      <span class="sb-sr-badge" id="sb-sr-${s.key}" style="${srDue>0?'':'display:none;'}">${srDue} due</span>
       <span class="sb-lock-icon" style="display:none;">🔒</span>
     </button>`;
   }).join('');
@@ -4551,10 +4716,13 @@ async function endMockSession(){
       <div class="mr-stat"><div class="n">${numQuestions}</div><div class="l">Questions</div></div>
     </div>
     <div style="display:flex;gap:8px;justify-content:center;margin-bottom:22px;flex-wrap:wrap;">
-      ${window.isSpeedDrill
-        ? `<button onclick="drillAgain()" style="display:flex;align-items:center;gap:7px;padding:11px 20px;font-family:var(--fd);font-size:13px;font-weight:700;color:#fff;background:linear-gradient(135deg,#6a3de8,#8b5cf6);border:none;border-radius:10px;cursor:pointer;box-shadow:0 4px 14px rgba(106,61,232,.35);">⚡ Drill Again</button>
-           <button class="btn-ghost" onclick="window.isSpeedDrill=false;navToSubject(window.lastExamSubject||'overview','speeddrill')">⏱ Back to Setup</button>`
-        : `<button class="btn-mock" onclick="navToSubject(window.lastExamSubject||'overview','mockbar')">⏱ New Session</button>`
+      ${window.isReviewSession
+        ? `<button onclick="window.isReviewSession=false;navToProgress()" style="display:flex;align-items:center;gap:7px;padding:11px 20px;font-family:var(--fd);font-size:13px;font-weight:700;color:var(--gold-l);background:rgba(212,168,67,.15);border:1px solid rgba(212,168,67,.35);border-radius:10px;cursor:pointer;">📊 My Progress</button>
+           <button class="btn-ghost" onclick="window.isReviewSession=false;checkDueReviews().catch(()=>{})">🔄 Review Again</button>`
+        : window.isSpeedDrill
+          ? `<button onclick="drillAgain()" style="display:flex;align-items:center;gap:7px;padding:11px 20px;font-family:var(--fd);font-size:13px;font-weight:700;color:#fff;background:linear-gradient(135deg,#6a3de8,#8b5cf6);border:none;border-radius:10px;cursor:pointer;box-shadow:0 4px 14px rgba(106,61,232,.35);">⚡ Drill Again</button>
+             <button class="btn-ghost" onclick="window.isSpeedDrill=false;navToSubject(window.lastExamSubject||'overview','speeddrill')">⏱ Back to Setup</button>`
+          : `<button class="btn-mock" onclick="navToSubject(window.lastExamSubject||'overview','mockbar')">⏱ New Session</button>`
       }
       <button class="btn-ghost" onclick="nav('learn',document.getElementById('tab-learn'))">📖 Back to Learn</button>
       <button class="btn-ghost" onclick="printMockResults()">🖨️ Print</button>
@@ -4587,6 +4755,7 @@ async function endMockSession(){
         }
         ${s.grade==='Not Answered'?'':`
         <div id="eval-card-${i}" class="ai-fb show" style="margin-top:8px;">${renderEvalCard(s)}</div>`}
+        ${(()=>{const srPrev=window._srReviewData?.[q.id];if(srPrev==null)return'';const ns=effectiveScore(s);if(ns>=8)return'<div class="sr-motivation sr-mastered">🎉 Mastered! This question won\'t resurface</div>';if(ns>srPrev)return`<div class="sr-motivation sr-improved">📈 Great improvement! Up from ${(+srPrev).toFixed(1)} to ${ns.toFixed(1)}</div>`;return`<div class="sr-motivation sr-retry">Keep practicing — rescheduled for 3 days (${(+srPrev).toFixed(1)} → ${ns.toFixed(1)})</div>`;})()}
         <details style="margin-top:8px;"><summary style="cursor:pointer;color:var(--muted);font-size:12px;font-weight:600;">Your answer</summary>
           <div style="margin-top:6px;padding:10px;background:rgba(255,255,255,.03);border-radius:8px;font-size:12px;line-height:1.7;color:rgba(248,246,241,.8);">${h(mockAnswers[i]||'(no answer)')}</div>
         </details>
@@ -5650,6 +5819,8 @@ async function onAuthSuccess(token, user) {
   navToOverview();
   // Check for an interrupted exam session and show resume banner
   checkForInterruptedExam().catch(() => {});
+  // Check for spaced repetition reviews due
+  checkDueReviews().catch(() => {});
 }
 
 function updateUserDisplay() {
