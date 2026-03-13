@@ -40,14 +40,15 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 
 
 // ── XP & Level System ─────────────────────────────────────────
 const XP_VALUES = {
-  COMPLETE_MOCK_BAR:        100,
-  COMPLETE_SPEED_DRILL:      40,
-  COMPLETE_REVIEW_SESSION:   60,
-  HIGH_SCORE_BONUS:          50,  // per question scoring 8.0+
-  DAILY_LOGIN:               10,  // once per day
-  STREAK_BONUS:              25,  // per day of active streak
-  FIRST_SUBJECT_COMPLETE:   200,  // one-time per subject
-  MASTER_SPACED_REP:         30,  // per question mastered
+  MOCK_BAR_FULL_BONUS:      1000,  // flat bonus when exactly 20 questions
+  MOCK_BAR_PER_QUESTION:      10,  // per question when partial (< 20)
+  COMPLETE_SPEED_DRILL:       40,  // flat per speed drill completion
+  HIGH_SCORE_BONUS:           50,  // per question scoring 8.0+ in any mode
+  DAILY_LOGIN:                10,  // once per day
+  STREAK_BONUS:               25,  // per day of active streak
+  FIRST_SUBJECT_COMPLETE:    200,  // one-time per subject
+  MASTER_SPACED_REP:          30,  // per question mastered
+  COMPLETE_REVIEW_SESSION:    60,  // spaced repetition review session
 };
 
 const LEVEL_THRESHOLDS = [
@@ -918,19 +919,42 @@ app.post('/api/results/save', requireAuth, async (req, res) => {
     let xpResult = null;
     try {
       const type = sessionType || 'mock_bar';
-      let action = 'COMPLETE_MOCK_BAR';
-      let desc   = `Completed Mock Bar — ${subjectKey}`;
-      if (type === 'speed_drill')   { action = 'COMPLETE_SPEED_DRILL';   desc = `Completed Speed Drill — ${subjectKey}`; }
-      if (type === 'review_session'){ action = 'COMPLETE_REVIEW_SESSION'; desc = 'Completed Spaced Repetition Review Session'; }
-
-      // High-score bonus: questions with individual score >= 8.0
       const highScoreCount = (questions || []).filter(q => (q.score || 0) >= 8.0).length;
-      const bonusXP = highScoreCount * XP_VALUES.HIGH_SCORE_BONUS;
+      const highScoreBonus = highScoreCount * XP_VALUES.HIGH_SCORE_BONUS;
 
-      xpResult = await awardXP(req.userId, action, desc, bonusXP);
+      if (type === 'speed_drill') {
+        // Speed Drill: flat 40 XP (from XP_VALUES) + optional high-score bonus
+        xpResult = await awardXP(
+          req.userId,
+          'COMPLETE_SPEED_DRILL',
+          `Completed Speed Drill — ${subjectKey}`,
+          highScoreBonus
+        );
+      } else if (type === 'review_session') {
+        xpResult = await awardXP(
+          req.userId,
+          'COMPLETE_REVIEW_SESSION',
+          'Completed Spaced Repetition Review Session',
+          0
+        );
+      } else {
+        // Mock Bar: full session (20q) = 1000 flat bonus; partial = 10 XP/question
+        const totalQuestions = questions?.length || questionCount;
+        const isFullSession  = totalQuestions === 20;
+        const baseXP = isFullSession
+          ? XP_VALUES.MOCK_BAR_FULL_BONUS
+          : totalQuestions * XP_VALUES.MOCK_BAR_PER_QUESTION;
+        xpResult = await awardXP(
+          req.userId,
+          isFullSession ? 'MOCK_BAR_FULL' : 'MOCK_BAR_PARTIAL',
+          `Completed Mock Bar — ${subjectKey} (${totalQuestions} question${totalQuestions !== 1 ? 's' : ''})`,
+          baseXP + highScoreBonus
+        );
+      }
+
       if (xpResult && highScoreCount > 0) {
         xpResult.highScoreCount = highScoreCount;
-        xpResult.highScoreBonus = bonusXP;
+        xpResult.highScoreBonus = highScoreBonus;
       }
     } catch(xpErr) { console.error('[XP] results/save error:', xpErr); }
 

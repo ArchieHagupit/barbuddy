@@ -2961,14 +2961,15 @@ async function renderXPLevelTab() {
     const { xp, level, title, xpToNextLevel, progressPercent, recentTransactions } = await r.json();
 
     const _ACTION_LABELS = {
-      COMPLETE_MOCK_BAR:       'Mock Bar',
-      COMPLETE_SPEED_DRILL:    'Speed Drill',
-      COMPLETE_REVIEW_SESSION: 'Review Session',
-      HIGH_SCORE_BONUS:        'High Score Bonus',
-      DAILY_LOGIN:             'Daily Login',
-      STREAK_BONUS:            'Streak Bonus',
-      FIRST_SUBJECT_COMPLETE:  'Subject Complete',
-      MASTER_SPACED_REP:       'Question Mastered',
+      MOCK_BAR_FULL:           'MOCK BAR ★',
+      MOCK_BAR_PARTIAL:        'MOCK BAR',
+      COMPLETE_SPEED_DRILL:    'SPEED DRILL',
+      COMPLETE_REVIEW_SESSION: 'REVIEW',
+      HIGH_SCORE_BONUS:        'HIGH SCORE',
+      DAILY_LOGIN:             'LOGIN',
+      STREAK_BONUS:            'STREAK',
+      FIRST_SUBJECT_COMPLETE:  'SUBJECT COMPLETE',
+      MASTER_SPACED_REP:       'MASTERED',
     };
 
     const fmtDate = ts => {
@@ -3051,12 +3052,13 @@ async function renderXPLevelTab() {
           <div class="prog-section-title">🎯 How to Earn XP</div>
           <div class="prog-subj-list" style="gap:8px;">
             ${[
-              ['Complete Mock Bar',      XP_CLIENT.COMPLETE_MOCK_BAR,       'per session'],
-              ['Complete Speed Drill',   XP_CLIENT.COMPLETE_SPEED_DRILL,    'per session'],
-              ['Complete Review Session',XP_CLIENT.COMPLETE_REVIEW_SESSION, 'per session'],
-              ['High Score Bonus',       XP_CLIENT.HIGH_SCORE_BONUS,        'per question ≥ 8.0'],
-              ['Master a Question',      XP_CLIENT.MASTER_SPACED_REP,       'first mastery only'],
-              ['Daily Login',            XP_CLIENT.DAILY_LOGIN,             'once per day'],
+              ['Mock Bar — Full (20 questions)', XP_CLIENT.MOCK_BAR_FULL_BONUS,    'flat bonus + high score bonuses'],
+              ['Mock Bar — Partial',             XP_CLIENT.MOCK_BAR_PER_QUESTION,  'per question answered'],
+              ['Speed Drill',                    XP_CLIENT.COMPLETE_SPEED_DRILL,   'flat per session'],
+              ['High Score Bonus',               XP_CLIENT.HIGH_SCORE_BONUS,       'per question ≥ 8.0'],
+              ['Review Session',                 XP_CLIENT.COMPLETE_REVIEW_SESSION,'per session'],
+              ['Master a Question',              XP_CLIENT.MASTER_SPACED_REP,      'first mastery only'],
+              ['Daily Login',                    XP_CLIENT.DAILY_LOGIN,            'once per day'],
             ].map(([label, val, note]) => `
               <div class="prog-subj-row" style="gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.04);">
                 <div style="flex:1;font-size:13px;color:var(--white);">${label}</div>
@@ -3080,7 +3082,8 @@ async function renderXPLevelTab() {
 
 // XP values exposed to client for the "how to earn" table
 const XP_CLIENT = {
-  COMPLETE_MOCK_BAR: 100, COMPLETE_SPEED_DRILL: 40, COMPLETE_REVIEW_SESSION: 60,
+  MOCK_BAR_FULL_BONUS: 1000, MOCK_BAR_PER_QUESTION: 10,
+  COMPLETE_SPEED_DRILL: 40, COMPLETE_REVIEW_SESSION: 60,
   HIGH_SCORE_BONUS: 50, DAILY_LOGIN: 10, STREAK_BONUS: 25,
   FIRST_SUBJECT_COMPLETE: 200, MASTER_SPACED_REP: 30,
 };
