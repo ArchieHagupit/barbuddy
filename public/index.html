@@ -87,6 +87,82 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .prog-empty-sub{font-size:14px;color:var(--muted);max-width:340px;line-height:1.7;margin-bottom:24px;}
 @media(max-width:700px){.prog-summary-row{grid-template-columns:repeat(2,1fr);} .prog-subj-name{width:90px;font-size:11px;}}
 
+/* ── Progress Page Tabs ──────────────────────────────────────── */
+.prog-tabs{display:flex;gap:8px;margin-bottom:22px;}
+.prog-tab-btn{display:flex;align-items:center;gap:7px;padding:10px 20px;font-family:var(--fd);font-size:13px;font-weight:700;border-radius:10px;border:1px solid var(--bdr2);background:transparent;color:var(--muted);cursor:pointer;transition:all .2s;}
+.prog-tab-btn:hover{color:var(--white);border-color:rgba(212,168,67,.35);}
+.prog-tab-btn.active{background:rgba(212,168,67,.12);border-color:rgba(212,168,67,.45);color:var(--gold-l);}
+
+/* ── XP & Level Tab ─────────────────────────────────────────── */
+.xp-hero{background:linear-gradient(135deg,rgba(212,168,67,.1),rgba(184,134,11,.05));border:1px solid rgba(212,168,67,.25);border-radius:16px;padding:24px 28px;display:flex;flex-direction:column;gap:12px;}
+.xp-hero-top{display:flex;align-items:center;gap:16px;}
+.xp-level-badge{width:64px;height:64px;border-radius:50%;background:linear-gradient(135deg,#b8860b,#d4a843);display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 4px 18px rgba(184,134,11,.35);}
+.xp-level-badge .lvl-num{font-family:var(--fd);font-size:22px;font-weight:800;color:#fff;line-height:1;}
+.xp-level-badge .lvl-lbl{font-size:8px;font-weight:700;letter-spacing:.08em;color:rgba(255,255,255,.75);text-transform:uppercase;}
+.xp-hero-info{flex:1;}
+.xp-title{font-family:var(--fd);font-size:22px;font-weight:700;color:var(--gold-l);line-height:1.2;}
+.xp-subtitle{font-size:13px;color:var(--muted);margin-top:4px;}
+.xp-bar-wrap{width:100%;}
+.xp-bar-track{height:14px;background:rgba(255,255,255,.07);border-radius:8px;overflow:hidden;position:relative;}
+.xp-bar-fill{height:100%;border-radius:8px;background:linear-gradient(90deg,#b8860b,#d4a843,#f0c455);transition:width .8s cubic-bezier(.4,0,.2,1);box-shadow:0 0 12px rgba(212,168,67,.4);}
+.xp-bar-meta{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:6px;}
+.xp-stats-row{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;}
+.xp-stat-card{background:var(--card2);border:1px solid var(--bdr);border-radius:12px;padding:16px;text-align:center;}
+.xp-stat-val{font-family:var(--fd);font-size:24px;font-weight:700;color:var(--gold-l);}
+.xp-stat-lbl{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-top:4px;}
+.xp-history-table{width:100%;border-collapse:collapse;}
+.xp-history-table th{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);padding:8px 12px;text-align:left;border-bottom:1px solid var(--bdr);}
+.xp-history-table td{padding:10px 12px;font-size:13px;border-bottom:1px solid rgba(255,255,255,.04);vertical-align:middle;}
+.xp-history-table tr:last-child td{border-bottom:none;}
+.xp-history-table .xp-earned{font-family:var(--fm);font-weight:700;color:#4dd4b0;text-align:right;}
+.xp-action-badge{display:inline-block;padding:2px 8px;border-radius:6px;font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;background:rgba(212,168,67,.12);color:var(--gold-l);border:1px solid rgba(212,168,67,.2);}
+
+/* ── Sidebar Level Badge ─────────────────────────────────────── */
+.sb-level-badge{display:inline-flex;align-items:center;gap:3px;background:rgba(184,134,11,.18);border:1px solid rgba(184,134,11,.35);border-radius:5px;padding:1px 6px;font-size:10px;font-weight:700;color:var(--gold-l);letter-spacing:.02em;flex-shrink:0;}
+
+/* ── XP Popup Overlay ────────────────────────────────────────── */
+.xp-popup-overlay{position:fixed;inset:0;background:rgba(5,8,18,.88);z-index:2000;display:flex;align-items:center;justify-content:center;padding:20px;}
+.xp-popup{background:var(--card);border:1px solid rgba(212,168,67,.3);border-radius:20px;padding:32px 36px;max-width:420px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.6),0 0 80px rgba(212,168,67,.08);}
+.xp-popup-title{font-family:var(--fd);font-size:22px;font-weight:800;color:var(--gold-l);text-align:center;margin-bottom:24px;}
+.xp-line-item{display:flex;justify-content:space-between;align-items:center;padding:8px 0;font-size:14px;opacity:0;transform:translateY(8px);transition:opacity .3s ease,transform .3s ease;}
+.xp-line-item.visible{opacity:1;transform:translateY(0);}
+.xp-line-label{color:var(--muted);}
+.xp-line-value{font-family:var(--fm);font-weight:700;color:#4dd4b0;}
+.xp-line-divider{height:1px;background:rgba(255,255,255,.08);margin:10px 0;}
+.xp-line-total{display:flex;justify-content:space-between;align-items:center;padding:10px 0;font-size:16px;font-weight:700;opacity:0;transform:translateY(8px);transition:opacity .3s ease,transform .3s ease;}
+.xp-line-total.visible{opacity:1;transform:translateY(0);}
+.xp-line-total .xp-line-value{font-size:20px;color:var(--gold-l);}
+.xp-popup-bar-wrap{margin:18px 0;}
+.xp-popup-bar-label{font-size:12px;color:var(--muted);margin-bottom:8px;display:flex;justify-content:space-between;}
+.xp-popup-bar-track{height:12px;background:rgba(255,255,255,.07);border-radius:8px;overflow:hidden;}
+.xp-popup-bar-fill{height:100%;border-radius:8px;background:linear-gradient(90deg,#b8860b,#d4a843);width:0%;transition:width 1s cubic-bezier(.4,0,.2,1);}
+.xp-popup .btn-view-results{width:100%;margin-top:18px;padding:14px;font-family:var(--fd);font-size:15px;font-weight:700;background:linear-gradient(135deg,rgba(212,168,67,.2),rgba(212,168,67,.1));border:1px solid rgba(212,168,67,.45);color:var(--gold-l);border-radius:12px;cursor:pointer;transition:all .2s;}
+.xp-popup .btn-view-results:hover{background:rgba(212,168,67,.25);}
+
+/* ── Level Up Modal ─────────────────────────────────────────── */
+.lvlup-overlay{position:fixed;inset:0;background:rgba(5,8,18,.92);z-index:2100;display:flex;align-items:center;justify-content:center;padding:20px;animation:fadeIn .3s ease;}
+.lvlup-modal{background:var(--card);border:1px solid rgba(212,168,67,.4);border-radius:20px;padding:36px;max-width:380px;width:100%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.7),0 0 100px rgba(212,168,67,.12);}
+.lvlup-icon{font-size:56px;margin-bottom:12px;animation:lvlupBounce .6s ease;}
+.lvlup-heading{font-family:var(--fd);font-size:28px;font-weight:800;color:var(--gold-l);margin-bottom:8px;}
+.lvlup-sub{font-size:15px;color:var(--muted);margin-bottom:20px;}
+.lvlup-arrow{font-family:var(--fd);font-size:22px;font-weight:700;color:var(--white);margin-bottom:6px;}
+.lvlup-new-title{font-family:var(--fd);font-size:26px;font-weight:800;letter-spacing:.03em;color:var(--gold-l);margin-bottom:18px;}
+.lvlup-bar-wrap{margin-bottom:22px;}
+.lvlup-bar-track{height:12px;background:rgba(255,255,255,.07);border-radius:8px;overflow:hidden;}
+.lvlup-bar-fill{height:100%;background:linear-gradient(90deg,#b8860b,#d4a843);border-radius:8px;width:0%;transition:width 1s .4s cubic-bezier(.4,0,.2,1);}
+.lvlup-btn{padding:13px 36px;font-family:var(--fd);font-size:14px;font-weight:700;background:linear-gradient(135deg,#b8860b,#d4a843);color:#fff;border:none;border-radius:12px;cursor:pointer;box-shadow:0 4px 16px rgba(184,134,11,.35);}
+@keyframes lvlupBounce{0%{transform:scale(0.5);opacity:0;}70%{transform:scale(1.15);}100%{transform:scale(1);opacity:1;}}
+@keyframes fadeIn{from{opacity:0;}to{opacity:1;}}
+
+/* ── Dashboard XP mini-bar ───────────────────────────────────── */
+.dash-xp-bar{background:var(--card2);border:1px solid var(--bdr);border-radius:14px;padding:16px 20px;display:flex;flex-direction:column;gap:8px;}
+.dash-xp-row{display:flex;align-items:center;justify-content:space-between;gap:10px;}
+.dash-xp-name{font-family:var(--fd);font-size:14px;font-weight:700;color:var(--white);}
+.dash-xp-level{font-size:12px;color:var(--muted);}
+.dash-xp-track{flex:1;height:8px;background:rgba(255,255,255,.07);border-radius:5px;overflow:hidden;}
+.dash-xp-fill{height:100%;background:linear-gradient(90deg,#b8860b,#d4a843);border-radius:5px;transition:width .8s ease;}
+.dash-xp-nums{font-size:11px;color:var(--muted);white-space:nowrap;}
+
 /* ── Bar Exam Countdown ────────────────────────────────────── */
 .cd-widget{text-align:center;background:linear-gradient(135deg,rgba(212,168,67,.07) 0%,rgba(15,20,35,0) 70%)!important;border-color:rgba(212,168,67,.25)!important;}
 .cd-title{font-family:var(--fd);font-size:17px;font-weight:700;color:var(--gold-l);margin-bottom:18px;letter-spacing:.02em;}
@@ -972,6 +1048,25 @@ select.form-input{cursor:pointer;}
 
   <div id="accessControlBadge" style="display:none;margin:8px 12px;padding:8px 12px;background:rgba(155,35,53,0.15);border:1px solid rgba(155,35,53,0.3);border-radius:10px;font-size:11px;color:#e07080;cursor:pointer;" onclick="scrollToTabControl()">
     🔒 Some sections disabled — <u>Manage access</u>
+  </div>
+
+  <!-- Sidebar XP mini-bar -->
+  <div id="sbXpSection" style="display:none;margin:8px 12px 12px;">
+    <div class="dash-xp-bar" onclick="navToProgress('xp')" style="cursor:pointer;">
+      <div class="dash-xp-row">
+        <div>
+          <div class="dash-xp-name" id="sbXpName"></div>
+          <div class="dash-xp-level" id="sbXpLevel"></div>
+        </div>
+        <div class="sb-level-badge" id="sbLevelBadge"></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div class="dash-xp-track" style="flex:1;">
+          <div class="dash-xp-fill" id="sbXpFill" style="width:0%"></div>
+        </div>
+        <div class="dash-xp-nums" id="sbXpNums"></div>
+      </div>
+    </div>
   </div>
 </aside>
 
@@ -2510,19 +2605,52 @@ function _renderSRStats(srStats) {
 }
 
 // ── My Progress ────────────────────────────────────────────────
-function navToProgress() {
+let _progressActiveTab = 'progress'; // 'progress' | 'xp'
+
+function navToProgress(tab) {
   currentSubject = null; currentMode = null;
   clearSidebarActive();
   document.getElementById('sb-progress')?.classList.add('active');
   showPage('progress');
   updateBreadcrumb(null, null);
-  renderProgressDashboard();
+  if (tab) _progressActiveTab = tab;
+  renderProgressPage();
+}
+
+function switchProgressTab(tab) {
+  _progressActiveTab = tab;
+  renderProgressPage();
+}
+
+async function renderProgressPage() {
+  const container = document.getElementById('progressContainer');
+  if (!container) return;
+
+  const tabBar = `
+    <div class="prog-tabs">
+      <button class="prog-tab-btn${_progressActiveTab === 'progress' ? ' active' : ''}" onclick="switchProgressTab('progress')">📊 My Progress</button>
+      <button class="prog-tab-btn${_progressActiveTab === 'xp' ? ' active' : ''}" onclick="switchProgressTab('xp')">⚡ XP &amp; Level</button>
+    </div>`;
+
+  if (_progressActiveTab === 'xp') {
+    container.innerHTML = tabBar + '<div id="xpLevelContent"><div style="text-align:center;padding:60px;color:var(--muted);">Loading XP data…</div></div>';
+    renderXPLevelTab();
+  } else {
+    container.innerHTML = tabBar + '<div id="progressDashContent"></div>';
+    // Temporarily swap container target so renderProgressDashboard fills the inner div
+    const orig = document.getElementById('progressContainer');
+    const inner = document.getElementById('progressDashContent');
+    // Patch: render into inner div
+    await _renderProgressDashboardInto(inner);
+  }
 }
 
 let _progScoreChart = null;
 
-async function renderProgressDashboard() {
-  const container = document.getElementById('progressContainer');
+// Keep the old name as an alias so any other callers still work
+async function renderProgressDashboard() { return renderProgressPage(); }
+
+async function _renderProgressDashboardInto(container) {
   if (!container) return;
   container.innerHTML = '<div style="text-align:center;padding:60px;color:var(--muted);">Loading your progress…</div>';
 
@@ -2822,6 +2950,140 @@ async function renderProgressDashboard() {
     _startCountdown();
   } catch(e) { /* non-critical — progress page still works */ }
 }
+
+// ── XP & Level Tab ────────────────────────────────────────────
+async function renderXPLevelTab() {
+  const container = document.getElementById('xpLevelContent');
+  if (!container) return;
+  try {
+    const r = await fetch('/api/xp/summary', { headers: { 'x-session-token': sessionToken } });
+    if (!r.ok) throw new Error('Failed to load XP');
+    const { xp, level, title, xpToNextLevel, progressPercent, recentTransactions } = await r.json();
+
+    const _ACTION_LABELS = {
+      COMPLETE_MOCK_BAR:       'Mock Bar',
+      COMPLETE_SPEED_DRILL:    'Speed Drill',
+      COMPLETE_REVIEW_SESSION: 'Review Session',
+      HIGH_SCORE_BONUS:        'High Score Bonus',
+      DAILY_LOGIN:             'Daily Login',
+      STREAK_BONUS:            'Streak Bonus',
+      FIRST_SUBJECT_COMPLETE:  'Subject Complete',
+      MASTER_SPACED_REP:       'Question Mastered',
+    };
+
+    const fmtDate = ts => {
+      const d = new Date(ts);
+      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    };
+
+    const histRows = recentTransactions.length
+      ? recentTransactions.map(t => `
+          <tr>
+            <td style="color:var(--muted);">${fmtDate(t.created_at)}</td>
+            <td>${t.description || _ACTION_LABELS[t.action] || t.action}</td>
+            <td><span class="xp-action-badge">${_ACTION_LABELS[t.action] || t.action}</span></td>
+            <td class="xp-earned">+${t.xp_earned} XP</td>
+          </tr>`).join('')
+      : `<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:24px;">No XP earned yet — complete a session to get started!</td></tr>`;
+
+    container.innerHTML = `
+      <div class="prog-page">
+        <!-- Hero: Level + XP bar -->
+        <div class="xp-hero">
+          <div class="xp-hero-top">
+            <div class="xp-level-badge">
+              <div class="lvl-num">${level}</div>
+              <div class="lvl-lbl">Level</div>
+            </div>
+            <div class="xp-hero-info">
+              <div class="xp-title">${h(title)}</div>
+              <div class="xp-subtitle">${xp.toLocaleString()} XP total${xpToNextLevel > 0 ? ` · ${xpToNextLevel.toLocaleString()} XP to Level ${level + 1}` : ' · Max level!'}</div>
+            </div>
+          </div>
+          <div class="xp-bar-wrap">
+            <div class="xp-bar-track">
+              <div class="xp-bar-fill" id="xpHeroBarFill" style="width:0%"></div>
+            </div>
+            <div class="xp-bar-meta">
+              <span>Level ${level}</span>
+              <span>${progressPercent}%</span>
+              <span>${xpToNextLevel > 0 ? 'Level ' + (level + 1) : 'MAX'}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Stats row -->
+        <div class="xp-stats-row">
+          <div class="xp-stat-card">
+            <div class="xp-stat-val">${xp.toLocaleString()}</div>
+            <div class="xp-stat-lbl">Total XP</div>
+          </div>
+          <div class="xp-stat-card">
+            <div class="xp-stat-val">${level}</div>
+            <div class="xp-stat-lbl">Current Level</div>
+          </div>
+          <div class="xp-stat-card">
+            <div class="xp-stat-val">${xpToNextLevel > 0 ? xpToNextLevel.toLocaleString() : '—'}</div>
+            <div class="xp-stat-lbl">XP to Next</div>
+          </div>
+        </div>
+
+        <!-- XP History -->
+        <div class="prog-section">
+          <div class="prog-section-title">⚡ XP History</div>
+          <div style="overflow-x:auto;">
+            <table class="xp-history-table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Description</th>
+                  <th>Action</th>
+                  <th style="text-align:right;">XP</th>
+                </tr>
+              </thead>
+              <tbody>${histRows}</tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- How to earn XP -->
+        <div class="prog-section">
+          <div class="prog-section-title">🎯 How to Earn XP</div>
+          <div class="prog-subj-list" style="gap:8px;">
+            ${[
+              ['Complete Mock Bar',      XP_CLIENT.COMPLETE_MOCK_BAR,       'per session'],
+              ['Complete Speed Drill',   XP_CLIENT.COMPLETE_SPEED_DRILL,    'per session'],
+              ['Complete Review Session',XP_CLIENT.COMPLETE_REVIEW_SESSION, 'per session'],
+              ['High Score Bonus',       XP_CLIENT.HIGH_SCORE_BONUS,        'per question ≥ 8.0'],
+              ['Master a Question',      XP_CLIENT.MASTER_SPACED_REP,       'first mastery only'],
+              ['Daily Login',            XP_CLIENT.DAILY_LOGIN,             'once per day'],
+            ].map(([label, val, note]) => `
+              <div class="prog-subj-row" style="gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.04);">
+                <div style="flex:1;font-size:13px;color:var(--white);">${label}</div>
+                <div style="font-size:11px;color:var(--muted);">${note}</div>
+                <div style="font-family:var(--fm);font-weight:700;color:#4dd4b0;min-width:60px;text-align:right;">+${val} XP</div>
+              </div>`).join('')}
+          </div>
+        </div>
+      </div>`;
+
+    // Animate the XP bar
+    requestAnimationFrame(() => {
+      const fill = document.getElementById('xpHeroBarFill');
+      if (fill) setTimeout(() => { fill.style.width = progressPercent + '%'; }, 100);
+    });
+  } catch(e) {
+    const container2 = document.getElementById('xpLevelContent');
+    if (container2) container2.innerHTML = `<div style="text-align:center;padding:60px;color:#e07080;">Could not load XP data.</div>`;
+  }
+}
+
+// XP values exposed to client for the "how to earn" table
+const XP_CLIENT = {
+  COMPLETE_MOCK_BAR: 100, COMPLETE_SPEED_DRILL: 40, COMPLETE_REVIEW_SESSION: 60,
+  HIGH_SCORE_BONUS: 50, DAILY_LOGIN: 10, STREAK_BONUS: 25,
+  FIRST_SUBJECT_COMPLETE: 200, MASTER_SPACED_REP: 30,
+};
 
 function navToCustom() {
   currentSubject = 'custom'; currentMode = 'mockbar';
@@ -4840,13 +5102,24 @@ async function endMockSession(){
   const avg=Math.round(rawScore/numQuestions*10)/10;
   const pct=maxScore>0?Math.round(rawScore/maxScore*100):0;
   totalQDone+=answered;totalCorrect+=Math.round(pct/100*answered);updateDash();
-  saveMockBarResults(scores.map((s,i)=>({q:(mockQs[i]?.prompt||mockQs[i]?.q||'').slice(0,120),score:effectiveScore(s),max:10,improvements:s.improvements||[],keyMissed:s.keyMissed||[]})));
+
+  // Determine session type for XP
+  const _sessionType = window.isReviewSession ? 'review_session' : window.isSpeedDrill ? 'speed_drill' : 'mock_bar';
+  const xpResult = await saveMockBarResults(
+    scores.map((s,i)=>({q:(mockQs[i]?.prompt||mockQs[i]?.q||'').slice(0,120),score:effectiveScore(s),max:10,improvements:s.improvements||[],keyMissed:s.keyMissed||[]})),
+    _sessionType
+  );
 
   // Pre-fill email modal subject
   const emailSubj=`BarBuddy Mock Bar Results — ${new Date().toLocaleDateString('en-PH')} — ${fmt(rawScore)}/${maxScore} (${pct}%)`;
   document.getElementById('email-subject').value=emailSubj;
 
-  res.innerHTML=`<div class="mock-results">
+  // Capture current session flags before async gap resets them
+  const _isReview = !!window.isReviewSession;
+  const _isDrill  = !!window.isSpeedDrill;
+
+  function _renderResults() {
+    res.innerHTML=`<div class="mock-results">
     ${currentUser?`<div style="background:rgba(201,168,76,.07);border:1px solid rgba(201,168,76,.18);border-radius:9px;padding:8px 14px;margin-bottom:14px;text-align:left;"><div class="result-user">👤 ${h(currentUser.name)}</div><div style="font-size:11px;color:var(--muted);">${new Date().toLocaleDateString('en-PH')}</div></div>`:''}
     <div style="font-size:32px;margin-bottom:8px;">🏛</div>
     <div style="font-family:var(--fd);font-size:20px;font-weight:700;color:#ff8c42;margin-bottom:4px;">Mock Bar Results</div>
@@ -4859,10 +5132,10 @@ async function endMockSession(){
       <div class="mr-stat"><div class="n">${numQuestions}</div><div class="l">Questions</div></div>
     </div>
     <div style="display:flex;gap:8px;justify-content:center;margin-bottom:22px;flex-wrap:wrap;">
-      ${window.isReviewSession
+      ${_isReview
         ? `<button onclick="window.isReviewSession=false;navToProgress()" style="display:flex;align-items:center;gap:7px;padding:11px 20px;font-family:var(--fd);font-size:13px;font-weight:700;color:var(--gold-l);background:rgba(212,168,67,.15);border:1px solid rgba(212,168,67,.35);border-radius:10px;cursor:pointer;">📊 My Progress</button>
            <button class="btn-ghost" onclick="window.isReviewSession=false;checkDueReviews().catch(()=>{})">🔄 Review Again</button>`
-        : window.isSpeedDrill
+        : _isDrill
           ? `<button onclick="drillAgain()" style="display:flex;align-items:center;gap:7px;padding:11px 20px;font-family:var(--fd);font-size:13px;font-weight:700;color:#fff;background:linear-gradient(135deg,#6a3de8,#8b5cf6);border:none;border-radius:10px;cursor:pointer;box-shadow:0 4px 14px rgba(106,61,232,.35);">⚡ Drill Again</button>
              <button class="btn-ghost" onclick="window.isSpeedDrill=false;navToSubject(window.lastExamSubject||'overview','speeddrill')">⏱ Back to Setup</button>`
           : `<button class="btn-mock" onclick="navToSubject(window.lastExamSubject||'overview','mockbar')">⏱ New Session</button>`
@@ -4873,7 +5146,6 @@ async function endMockSession(){
     </div>
     <h3 style="font-family:var(--fd);font-size:20px;font-weight:700;color:var(--gold-l);margin-bottom:14px;text-align:left;">📋 Question Review</h3>
     ${mockQs.map((q,i)=>{
-      // Merge original question's modelAnswer/keyPoints into score so renderEvalCard can show them
       const s={...scores[i],_qIdx:i};
       if(!s.modelAnswer&&q.modelAnswer)s.modelAnswer=q.modelAnswer;
       if(!s.keyPoints?.length&&q.keyPoints?.length)s.keyPoints=q.keyPoints;
@@ -4905,6 +5177,14 @@ async function endMockSession(){
       </div>`;
     }).join('')}
   </div>`;
+  }
+
+  // Show XP popup first if we earned XP, then reveal results
+  if (xpResult && xpResult.xpEarned > 0 && sessionToken) {
+    showXPPopup(xpResult, _renderResults);
+  } else {
+    _renderResults();
+  }
 }
 
 // ══════════════════════════════════
@@ -5973,16 +6253,46 @@ function updateUserDisplay() {
   const disp    = document.getElementById('userNameDisplay');
   const logBtn  = document.getElementById('logoutBtn');
   const cpBtn   = document.getElementById('changePwdBtn');
+  const sbXp    = document.getElementById('sbXpSection');
   if (currentUser) {
-    disp.textContent = currentUser.name;
+    disp.textContent     = currentUser.name;
     disp.style.display   = '';
     logBtn.style.display = '';
     if (cpBtn) cpBtn.style.display = '';
+    // Populate sidebar XP section asynchronously
+    if (sbXp && sessionToken) {
+      sbXp.style.display = 'block';
+      document.getElementById('sbXpName').textContent = currentUser.name;
+      refreshSidebarXP();
+    }
   } else {
     disp.style.display   = 'none';
     logBtn.style.display = 'none';
     if (cpBtn) cpBtn.style.display = 'none';
+    if (sbXp) sbXp.style.display = 'none';
   }
+}
+
+async function refreshSidebarXP() {
+  if (!sessionToken) return;
+  try {
+    const r = await fetch('/api/xp/summary', { headers: { 'x-session-token': sessionToken } });
+    if (!r.ok) return;
+    const { xp, level, title, xpToNextLevel, progressPercent } = await r.json();
+    const badge  = document.getElementById('sbLevelBadge');
+    const lvlEl  = document.getElementById('sbXpLevel');
+    const fill   = document.getElementById('sbXpFill');
+    const nums   = document.getElementById('sbXpNums');
+    if (badge)  badge.textContent  = `Lvl ${level}`;
+    if (lvlEl)  lvlEl.textContent  = title;
+    if (nums)   nums.textContent   = `${xp.toLocaleString()} XP`;
+    if (fill)   setTimeout(() => { fill.style.width = progressPercent + '%'; }, 200);
+    // Also update topbar display with level badge
+    const disp = document.getElementById('userNameDisplay');
+    if (disp && currentUser) {
+      disp.innerHTML = `${h(currentUser.name)} <span class="sb-level-badge" style="margin-left:6px;">Lvl ${level}</span>`;
+    }
+  } catch(e) { /* non-critical */ }
 }
 
 async function doLogout() {
@@ -6083,8 +6393,8 @@ async function dismissResetRequest(requestId) {
 // ══════════════════════════════════
 // SAVE MOCK BAR RESULTS
 // ══════════════════════════════════
-async function saveMockBarResults(scores) {
-  if (!sessionToken || !currentUser) return;
+async function saveMockBarResults(scores, sessionType = 'mock_bar') {
+  if (!sessionToken || !currentUser) return null;
   const total    = mockQs.length || scores.length;
   const scoreSum = scores.reduce((a,s) => a + (s.score||0), 0);
   const timeTaken = window.mockStartTime ? Date.now() - window.mockStartTime : null;
@@ -6092,6 +6402,7 @@ async function saveMockBarResults(scores) {
     questionCount: total,
     answerCount: mockAnswers.filter(a => a?.trim()).length,
     subject: currentSubject,
+    sessionType,
   });
   try {
     const r = await fetch('/api/results/save', {
@@ -6103,11 +6414,13 @@ async function saveMockBarResults(scores) {
         subject:     currentSubject || 'Mock Bar',
         questions:   scores.map(s => ({ q: s.q, score: s.score, max: s.max, improvements: s.improvements||[], keyMissed: s.keyMissed||[] })),
         timeTakenMs: timeTaken,
+        sessionType,
       }),
     });
     const data = await r.json();
     if (data.id) window.mockResultId = data.id;
-  } catch(e) { console.warn('Could not save results:', e.message); }
+    return data.xpResult || null;
+  } catch(e) { console.warn('Could not save results:', e.message); return null; }
 }
 
 // ══════════════════════════════════
@@ -7275,6 +7588,111 @@ function goToFlaggedQuestion(idx) {
   saveMock();
   mockIdx = idx;
   renderMockQ();
+}
+
+// ══════════════════════════════════
+// XP POPUP & LEVEL UP MODAL
+// ══════════════════════════════════
+
+function showXPPopup(xpResult, onContinue) {
+  const { xpEarned, highScoreCount, highScoreBonus, newLevel, newXP, progressPercent, xpToNextLevel } = xpResult;
+  const sessionBase = xpEarned - (highScoreBonus || 0);
+
+  const lines = [];
+  if (sessionBase > 0)       lines.push({ label: 'Session Complete', value: sessionBase });
+  if (highScoreCount > 0)    lines.push({ label: `${highScoreCount}× High Score (×${XP_CLIENT.HIGH_SCORE_BONUS})`, value: highScoreBonus });
+
+  const overlay = document.createElement('div');
+  overlay.className = 'xp-popup-overlay';
+  overlay.id = 'xpPopupOverlay';
+  overlay.innerHTML = `
+    <div class="xp-popup">
+      <div class="xp-popup-title">✨ XP Earned!</div>
+      ${lines.map((l, i) => `
+        <div class="xp-line-item" id="xp-line-${i}">
+          <span class="xp-line-label">${h(l.label)}</span>
+          <span class="xp-line-value">+${l.value} XP</span>
+        </div>`).join('')}
+      <div class="xp-line-divider"></div>
+      <div class="xp-line-total" id="xp-line-total">
+        <span>Total</span>
+        <span class="xp-line-value">+${xpEarned} XP</span>
+      </div>
+      <div class="xp-popup-bar-wrap">
+        <div class="xp-popup-bar-label">
+          <span>Level ${newLevel}</span>
+          <span>${progressPercent}% · ${xpToNextLevel > 0 ? xpToNextLevel.toLocaleString() + ' XP to next level' : 'Max level!'}</span>
+        </div>
+        <div class="xp-popup-bar-track">
+          <div class="xp-popup-bar-fill" id="xpPopupBarFill"></div>
+        </div>
+      </div>
+      <button class="btn-view-results" id="xpPopupContinueBtn">View Results →</button>
+    </div>`;
+  document.body.appendChild(overlay);
+
+  // Stagger-animate line items
+  lines.forEach((_, i) => {
+    setTimeout(() => {
+      document.getElementById(`xp-line-${i}`)?.classList.add('visible');
+    }, 200 + i * 250);
+  });
+  setTimeout(() => {
+    document.getElementById('xp-line-total')?.classList.add('visible');
+  }, 200 + lines.length * 250);
+  // Animate XP bar
+  setTimeout(() => {
+    const fill = document.getElementById('xpPopupBarFill');
+    if (fill) fill.style.width = progressPercent + '%';
+  }, 300 + lines.length * 250);
+
+  document.getElementById('xpPopupContinueBtn').onclick = () => {
+    overlay.remove();
+    if (xpResult.leveledUp || xpResult.titleChanged) {
+      showLevelUpModal(xpResult, onContinue);
+    } else {
+      onContinue();
+    }
+  };
+}
+
+function showLevelUpModal(xpResult, onContinue) {
+  const { oldLevel, newLevel, oldTitle, newTitle, titleChanged, progressPercent } = xpResult;
+  const overlay = document.createElement('div');
+  overlay.className = 'lvlup-overlay';
+  overlay.id = 'lvlupOverlay';
+
+  if (titleChanged) {
+    overlay.innerHTML = `
+      <div class="lvlup-modal">
+        <div class="lvlup-icon">⭐</div>
+        <div class="lvlup-heading">NEW TITLE UNLOCKED!</div>
+        <div class="lvlup-sub">You are now a…</div>
+        <div class="lvlup-new-title">${h(newTitle).toUpperCase()}</div>
+        <div style="font-size:13px;color:var(--muted);margin-bottom:22px;">(was ${h(oldTitle)})</div>
+        <button class="lvlup-btn" onclick="document.getElementById('lvlupOverlay').remove();${onContinue ? '(window._lvlupCb&&window._lvlupCb())' : ''}">Continue</button>
+      </div>`;
+  } else {
+    overlay.innerHTML = `
+      <div class="lvlup-modal">
+        <div class="lvlup-icon">🎉</div>
+        <div class="lvlup-heading">LEVEL UP!</div>
+        <div class="lvlup-arrow">Level ${oldLevel} → Level ${newLevel}</div>
+        <div class="lvlup-new-title">${h(newTitle)}</div>
+        <div class="lvlup-bar-wrap">
+          <div class="lvlup-bar-track"><div class="lvlup-bar-fill" id="lvlupBarFill"></div></div>
+        </div>
+        <button class="lvlup-btn" onclick="document.getElementById('lvlupOverlay').remove();${onContinue ? '(window._lvlupCb&&window._lvlupCb())' : ''}">Continue</button>
+      </div>`;
+  }
+  document.body.appendChild(overlay);
+  window._lvlupCb = onContinue;
+
+  // Animate bar
+  setTimeout(() => {
+    const fill = document.getElementById('lvlupBarFill');
+    if (fill) fill.style.width = progressPercent + '%';
+  }, 500);
 }
 </script>
 

@@ -37,6 +37,102 @@ const supabase = createClient(
 );
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
+
+// ── XP & Level System ─────────────────────────────────────────
+const XP_VALUES = {
+  COMPLETE_MOCK_BAR:        100,
+  COMPLETE_SPEED_DRILL:      40,
+  COMPLETE_REVIEW_SESSION:   60,
+  HIGH_SCORE_BONUS:          50,  // per question scoring 8.0+
+  DAILY_LOGIN:               10,  // once per day
+  STREAK_BONUS:              25,  // per day of active streak
+  FIRST_SUBJECT_COMPLETE:   200,  // one-time per subject
+  MASTER_SPACED_REP:         30,  // per question mastered
+};
+
+const LEVEL_THRESHOLDS = [
+  0, 100, 200, 350, 500, 700, 900, 1150, 1400, 1700,
+  2000, 2400, 2800, 3300, 3800, 4400, 5000, 5700, 6400, 7200,
+  8000, 9000, 10000, 11200, 12400, 13800, 15200, 16800, 18400, 20200,
+  22000, 24200, 26400, 28800, 31200, 33800, 36400, 39200, 42000, 45000,
+  48000, 51500, 55000, 58800, 62600, 66600, 70600, 74800, 79000, 83500,
+  88000, 93000, 98000, 103500, 109000, 115000, 121000, 127500, 134000, 141000,
+  148000, 156000, 164000, 172500, 181000, 190000, 199000, 208500, 218000, 228000,
+  238000, 249000, 260000, 271500, 283000, 295000, 307000, 319500, 332000, 345000,
+  358500, 372500, 386500, 401000, 415500, 430500, 445500, 461000, 476500, 492500,
+  509000, 526000, 543000, 560500, 578000, 596000, 614000, 632500, 651000, 100000000,
+];
+
+function getLevelFromXP(xp) {
+  for (let i = LEVEL_THRESHOLDS.length - 1; i >= 0; i--) {
+    if (xp >= LEVEL_THRESHOLDS[i]) return i + 1;
+  }
+  return 1;
+}
+
+function getTitleFromLevel(level) {
+  if (level >= 100) return 'Attorney-at-Law';
+  if (level >= 91)  return 'Senior Partner';
+  if (level >= 71)  return 'Partner';
+  if (level >= 51)  return 'Senior Counsel';
+  if (level >= 31)  return 'Junior Counsel';
+  if (level >= 11)  return 'Associate';
+  return 'Law Student';
+}
+
+function getXPForNextLevel(currentLevel) {
+  return LEVEL_THRESHOLDS[currentLevel] || null;
+}
+
+async function awardXP(userId, action, description, bonusXP = 0) {
+  try {
+    const xpEarned = (XP_VALUES[action] || 0) + bonusXP;
+    if (xpEarned <= 0) return null;
+
+    const { data: user } = await supabase
+      .from('users')
+      .select('xp, level')
+      .eq('id', userId)
+      .single();
+
+    const oldXP    = user?.xp    || 0;
+    const oldLevel = user?.level || 1;
+    const newXP    = oldXP + xpEarned;
+    const newLevel = getLevelFromXP(newXP);
+    const leveledUp = newLevel > oldLevel;
+    const newTitle   = getTitleFromLevel(newLevel);
+    const oldTitle   = getTitleFromLevel(oldLevel);
+    const titleChanged = newTitle !== oldTitle;
+
+    await supabase.from('users').update({ xp: newXP, level: newLevel }).eq('id', userId);
+
+    await supabase.from('xp_transactions').insert({
+      id: `xp_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+      user_id: userId,
+      xp_earned: xpEarned,
+      action,
+      description,
+    });
+
+    const nextLevelXP = getXPForNextLevel(newLevel);
+    const curLevelXP  = LEVEL_THRESHOLDS[newLevel - 1] || 0;
+    const rangeXP     = (nextLevelXP || curLevelXP + 1) - curLevelXP;
+    const progressPercent = nextLevelXP
+      ? Math.floor(((newXP - curLevelXP) / rangeXP) * 100)
+      : 100;
+
+    return {
+      xpEarned, oldXP, newXP, oldLevel, newLevel,
+      leveledUp, oldTitle, newTitle, titleChanged,
+      xpToNextLevel: nextLevelXP ? nextLevelXP - newXP : 0,
+      progressPercent,
+    };
+  } catch (err) {
+    console.error('[XP] Award error:', err);
+    return null;
+  }
+}
+
 // Disk-storage multer for syllabus PDFs — files saved directly to SYLLABUS_PDFS_DIR
 // (SYLLABUS_PDFS_DIR is defined below; multer is configured lazily via a factory)
 function makeSyllabusUpload() {
@@ -669,6 +765,12 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(403).json({ error: 'account_disabled', message: 'Your account has been disabled. Please contact the admin.' });
     }
     const token = await createSession(user.id);
+    // Daily login XP (once per calendar day)
+    const today = new Date().toISOString().split('T')[0];
+    if (user.last_login_xp_date !== today) {
+      await supabase.from('users').update({ last_login_xp_date: today }).eq('id', user.id);
+      awardXP(user.id, 'DAILY_LOGIN', 'Daily login bonus').catch(() => {});
+    }
     const u = mapUser(user);
     res.json({ token, user: { id: u.id, name: u.name, email: u.email, role: u.role, isAdmin: u.isAdmin } });
   } catch(e) { res.status(500).json({ error: e.message }); }
@@ -793,7 +895,7 @@ app.patch('/api/admin/settings', adminOnly, async (req, res) => {
 // ── Results routes ────────────────────────────────────────────
 app.post('/api/results/save', requireAuth, async (req, res) => {
   try {
-    const { score, total, subject, questions, timeTakenMs } = req.body || {};
+    const { score, total, subject, questions, timeTakenMs, sessionType } = req.body || {};
     const questionCount = questions?.length || total || 0;
     if (score === undefined || !questionCount) return res.status(400).json({ error: 'score and total required' });
     // Normalise subject: strip display names, keep the subject key (e.g. "commercial" not "Mock Bar")
@@ -811,7 +913,57 @@ app.post('/api/results/save', requireAuth, async (req, res) => {
     // Increment mock_bar_count on user
     const { data: uData } = await supabase.from('users').select('mock_bar_count').eq('id', req.userId).single();
     await supabase.from('users').update({ mock_bar_count: (uData?.mock_bar_count || 0) + 1 }).eq('id', req.userId);
-    res.json({ ok: true, id });
+
+    // ── Award XP ────────────────────────────────────────────────
+    let xpResult = null;
+    try {
+      const type = sessionType || 'mock_bar';
+      let action = 'COMPLETE_MOCK_BAR';
+      let desc   = `Completed Mock Bar — ${subjectKey}`;
+      if (type === 'speed_drill')   { action = 'COMPLETE_SPEED_DRILL';   desc = `Completed Speed Drill — ${subjectKey}`; }
+      if (type === 'review_session'){ action = 'COMPLETE_REVIEW_SESSION'; desc = 'Completed Spaced Repetition Review Session'; }
+
+      // High-score bonus: questions with individual score >= 8.0
+      const highScoreCount = (questions || []).filter(q => (q.score || 0) >= 8.0).length;
+      const bonusXP = highScoreCount * XP_VALUES.HIGH_SCORE_BONUS;
+
+      xpResult = await awardXP(req.userId, action, desc, bonusXP);
+      if (xpResult && highScoreCount > 0) {
+        xpResult.highScoreCount = highScoreCount;
+        xpResult.highScoreBonus = bonusXP;
+      }
+    } catch(xpErr) { console.error('[XP] results/save error:', xpErr); }
+
+    res.json({ ok: true, id, xpResult });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── XP Summary ───────────────────────────────────────────────
+app.get('/api/xp/summary', requireAuth, async (req, res) => {
+  try {
+    const { data: user } = await supabase
+      .from('users')
+      .select('xp, level')
+      .eq('id', req.userId)
+      .single();
+
+    const xp    = user?.xp    || 0;
+    const level = user?.level || 1;
+    const title = getTitleFromLevel(level);
+    const nextLevelXP  = getXPForNextLevel(level);
+    const curLevelXP   = LEVEL_THRESHOLDS[level - 1] || 0;
+    const rangeXP      = (nextLevelXP || curLevelXP + 1) - curLevelXP;
+    const progressPercent = nextLevelXP ? Math.floor(((xp - curLevelXP) / rangeXP) * 100) : 100;
+    const xpToNextLevel   = nextLevelXP ? nextLevelXP - xp : 0;
+
+    const { data: recent } = await supabase
+      .from('xp_transactions')
+      .select('id, xp_earned, action, description, created_at')
+      .eq('user_id', req.userId)
+      .order('created_at', { ascending: false })
+      .limit(20);
+
+    res.json({ xp, level, title, xpToNextLevel, progressPercent, recentTransactions: recent || [] });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -2858,13 +3010,22 @@ Respond ONLY with valid JSON: {"score":"X/10","numericScore":0,"grade":"...","br
         const mastered   = srScore >= 8;
         const nextReviewAt = reviewDays ? new Date(Date.now() + reviewDays * 86400000).toISOString() : null;
         const srId = `sr_${job.userId}_${questionId}`;
-        supabase.from('spaced_repetition').select('review_count').eq('id', srId).single()
-          .then(({ data: ex }) => supabase.from('spaced_repetition').upsert({
-            id: srId, user_id: job.userId, question_id: questionId, subject,
-            last_score: srScore, last_attempted_at: new Date().toISOString(),
-            next_review_at: nextReviewAt, review_count: (ex?.review_count || 0) + 1, mastered,
-          }, { onConflict: 'user_id,question_id' }))
-          .then(({ error: e }) => { if (e) console.warn('[sr-upsert]', e.message); })
+        supabase.from('spaced_repetition').select('review_count, mastered').eq('id', srId).single()
+          .then(({ data: ex }) => {
+            const wasAlreadyMastered = ex?.mastered || false;
+            return supabase.from('spaced_repetition').upsert({
+              id: srId, user_id: job.userId, question_id: questionId, subject,
+              last_score: srScore, last_attempted_at: new Date().toISOString(),
+              next_review_at: nextReviewAt, review_count: (ex?.review_count || 0) + 1, mastered,
+            }, { onConflict: 'user_id,question_id' })
+              .then(({ error: e }) => {
+                if (e) { console.warn('[sr-upsert]', e.message); return; }
+                // Award XP the first time a question is mastered
+                if (mastered && !wasAlreadyMastered) {
+                  awardXP(job.userId, 'MASTER_SPACED_REP', `Mastered question: ${questionId}`).catch(() => {});
+                }
+              });
+          })
           .catch(e => console.warn('[sr-upsert]', e.message));
       }
     }
