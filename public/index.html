@@ -87,6 +87,20 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .prog-empty-sub{font-size:14px;color:var(--muted);max-width:340px;line-height:1.7;margin-bottom:24px;}
 @media(max-width:700px){.prog-summary-row{grid-template-columns:repeat(2,1fr);} .prog-subj-name{width:90px;font-size:11px;}}
 
+/* ── Bar Exam Countdown ────────────────────────────────────── */
+.cd-widget{text-align:center;background:linear-gradient(135deg,rgba(212,168,67,.07) 0%,rgba(15,20,35,0) 70%)!important;border-color:rgba(212,168,67,.25)!important;}
+.cd-title{font-family:var(--fd);font-size:17px;font-weight:700;color:var(--gold-l);margin-bottom:18px;letter-spacing:.02em;}
+.cd-grid{display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:18px;}
+.cd-unit{display:flex;flex-direction:column;align-items:center;gap:6px;}
+.cd-num{font-family:var(--fd);font-size:52px;font-weight:800;color:var(--gold-l);line-height:1;min-width:3ch;text-align:center;text-shadow:0 0 40px rgba(212,168,67,.3);}
+.cd-lbl{font-size:10px;font-weight:700;letter-spacing:.1em;color:var(--muted);text-transform:uppercase;}
+.cd-sep{font-family:var(--fd);font-size:38px;font-weight:700;color:rgba(212,168,67,.4);align-self:flex-start;margin-top:6px;line-height:1;}
+.cd-quote{font-size:13px;font-style:italic;color:var(--muted);max-width:340px;margin:0 auto;line-height:1.6;}
+/* Compact overview banner */
+.ov-countdown-banner{display:flex;align-items:center;justify-content:center;gap:8px;padding:10px 18px;background:rgba(212,168,67,.07);border:1px solid rgba(212,168,67,.15);border-radius:12px;margin-bottom:16px;font-size:13px;color:var(--text-muted,var(--muted));}
+.ov-cd-days{font-family:var(--fd);font-size:15px;font-weight:800;color:var(--gold-l);}
+@media(max-width:500px){.cd-num{font-size:36px;} .cd-sep{font-size:28px;}}
+
 /* ── Spaced Repetition ─────────────────────────────────────── */
 .sb-sr-badge{font-size:9px;font-weight:800;letter-spacing:.02em;background:rgba(224,112,128,.2);color:#e07080;border:1px solid rgba(224,112,128,.35);border-radius:5px;padding:1px 5px;margin-left:4px;flex-shrink:0;font-family:var(--fm);}
 /* SR due widget (inside progress page) */
@@ -1222,6 +1236,17 @@ select.form-input{cursor:pointer;}
         <div id="backfillAlacLabel" style="font-size:12px;color:var(--muted);"></div>
       </div>
     </div>
+    <!-- BAR EXAM DATE CARD -->
+    <div style="background:var(--card);border:1px solid var(--bdr2);border-radius:16px;padding:20px;margin-top:18px;">
+      <h3 style="font-family:var(--fd);font-size:16px;font-weight:700;color:var(--gold-l);margin-bottom:4px;">⚖️ Bar Exam Date</h3>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.55;">Set the countdown target date displayed on student dashboards.</p>
+      <div id="adminBarExamDateDisplay" style="font-size:13px;color:var(--muted);margin-bottom:12px;">Current: loading…</div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <input type="date" id="adminBarExamDateInput" style="background:var(--card3);border:1px solid var(--bdr2);border-radius:9px;padding:8px 12px;color:var(--white);font-family:var(--fm);font-size:13px;outline:none;color-scheme:dark;" />
+        <button class="btn-gold" onclick="saveBarExamDate()" style="font-size:13px;padding:8px 18px;">Save Date</button>
+      </div>
+      <div id="adminBarExamDateStatus" style="font-size:13px;margin-top:8px;min-height:20px;"></div>
+    </div>
     </div><!-- /adminOverviewPanel -->
 
     <!-- TAB ACCESS CONTROL -->
@@ -2178,6 +2203,7 @@ function updateBreadcrumb(subj, mode) {
 
 function navToOverview() {
   currentSubject = null; currentMode = null;
+  _stopCountdown();
   clearSidebarActive();
   document.getElementById('sb-overview')?.classList.add('active');
   showPage('dashboard');
@@ -2233,6 +2259,15 @@ function showAdminTab(tabName) {
     if (sovGrid) { sovGrid.style.display = ''; renderSubjectOverview(); }
     if (KB.genState?.running) { const p = document.getElementById('adminGenPanel'); if(p) p.style.display='block'; }
     else if (KB.genState?.finishedAt) { const d = document.getElementById('adminGenDone'); if(d) d.style.display='block'; }
+    // Populate bar exam date card
+    fetch('/api/settings').then(r => r.json()).then(s => {
+      const dateVal = s.barExamDate || '2026-11-01';
+      if (s.barExamDate) window._barExamDate = s.barExamDate;
+      const inp = document.getElementById('adminBarExamDateInput');
+      const disp = document.getElementById('adminBarExamDateDisplay');
+      if (inp)  inp.value = dateVal;
+      if (disp) disp.textContent = 'Current: ' + new Date(dateVal + 'T00:00:00+08:00').toLocaleDateString('en-PH', { year:'numeric', month:'long', day:'numeric' });
+    }).catch(() => {});
   }
 }
 
@@ -2250,6 +2285,103 @@ function autoUnlockAdminUI() {
     if (btn) btn.textContent = s.registrationOpen ? 'Close Registration' : 'Open Registration';
   }).catch(() => {});
   showAdminTab('overview');
+}
+
+// ── Bar Exam Countdown ─────────────────────────────────────────
+const _CD_QUOTES = [
+  "Every day counts. Stay consistent.",
+  "The bar exam rewards preparation, not cramming.",
+  "One question at a time. One day at a time.",
+  "Your future clients are counting on you.",
+  "Discipline today, celebration in November.",
+  "The hard work you do now is the answer you write then.",
+  "Pass the bar. Change lives — starting with yours.",
+];
+let _countdownTimer = null;
+
+function _getBarExamDate() {
+  const d = window._barExamDate || '2026-11-01';
+  return new Date(d + 'T00:00:00+08:00');
+}
+
+function _startCountdown() {
+  if (_countdownTimer) clearInterval(_countdownTimer);
+  function _tick() {
+    const diff = _getBarExamDate().getTime() - Date.now();
+    const dEl = document.getElementById('cd-days');
+    const hEl = document.getElementById('cd-hours');
+    const mEl = document.getElementById('cd-mins');
+    const sEl = document.getElementById('cd-secs');
+    if (!dEl) { clearInterval(_countdownTimer); _countdownTimer = null; return; }
+    if (diff <= 0) {
+      clearInterval(_countdownTimer); _countdownTimer = null;
+      const wrap = document.getElementById('countdown-section');
+      if (wrap) wrap.innerHTML = '<div style="text-align:center;padding:16px;font-size:14px;color:var(--teal);">🎉 The Bar Exam has concluded. Results will be announced soon. You\'ve done your best!</div>';
+      return;
+    }
+    const days  = Math.floor(diff / 86400000);
+    const hours = Math.floor((diff % 86400000) / 3600000);
+    const mins  = Math.floor((diff % 3600000)  / 60000);
+    const secs  = Math.floor((diff % 60000)    / 1000);
+    dEl.textContent = days;
+    hEl.textContent = String(hours).padStart(2, '0');
+    mEl.textContent = String(mins).padStart(2, '0');
+    sEl.textContent = String(secs).padStart(2, '0');
+  }
+  _tick();
+  _countdownTimer = setInterval(_tick, 1000);
+}
+
+function _stopCountdown() {
+  if (_countdownTimer) { clearInterval(_countdownTimer); _countdownTimer = null; }
+}
+
+function _renderCountdownWidget() {
+  const diff = _getBarExamDate().getTime() - Date.now();
+  if (diff <= 0) {
+    return `<div class="prog-section" id="countdown-section" style="text-align:center;">
+      <div style="font-size:14px;color:var(--teal);">🎉 The Bar Exam has concluded. Results will be announced soon. You've done your best!</div>
+    </div>`;
+  }
+  const quote = _CD_QUOTES[Math.floor(Date.now() / 86400000) % _CD_QUOTES.length];
+  return `<div class="prog-section cd-widget" id="countdown-section">
+    <div class="cd-title">⚖️ Philippine Bar Exam 2026</div>
+    <div class="cd-grid">
+      <div class="cd-unit"><div class="cd-num" id="cd-days">--</div><div class="cd-lbl">DAYS</div></div>
+      <div class="cd-sep">:</div>
+      <div class="cd-unit"><div class="cd-num" id="cd-hours">--</div><div class="cd-lbl">HRS</div></div>
+      <div class="cd-sep">:</div>
+      <div class="cd-unit"><div class="cd-num" id="cd-mins">--</div><div class="cd-lbl">MINS</div></div>
+      <div class="cd-sep">:</div>
+      <div class="cd-unit"><div class="cd-num" id="cd-secs">--</div><div class="cd-lbl">SECS</div></div>
+    </div>
+    <div class="cd-quote">"${h(quote)}"</div>
+  </div>`;
+}
+
+async function saveBarExamDate() {
+  const input  = document.getElementById('adminBarExamDateInput');
+  const status = document.getElementById('adminBarExamDateStatus');
+  const dateVal = input?.value;
+  if (!dateVal) { if (status) status.innerHTML = '<span style="color:#e07080;">⚠️ Please select a date.</span>'; return; }
+  if (status) status.innerHTML = '<span style="color:var(--muted);">Saving…</span>';
+  try {
+    const r = await fetch('/api/admin/settings', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey, 'x-session-token': sessionToken || '' },
+      body: JSON.stringify({ key: 'bar_exam_date', value: dateVal }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'Failed to save');
+    window._barExamDate = dateVal;
+    const fmt = new Date(dateVal + 'T00:00:00+08:00').toLocaleDateString('en-PH', { year:'numeric', month:'long', day:'numeric' });
+    const display = document.getElementById('adminBarExamDateDisplay');
+    if (display) display.textContent = 'Current: ' + fmt;
+    if (status) status.innerHTML = '<span style="color:#2ec4a0;">✅ Bar exam date updated.</span>';
+    setTimeout(() => { if (status) status.innerHTML = ''; }, 4000);
+  } catch(e) {
+    if (status) status.innerHTML = `<span style="color:#e07080;">⚠️ ${h(e.message)}</span>`;
+  }
 }
 
 // ── Spaced Repetition helpers ─────────────────────────────────
@@ -2684,9 +2816,10 @@ async function renderProgressDashboard() {
     refreshSidebarReviewBadges();
     const pp = container.querySelector('.prog-page');
     if (pp) {
-      pp.insertAdjacentHTML('afterbegin', _renderSRDueWidget(dueItems));
+      pp.insertAdjacentHTML('afterbegin', _renderCountdownWidget() + _renderSRDueWidget(dueItems));
       pp.insertAdjacentHTML('beforeend',  _renderSRStats(srStats));
     }
+    _startCountdown();
   } catch(e) { /* non-critical — progress page still works */ }
 }
 
@@ -3177,8 +3310,18 @@ function renderOverview() {
   const userName    = currentUser?.name?.split(' ')[0] || 'Counselor';
   const quote       = getMotivationalQuote();
 
+  const _cdDiff = _getBarExamDate().getTime() - Date.now();
+  const _cdDays  = _cdDiff > 0 ? Math.floor(_cdDiff / 86400000) : -1;
+
   container.innerHTML = `
     <div class="overview-inner">
+      ${_cdDays >= 0
+        ? `<div class="ov-countdown-banner">
+            <span>⚖️</span>
+            <span><span class="ov-cd-days">${_cdDays}</span> day${_cdDays!==1?'s':''} until the Philippine Bar Exam 2026</span>
+            <span style="margin-left:auto;font-size:11px;cursor:pointer;opacity:.6;" onclick="navToProgress()">📊 My Progress →</span>
+          </div>`
+        : ''}
       <div class="ov-quote-bar">
         <span class="ov-quote-star">✦</span>
         <span class="ov-quote-text">"${h(quote)}"</span>
@@ -5814,6 +5957,9 @@ async function onAuthSuccess(token, user) {
     refreshKBState(),
     applyTabSettings(),
     syncProgressFromServer(),
+    fetch('/api/settings').then(r => r.json()).then(s => {
+      if (s.barExamDate) window._barExamDate = s.barExamDate;
+    }).catch(() => {}),
   ]);
   // Navigate to overview — always
   navToOverview();

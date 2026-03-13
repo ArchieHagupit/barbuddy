@@ -297,7 +297,7 @@ function sanitizeAIResponse(text) {
 
 // Auth/settings state — loaded from Supabase at startup, users+sessions live in DB
 let RESET_REQUESTS = [];
-const SETTINGS = { registrationOpen: true, mockBarPublic: true };
+const SETTINGS = { registrationOpen: true, mockBarPublic: true, barExamDate: '2026-11-01' };
 
 // ── Field mappers: Supabase snake_case → camelCase for frontend ─────────────
 function mapUser(u) {
@@ -558,10 +558,12 @@ async function initializeApp() {
   if (savedTS) TAB_SETTINGS = deepMerge(JSON.parse(JSON.stringify(DEFAULT_TAB_SETTINGS)), savedTS);
 
   // App settings
-  const regOpen = await getSetting('registration_open');
-  const mbPublic = await getSetting('mock_bar_public');
+  const regOpen   = await getSetting('registration_open');
+  const mbPublic  = await getSetting('mock_bar_public');
+  const examDate  = await getSetting('bar_exam_date');
   if (regOpen  !== null) SETTINGS.registrationOpen = !!regOpen;
   if (mbPublic !== null) SETTINGS.mockBarPublic    = !!mbPublic;
+  if (examDate && typeof examDate === 'string') SETTINGS.barExamDate = examDate;
 
   // Reset requests
   const rr = await getSetting('reset_requests');
@@ -774,6 +776,18 @@ app.post('/api/admin/settings', adminOnly, async (req, res) => {
     saveSetting('mock_bar_public',   SETTINGS.mockBarPublic),
   ]);
   res.json(SETTINGS);
+});
+
+app.patch('/api/admin/settings', adminOnly, async (req, res) => {
+  const { key, value } = req.body || {};
+  if (!key || value === undefined) return res.status(400).json({ error: 'key and value required' });
+  if (key === 'bar_exam_date') {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return res.status(400).json({ error: 'Invalid date format (YYYY-MM-DD)' });
+    SETTINGS.barExamDate = value;
+    await saveSetting('bar_exam_date', value);
+    return res.json({ ok: true, barExamDate: value });
+  }
+  res.status(400).json({ error: `Unknown setting key: ${key}` });
 });
 
 // ── Results routes ────────────────────────────────────────────
