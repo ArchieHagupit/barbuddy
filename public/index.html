@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>BarBuddy — Philippine Bar Exam Companion</title>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400&family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
 :root{
   /* backgrounds */
@@ -52,6 +53,40 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .sb-subj-name{font-family:var(--fb);}
 .sb-subj-qcount{font-size:10px;font-family:var(--fm);color:var(--muted);margin-left:auto;flex-shrink:0;}
 .sb-lock-icon{font-size:10px;margin-left:auto;opacity:.5;flex-shrink:0;}
+
+/* ── Progress Dashboard ─────────────────────────────────────── */
+.prog-page{display:flex;flex-direction:column;gap:22px;}
+.prog-summary-row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;}
+.prog-stat-card{background:var(--card2);border:1px solid var(--bdr);border-radius:14px;padding:18px 16px;display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px;transition:border-color .2s;}
+.prog-stat-card:hover{border-color:var(--bdr2);}
+.prog-stat-value{font-family:var(--fd);font-size:28px;font-weight:700;color:var(--gold-l);line-height:1;}
+.prog-stat-label{font-size:11px;color:var(--muted);letter-spacing:.04em;text-transform:uppercase;}
+.prog-section{background:var(--card2);border:1px solid var(--bdr);border-radius:14px;padding:20px 22px;}
+.prog-section-title{font-family:var(--fd);font-size:16px;font-weight:700;color:var(--gold-l);margin-bottom:16px;display:flex;align-items:center;gap:8px;}
+.prog-chart-wrap{position:relative;height:240px;width:100%;}
+.prog-subj-list{display:flex;flex-direction:column;gap:10px;}
+.prog-subj-row{display:flex;align-items:center;gap:12px;}
+.prog-subj-name{width:130px;font-size:13px;font-family:var(--fd);font-weight:600;color:var(--white);flex-shrink:0;}
+.prog-subj-bar-wrap{flex:1;height:10px;background:rgba(255,255,255,.07);border-radius:6px;overflow:hidden;}
+.prog-subj-bar{height:100%;border-radius:6px;transition:width .6s ease;}
+.prog-subj-pct{width:44px;text-align:right;font-size:12px;font-family:var(--fm);flex-shrink:0;}
+.prog-weak-banner{background:rgba(224,112,128,.1);border:1px solid rgba(224,112,128,.3);border-radius:10px;padding:12px 16px;font-size:13px;color:#e07080;margin-bottom:14px;line-height:1.5;}
+.prog-insights-list{display:flex;flex-direction:column;gap:10px;}
+.prog-insight{padding:12px 14px;border-radius:10px;font-size:13px;line-height:1.55;border:1px solid var(--bdr);}
+.prog-insight.green{background:rgba(46,196,160,.08);border-color:rgba(46,196,160,.25);color:#4dd4b0;}
+.prog-insight.yellow{background:rgba(212,168,67,.08);border-color:rgba(212,168,67,.25);color:var(--gold-l);}
+.prog-insight.red{background:rgba(224,112,128,.08);border-color:rgba(224,112,128,.25);color:#e07080;}
+.prog-insight.blue{background:rgba(91,168,255,.08);border-color:rgba(91,168,255,.25);color:#7dc0ff;}
+.prog-streak-display{display:flex;align-items:center;gap:12px;}
+.prog-streak-flame{font-size:48px;line-height:1;}
+.prog-streak-count{font-family:var(--fd);font-size:44px;font-weight:700;color:var(--gold-l);line-height:1;}
+.prog-streak-label{font-size:13px;color:var(--muted);margin-top:4px;}
+.prog-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:50vh;text-align:center;padding:32px;}
+.prog-empty-icon{font-size:64px;margin-bottom:18px;}
+.prog-empty-title{font-family:var(--fd);font-size:24px;font-weight:700;color:var(--gold-l);margin-bottom:10px;}
+.prog-empty-sub{font-size:14px;color:var(--muted);max-width:340px;line-height:1.7;margin-bottom:24px;}
+@media(max-width:700px){.prog-summary-row{grid-template-columns:repeat(2,1fr);} .prog-subj-name{width:90px;font-size:11px;}}
+
 /* Subject page internal tabs */
 .subject-page-header{display:flex;align-items:center;gap:16px;margin-bottom:24px;padding:20px 24px;
   background:linear-gradient(135deg,rgba(212,168,67,.08) 0%,transparent 60%);
@@ -882,6 +917,7 @@ select.form-input{cursor:pointer;}
   </div>
 
   <button class="sb-overview-btn" id="sb-overview" onclick="navToOverview()">🏛 <span>Overview</span></button>
+  <button class="sb-overview-btn" id="sb-progress" onclick="navToProgress()">📊 <span>My Progress</span></button>
 
   <hr class="sb-divider">
   <div class="sb-section-label">SUBJECTS</div>
@@ -939,6 +975,13 @@ select.form-input{cursor:pointer;}
 <div class="page on" id="page-dashboard">
 <div class="pg-inner">
   <div id="overviewContainer"><!-- rendered by renderOverview() --></div>
+</div>
+</div>
+
+<!-- ═══ MY PROGRESS ═══ -->
+<div class="page" id="page-progress">
+<div class="pg-inner">
+  <div id="progressContainer"><!-- rendered by renderProgressDashboard() --></div>
 </div>
 </div>
 
@@ -2188,6 +2231,300 @@ function autoUnlockAdminUI() {
     if (btn) btn.textContent = s.registrationOpen ? 'Close Registration' : 'Open Registration';
   }).catch(() => {});
   showAdminTab('overview');
+}
+
+// ── My Progress ────────────────────────────────────────────────
+function navToProgress() {
+  currentSubject = null; currentMode = null;
+  clearSidebarActive();
+  document.getElementById('sb-progress')?.classList.add('active');
+  showPage('progress');
+  updateBreadcrumb(null, null);
+  renderProgressDashboard();
+}
+
+let _progScoreChart = null;
+
+async function renderProgressDashboard() {
+  const container = document.getElementById('progressContainer');
+  if (!container) return;
+  container.innerHTML = '<div style="text-align:center;padding:60px;color:var(--muted);">Loading your progress…</div>';
+
+  let results = [];
+  try {
+    const resp = await fetch('/api/user/results', {
+      headers: { 'x-session-token': sessionToken }
+    });
+    if (!resp.ok) throw new Error('Failed to load results');
+    results = await resp.json();
+  } catch(e) {
+    container.innerHTML = `<div style="text-align:center;padding:60px;color:#e07080;">Could not load progress data.</div>`;
+    return;
+  }
+
+  if (!results.length) {
+    container.innerHTML = `
+      <div class="prog-empty">
+        <div class="prog-empty-icon">📝</div>
+        <div class="prog-empty-title">No Sessions Yet</div>
+        <div class="prog-empty-sub">Complete your first Mock Bar to start tracking your progress!</div>
+        <button class="btn-gold" onclick="navToOverview()" style="font-size:13px;padding:10px 22px;">🏛 Go to Overview</button>
+      </div>`;
+    return;
+  }
+
+  // ── Compute stats ────────────────────────────────────────────
+  const pct = r => {
+    const max = (r.total_questions || 0) * 10;
+    return max > 0 ? Math.round((r.score / max) * 100) : 0;
+  };
+
+  const allPcts   = results.map(pct);
+  const totalSess = results.length;
+  const avgScore  = Math.round(allPcts.reduce((a,b) => a+b, 0) / allPcts.length);
+  const bestScore = Math.max(...allPcts);
+  const totalQs   = results.reduce((a,r) => a + (r.total_questions || 0), 0);
+
+  // By subject
+  const SUBJ_NAMES = {civil:'Civil Law',criminal:'Criminal Law',political:'Political Law',
+    labor:'Labor Law',commercial:'Commercial Law',taxation:'Taxation Law',
+    remedial:'Remedial Law',ethics:'Legal Ethics',custom:'Custom'};
+  const SUBJ_COLORS_MAP = {civil:'var(--c-civil)',criminal:'var(--c-criminal)',political:'var(--c-political)',
+    labor:'var(--c-labor)',commercial:'var(--c-commercial)',taxation:'var(--c-taxation)',
+    remedial:'var(--c-remedial)',ethics:'var(--c-ethics)',custom:'var(--c-custom)'};
+
+  const subjMap = {};
+  results.forEach(r => {
+    const key = r.subject || 'mixed';
+    if (!subjMap[key]) subjMap[key] = [];
+    subjMap[key].push(pct(r));
+  });
+  const subjStats = Object.entries(subjMap).map(([key, pcts]) => ({
+    key,
+    name: SUBJ_NAMES[key] || key,
+    avg: Math.round(pcts.reduce((a,b)=>a+b,0)/pcts.length),
+    color: SUBJ_COLORS_MAP[key] || '#888',
+  })).sort((a,b) => a.avg - b.avg); // weakest first
+
+  const weakest  = subjStats[0];
+  const strongest = subjStats[subjStats.length-1];
+
+  // Streak (consecutive calendar days with at least 1 session, going back from today)
+  const daySet = new Set(results.map(r => {
+    const d = new Date(r.finished_at);
+    return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+  }));
+  let streak = 0;
+  const today = new Date();
+  for (let i = 0; i < 365; i++) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    if (daySet.has(`${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`)) {
+      streak++;
+    } else if (i > 0) { // allow today to be missing (haven't done one yet today)
+      break;
+    }
+  }
+
+  // Trend: last vs second-to-last pct
+  const lastPct = allPcts[allPcts.length - 1];
+  const prevPct = allPcts.length > 1 ? allPcts[allPcts.length - 2] : null;
+  const trendDiff = prevPct !== null ? lastPct - prevPct : null;
+
+  // Passing subjects
+  const passCount = subjStats.filter(s => s.avg >= 70).length;
+  const totalSubjCount = subjStats.length;
+
+  // ── Build insights ───────────────────────────────────────────
+  const insights = [];
+  if (trendDiff !== null) {
+    if (trendDiff > 0) insights.push({ cls:'green', text:`📈 You improved ${trendDiff}% since your last session — keep going!` });
+    else if (trendDiff < 0) insights.push({ cls:'yellow', text:`📉 Your last session dropped ${Math.abs(trendDiff)}% from the one before — let's bounce back!` });
+    else insights.push({ cls:'blue', text:'🔄 Your last two sessions scored the same — push for a higher score!' });
+  }
+  if (weakest && weakest.avg < 70) insights.push({ cls:'red', text:`⚠️ You averaged ${weakest.avg}% on ${weakest.name} — focus here` });
+  insights.push({ cls: passCount === totalSubjCount ? 'green' : 'yellow',
+    text:`✅ You are passing ${passCount} out of ${totalSubjCount} subject${totalSubjCount!==1?'s':''}` });
+  if (strongest) insights.push({ cls:'blue', text:`🎯 Your strongest subject is ${strongest.name} at ${strongest.avg}%` });
+
+  // ── Render ───────────────────────────────────────────────────
+  const barColor = p => p >= 85 ? '#2ec4a0' : p >= 70 ? '#d4a843' : '#e07080';
+  const pctColor = p => p >= 85 ? '#2ec4a0' : p >= 70 ? '#d4a843' : '#e07080';
+
+  // Score history for chart
+  const chartLabels = results.map(r => {
+    const d = new Date(r.finished_at);
+    return `${d.getMonth()+1}/${d.getDate()}`;
+  });
+  const chartData = allPcts;
+  const pointColors = chartData.map(p => p >= 70 ? '#2ec4a0' : '#e07080');
+  const segColors   = chartData.map((p,i) => {
+    if (i === 0) return p >= 70 ? '#2ec4a0' : '#e07080';
+    return chartData[i-1] >= 70 ? '#2ec4a0' : '#e07080';
+  });
+
+  container.innerHTML = `
+    <div class="prog-page">
+      <!-- Summary stats row -->
+      <div class="prog-summary-row">
+        <div class="prog-stat-card">
+          <div class="prog-stat-value">${totalSess}</div>
+          <div class="prog-stat-label">Sessions Completed</div>
+        </div>
+        <div class="prog-stat-card">
+          <div class="prog-stat-value" style="color:${pctColor(avgScore)}">${avgScore}%</div>
+          <div class="prog-stat-label">Overall Average</div>
+        </div>
+        <div class="prog-stat-card">
+          <div class="prog-stat-value" style="color:${pctColor(bestScore)}">${bestScore}%</div>
+          <div class="prog-stat-label">Best Score</div>
+        </div>
+        <div class="prog-stat-card">
+          <div class="prog-stat-value">${totalQs}</div>
+          <div class="prog-stat-label">Questions Answered</div>
+        </div>
+      </div>
+
+      <!-- Streak -->
+      <div class="prog-section">
+        <div class="prog-section-title">🔥 Study Streak</div>
+        ${streak > 0
+          ? `<div class="prog-streak-display">
+              <div class="prog-streak-flame">🔥</div>
+              <div>
+                <div class="prog-streak-count">${streak}-day streak!</div>
+                <div class="prog-streak-label">Keep it going — don't break the chain.</div>
+              </div>
+            </div>`
+          : `<div style="font-size:14px;color:var(--muted);">Start a session today to begin your streak.</div>`}
+      </div>
+
+      <!-- Score history chart -->
+      <div class="prog-section">
+        <div class="prog-section-title">📈 Score History</div>
+        ${totalSess === 1
+          ? `<div style="font-size:13px;color:var(--muted);margin-bottom:12px;">Complete more sessions to see your trend.</div>`
+          : ''}
+        <div class="prog-chart-wrap">
+          <canvas id="progScoreChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Subject breakdown -->
+      <div class="prog-section">
+        <div class="prog-section-title">📚 Subject Performance</div>
+        ${weakest && weakest.avg < 70
+          ? `<div class="prog-weak-banner">⚠️ Focus here: You averaged ${weakest.avg}% on ${weakest.name}</div>`
+          : ''}
+        <div class="prog-subj-list">
+          ${subjStats.map(s => `
+            <div class="prog-subj-row">
+              <div class="prog-subj-name">${h(s.name)}</div>
+              <div class="prog-subj-bar-wrap">
+                <div class="prog-subj-bar" style="width:${s.avg}%;background:${barColor(s.avg)};"></div>
+              </div>
+              <div class="prog-subj-pct" style="color:${pctColor(s.avg)}">${s.avg}%</div>
+            </div>`).join('')}
+        </div>
+        <div style="margin-top:12px;font-size:11px;color:var(--muted);">Sorted weakest → strongest · Passing threshold: 70%</div>
+      </div>
+
+      <!-- Insights -->
+      <div class="prog-section">
+        <div class="prog-section-title">💡 Insights</div>
+        <div class="prog-insights-list">
+          ${insights.map(i => `<div class="prog-insight ${i.cls}">${i.text}</div>`).join('')}
+        </div>
+      </div>
+    </div>`;
+
+  // ── Draw Chart.js line graph ─────────────────────────────────
+  if (_progScoreChart) { _progScoreChart.destroy(); _progScoreChart = null; }
+  const ctx = document.getElementById('progScoreChart');
+  if (!ctx) return;
+  _progScoreChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: chartLabels,
+      datasets: [{
+        label: 'Score %',
+        data: chartData,
+        borderColor: function(ctx2) {
+          const chart = ctx2.chart;
+          const { ctx: c, chartArea } = chart;
+          if (!chartArea) return '#d4a843';
+          const gradient = c.createLinearGradient(chartArea.left, 0, chartArea.right, 0);
+          chartData.forEach((p,i) => {
+            gradient.addColorStop(i / Math.max(chartData.length-1,1), p >= 70 ? '#2ec4a0' : '#e07080');
+          });
+          return gradient;
+        },
+        borderWidth: 2.5,
+        pointBackgroundColor: pointColors,
+        pointBorderColor: pointColors,
+        pointRadius: 5,
+        pointHoverRadius: 7,
+        tension: 0.35,
+        fill: false,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx3 => `Score: ${ctx3.parsed.y}%`,
+          },
+          backgroundColor: 'rgba(15,20,35,.95)',
+          borderColor: 'rgba(212,168,67,.3)',
+          borderWidth: 1,
+          titleColor: '#f0ece3',
+          bodyColor: '#f0ece3',
+        },
+        annotation: undefined,
+      },
+      scales: {
+        x: {
+          ticks: { color: 'rgba(240,236,227,.45)', font: { size: 11 } },
+          grid: { color: 'rgba(255,255,255,.04)' },
+        },
+        y: {
+          min: 0, max: 100,
+          ticks: {
+            color: 'rgba(240,236,227,.45)',
+            font: { size: 11 },
+            callback: v => v + '%',
+            stepSize: 20,
+          },
+          grid: { color: 'rgba(255,255,255,.04)' },
+        }
+      }
+    },
+    plugins: [{
+      // Draw 70% passing threshold line
+      id: 'progThreshLine',
+      afterDraw(chart) {
+        const { ctx: c, chartArea, scales } = chart;
+        if (!chartArea) return;
+        const y = scales.y.getPixelForValue(70);
+        c.save();
+        c.setLineDash([6,4]);
+        c.strokeStyle = 'rgba(212,168,67,.5)';
+        c.lineWidth = 1.5;
+        c.beginPath();
+        c.moveTo(chartArea.left, y);
+        c.lineTo(chartArea.right, y);
+        c.stroke();
+        c.setLineDash([]);
+        c.fillStyle = 'rgba(212,168,67,.7)';
+        c.font = '10px DM Sans, sans-serif';
+        c.fillText('70% passing', chartArea.left + 4, y - 5);
+        c.restore();
+      }
+    }]
+  });
 }
 
 function navToCustom() {

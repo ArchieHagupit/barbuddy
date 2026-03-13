@@ -831,6 +831,19 @@ app.get('/api/admin/results/:userId', adminOnly, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── User: fetch own results for progress dashboard ───────────────
+app.get('/api/user/results', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('results')
+      .select('id, score, total_questions, subject, finished_at, passed')
+      .eq('user_id', req.userId)
+      .order('finished_at', { ascending: true });
+    if (error) throw error;
+    res.json(data || []);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── Admin: aggregated Improve items across all results ──────────
 app.get('/api/admin/improve-items', adminOnly, async (req, res) => {
   try {
