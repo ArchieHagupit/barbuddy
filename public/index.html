@@ -2356,7 +2356,7 @@ function showAdminTab(tabName) {
     else if (KB.genState?.finishedAt) { const d = document.getElementById('adminGenDone'); if(d) d.style.display='block'; }
     // Populate bar exam date card
     fetch('/api/settings').then(r => r.json()).then(s => {
-      const dateVal = s.barExamDate || '2026-11-01';
+      const dateVal = s.barExamDate || '2026-09-06';
       if (s.barExamDate) window._barExamDate = s.barExamDate;
       const inp = document.getElementById('adminBarExamDateInput');
       const disp = document.getElementById('adminBarExamDateDisplay');
@@ -2395,7 +2395,7 @@ const _CD_QUOTES = [
 let _countdownTimer = null;
 
 function _getBarExamDate() {
-  const d = window._barExamDate || '2026-11-01';
+  const d = window._barExamDate || '2026-09-06';
   return new Date(d + 'T00:00:00+08:00');
 }
 

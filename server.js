@@ -767,7 +767,7 @@ app.post('/api/auth/login', async (req, res) => {
     }
     const token = await createSession(user.id);
     // Daily login XP (once per calendar day)
-    const today = new Date().toISOString().split('T')[0];
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' }); // YYYY-MM-DD in PHT
     if (user.last_login_xp_date !== today) {
       await supabase.from('users').update({ last_login_xp_date: today }).eq('id', user.id);
       awardXP(user.id, 'DAILY_LOGIN', 'Daily login bonus').catch(() => {});
