@@ -961,45 +961,18 @@ app.post('/api/results/save', requireAuth, async (req, res) => {
     await supabase.from('users').update({ mock_bar_count: (uData?.mock_bar_count || 0) + 1 }).eq('id', req.userId);
 
     // ── Award XP ────────────────────────────────────────────────
+    // mock_bar and speed_drill XP are deferred until evaluations complete
+    // (awarded in /api/evaluate-batch completion handler after all evals succeed)
     let xpResult = null;
     try {
       const type = sessionType || 'mock_bar';
-      const highScoreCount = (questions || []).filter(q => (q.score || 0) >= 8.0).length;
-      const highScoreBonus = highScoreCount * XP_VALUES.HIGH_SCORE_BONUS;
-
-      if (type === 'speed_drill') {
-        // Speed Drill: flat 40 XP (from XP_VALUES) + optional high-score bonus
-        xpResult = await awardXP(
-          req.userId,
-          'COMPLETE_SPEED_DRILL',
-          `Completed Speed Drill — ${subjectKey}`,
-          highScoreBonus
-        );
-      } else if (type === 'review_session') {
+      if (type === 'review_session') {
         xpResult = await awardXP(
           req.userId,
           'COMPLETE_REVIEW_SESSION',
           'Completed Spaced Repetition Review Session',
           0
         );
-      } else {
-        // Mock Bar: full session (20q) = 1000 flat bonus; partial = 10 XP/question
-        const totalQuestions = questions?.length || questionCount;
-        const isFullSession  = totalQuestions === 20;
-        const baseXP = isFullSession
-          ? XP_VALUES.MOCK_BAR_FULL_BONUS
-          : totalQuestions * XP_VALUES.MOCK_BAR_PER_QUESTION;
-        xpResult = await awardXP(
-          req.userId,
-          isFullSession ? 'MOCK_BAR_FULL' : 'MOCK_BAR_PARTIAL',
-          `Completed Mock Bar — ${subjectKey} (${totalQuestions} question${totalQuestions !== 1 ? 's' : ''})`,
-          baseXP + highScoreBonus
-        );
-      }
-
-      if (xpResult && highScoreCount > 0) {
-        xpResult.highScoreCount = highScoreCount;
-        xpResult.highScoreBonus = highScoreBonus;
       }
     } catch(xpErr) { console.error('[XP] results/save error:', xpErr); }
 
@@ -3259,7 +3232,7 @@ app.get('/api/eval-queue-status/:submissionId', requireAuth, (req, res) => {
 // ── EVALUATE BATCH — fire-and-forget; client polls for progress ─
 app.post('/api/evaluate-batch', requireAuth, async (req, res) => {
   if (!API_KEY) return res.status(500).json({ error: 'API key not set' });
-  const { questions, submissionId: clientId } = req.body;
+  const { questions, submissionId: clientId, resultId, sessionType, subject } = req.body;
   if (!Array.isArray(questions) || !questions.length)
     return res.status(400).json({ error: 'questions array required' });
 
@@ -3268,12 +3241,15 @@ app.post('/api/evaluate-batch', requireAuth, async (req, res) => {
     : 'sub_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
   evalProgress.set(submissionId, { total: questions.length, done: 0, complete: false });
 
+  // Capture before res.json() releases the HTTP connection
+  const userId = req.userId;
+
   // Return immediately — HTTP connection released, client polls /api/eval-progress/:id
   res.json({ submissionId, total: questions.length });
 
   // Run evaluations in the background; store results when all finish
-  Promise.all(questions.map((q, i) => enqueueEval(submissionId, req.userId, q, i)))
-    .then(scores => {
+  Promise.all(questions.map((q, i) => enqueueEval(submissionId, userId, q, i)))
+    .then(async scores => {
       evalResults.set(submissionId, scores);
       // evalProgress.complete is already set true by the last runEvalJob finally-block,
       // but we set it again here as a safety net in case of any race.
@@ -3281,6 +3257,70 @@ app.post('/api/evaluate-batch', requireAuth, async (req, res) => {
       if (prog) prog.complete = true;
       // Clean up both maps after 10 minutes
       setTimeout(() => { evalProgress.delete(submissionId); evalResults.delete(submissionId); }, 10 * 60 * 1000);
+
+      // ── Post-eval: update result record + award XP ───────────
+      // review_session XP is awarded at save time; skip here
+      if (!resultId || !sessionType || sessionType === 'review_session') return;
+      try {
+        const totalQuestions = scores.length;
+        const successfulEvals = scores.filter(s => !s._evalError && s.grade !== 'Error').length;
+
+        // Compute final total score from actual evaluated components
+        const computedTotal = scores.reduce((sum, s) => {
+          if (s._evalError || s.grade === 'Error') return sum;
+          if (s.alac) {
+            return sum + (s.alac.answer?.score || 0) + (s.alac.legalBasis?.score || 0)
+                       + (s.alac.application?.score || 0) + (s.alac.conclusion?.score || 0);
+          }
+          return sum + (s.numericScore || 0);
+        }, 0);
+
+        // Update result record with final evaluated scores
+        const { error: updateErr } = await supabase.from('results').update({
+          evaluations: scores,
+          score: parseFloat(computedTotal.toFixed(2)),
+          passed: totalQuestions > 0 && computedTotal / (totalQuestions * 10) >= 0.7,
+          last_updated_at: new Date().toISOString(),
+        }).eq('id', resultId);
+        if (updateErr) console.error('[evaluate-batch] result update error:', updateErr.message);
+
+        // Award XP only if >= 80% of questions evaluated successfully
+        const evalSuccessRate = successfulEvals / totalQuestions;
+        if (evalSuccessRate < 0.8) {
+          console.log(`[xp] Skipped — only ${successfulEvals}/${totalQuestions} questions evaluated successfully`);
+          return;
+        }
+
+        const VALID_SUBJ_KEYS = ['civil','criminal','political','labor','commercial','taxation','remedial','ethics','custom'];
+        const subjectKey = VALID_SUBJ_KEYS.includes(subject) ? subject : (subject || 'mixed');
+
+        const highScoreCount = scores.filter(s => {
+          if (s._evalError || s.grade === 'Error') return false;
+          const qScore = s.alac
+            ? (s.alac.answer?.score || 0) + (s.alac.legalBasis?.score || 0)
+              + (s.alac.application?.score || 0) + (s.alac.conclusion?.score || 0)
+            : (s.numericScore || 0);
+          return qScore >= 8.0;
+        }).length;
+        const bonusXP = highScoreCount * XP_VALUES.HIGH_SCORE_BONUS;
+
+        if (sessionType === 'speed_drill') {
+          await awardXP(userId, 'COMPLETE_SPEED_DRILL', `Completed Speed Drill — ${subjectKey}`, bonusXP);
+        } else {
+          const isFullSession = totalQuestions === 20;
+          const baseXP = isFullSession
+            ? XP_VALUES.MOCK_BAR_FULL_BONUS
+            : totalQuestions * XP_VALUES.MOCK_BAR_PER_QUESTION;
+          await awardXP(
+            userId,
+            isFullSession ? 'MOCK_BAR_FULL' : 'MOCK_BAR_PARTIAL',
+            `Completed Mock Bar — ${subjectKey} (${totalQuestions} question${totalQuestions !== 1 ? 's' : ''})`,
+            baseXP + bonusXP
+          );
+        }
+      } catch (xpErr) {
+        console.error('[xp] evaluate-batch completion error:', xpErr.message);
+      }
     })
     .catch(err => {
       console.error('[evaluate-batch] background error:', err.message);
