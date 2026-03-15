@@ -3396,8 +3396,16 @@ app.post('/api/email-results', async (req, res) => {
   if (!to || !htmlBody) return res.status(400).json({ error: 'to and htmlBody required' });
   try {
     const transporter = nodemailer.createTransport({
-      service: 'gmail',
-      auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
+      host: 'smtp.gmail.com',
+      port: 465,
+      secure: true,
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS
+      },
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
+      socketTimeout: 10000,
     });
     await transporter.sendMail({
       from: process.env.EMAIL_FROM || `BarBuddy Results <${process.env.EMAIL_USER}>`,
