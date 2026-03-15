@@ -5489,6 +5489,8 @@ async function endMockSession(){
   </div>`;
   }
 
+  // XP is now awarded server-side after evaluate-batch completes (no client-side xpResult)
+  const xpResult = null;
   // Show XP popup first if we earned XP, then reveal results
   if (xpResult && xpResult.xpEarned > 0 && sessionToken) {
     showXPPopup(xpResult, _renderResults);
