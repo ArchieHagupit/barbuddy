@@ -6890,7 +6890,7 @@ async function loadAdminResults(reset = true) {
     }
     const html = rows.map(row => {
       const { userName, finishedAt, total, maxScore, score, pct, passed } = _normalizeResult(row);
-      const dateStr = finishedAt ? finishedAt.slice(0,10) : '—';
+      const dateStr = finishedAt ? new Date(finishedAt).toLocaleDateString('en-CA', {timeZone:'Asia/Manila'}) : '—';
       return `<div class="ur-row">
         <div><div class="ur-name">${h(userName)}</div><div class="ur-meta">${dateStr} &nbsp;·&nbsp; ${total} questions</div></div>
         <span class="ur-badge${passed?'':' off'}">${score}/${maxScore} (${pct}%)</span>
@@ -7635,7 +7635,7 @@ function renderImproveTable() {
       <td style="padding:8px 10px;white-space:nowrap;"><span style="background:rgba(184,134,11,.15);color:var(--gold);border-radius:5px;padding:2px 7px;font-size:11px;">${h(subjNames[item.subject]||item.subject)}</span></td>
       <td style="padding:8px 10px;max-width:240px;color:var(--muted);font-size:11px;">${h((item.question||'').slice(0,80))}${item.question?.length>80?'…':''}</td>
       <td style="padding:8px 10px;"><ul style="margin:0;padding-left:16px;font-size:12px;">${allBullets}</ul></td>
-      <td style="padding:8px 10px;white-space:nowrap;color:var(--muted);">${item.date?item.date.slice(0,10):'—'}</td>
+      <td style="padding:8px 10px;white-space:nowrap;color:var(--muted);">${item.date?new Date(item.date).toLocaleDateString('en-CA',{timeZone:'Asia/Manila'}):'—'}</td>
     </tr>`;
   }).join('');
 
