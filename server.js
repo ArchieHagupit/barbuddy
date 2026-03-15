@@ -351,6 +351,19 @@ function extractJSON(text) {
     if (repaired) return JSON.parse(repaired);
   } catch(_) {}
 
+  // Strategy 5: jsonrepair as last resort (handles structural issues)
+  try {
+    const { jsonrepair } = require('jsonrepair');
+    const repaired = jsonrepair(t);
+    const parsed = JSON.parse(repaired);
+    if (parsed && typeof parsed === 'object') {
+      console.log('[extractJSON] Strategy 5 (jsonrepair) succeeded');
+      return parsed;
+    }
+  } catch(e) {
+    console.warn('[extractJSON] Strategy 5 (jsonrepair) failed:', e.message);
+  }
+
   console.error('[extractJSON] All strategies failed. First 300 chars:', t.slice(0, 300));
   return null;
 }
@@ -1073,20 +1086,34 @@ app.get('/api/user/results', requireAuth, async (req, res) => {
 // ── Spaced repetition: due reviews ────────────────────────────
 app.get('/api/spaced-repetition/due', requireAuth, async (req, res) => {
   try {
-    const { data, error } = await supabase
+    // Step 1: Get due spaced repetition records (no JOIN — no FK relationship)
+    const { data: dueRecords, error: srError } = await supabase
       .from('spaced_repetition')
-      .select('id, question_id, subject, last_score, last_attempted_at, next_review_at, review_count, questions(id, question_text, context, model_answer, key_points, subject, source, year, type, max_score, alternative_answers, model_answer_alac)')
+      .select('*')
       .eq('user_id', req.userId)
       .eq('mastered', false)
       .not('next_review_at', 'is', null)
       .lte('next_review_at', new Date().toISOString())
       .order('next_review_at', { ascending: true });
-    if (error) {
-      console.error('[spaced-rep/due] Supabase error (table may not exist):', error.message);
+    if (srError) {
+      console.error('[spaced-rep/due] SR query error:', srError.message);
       return res.json({ due: [], total: 0 });
     }
-    const items = (data || []).map(row => {
-      const q = row.questions || {};
+    if (!dueRecords || dueRecords.length === 0) return res.json([]);
+
+    // Step 2: Fetch question details for each due record
+    const questionIds = dueRecords.map(r => r.question_id).filter(Boolean);
+    const { data: questions, error: qError } = await supabase
+      .from('questions')
+      .select('id, question_text, context, model_answer, key_points, subject, source, year, type, max_score, alternative_answers, model_answer_alac')
+      .in('id', questionIds);
+    if (qError) console.error('[spaced-rep/due] Questions query error:', qError.message);
+    const qMap = {};
+    for (const q of (questions || [])) qMap[q.id] = q;
+
+    // Step 3: Merge and return
+    const items = dueRecords.map(row => {
+      const q = qMap[row.question_id] || {};
       const daysOverdue = row.next_review_at
         ? Math.max(0, Math.floor((Date.now() - new Date(row.next_review_at)) / 86400000))
         : 0;
