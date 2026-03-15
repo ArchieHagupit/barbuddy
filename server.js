@@ -298,6 +298,12 @@ function extractJSON(text) {
     .replace(/\\:/g,  ":")   // \: → :
     .replace(/\\;/g,  ";");  // \; → ;
 
+  // Replace bare { } inside JSON string values with ( ) to prevent structural corruption.
+  // Matches a double-quoted string containing a brace and replaces all occurrences.
+  t = t.replace(/"([^"\\]*(\\.[^"\\]*)*)"/g, (match) =>
+    match.replace(/\{/g, '(').replace(/\}/g, ')')
+  );
+
   // Strip markdown fences (Sonnet fallback returns ```json ... ```)
   t = t
     .replace(/^```json\s*/i, '')
@@ -3065,6 +3071,7 @@ async function runEvalJob(job) {
       maxTok = 2500;
       prompt = `You are a Philippine Bar Exam examiner. Evaluate using ALAC (Answer 1.5pts, Legal Basis 3pts, Application 4pts, Conclusion 1.5pts). Keep overallFeedback under 200 words and each component feedback under 50 words.
 CRITICAL JSON OUTPUT RULES: Use single quotes inside all string values (never double quotes inside strings). No newlines inside string values. No trailing commas. Keep all feedback fields on a single line.
+IMPORTANT: Return pure JSON only. Never include { or } characters inside any string value. Write all feedback as plain text sentences only. No code examples, no nested structures, no special characters inside strings.
 Question: ${question}
 ${maSection}
 ${(keyPoints || []).length ? `Key Points: ${keyPoints.join(', ')}` : ''}
@@ -3076,6 +3083,7 @@ Respond ONLY with valid JSON: {"score":"X/10","numericScore":0,"grade":"...","al
       maxTok = 2500;
       prompt = `You are a Philippine Bar Exam examiner. Evaluate this conceptual/theoretical answer. Keep overallFeedback under 100 words and each component feedback under 50 words.
 CRITICAL JSON OUTPUT RULES: Use single quotes inside all string values (never double quotes inside strings). No newlines inside string values. No trailing commas. Keep all feedback fields on a single line.
+IMPORTANT: Return pure JSON only. Never include { or } characters inside any string value. Write all feedback as plain text sentences only. No code examples, no nested structures, no special characters inside strings.
 Question: ${question}
 ${maSection}
 ${(keyPoints || []).length ? `Key Points: ${keyPoints.join(', ')}` : ''}
