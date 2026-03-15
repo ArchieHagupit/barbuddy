@@ -299,11 +299,24 @@ function extractJSON(text) {
     .replace(/\\:/g,  ":")   // \: → :
     .replace(/\\;/g,  ";");  // \; → ;
 
-  // Replace bare { } inside JSON string values with ( ) to prevent structural corruption.
-  // Matches a double-quoted string containing a brace and replaces all occurrences.
-  t = t.replace(/"([^"\\]*(\\.[^"\\]*)*)"/g, (match) =>
-    match.replace(/\{/g, '(').replace(/\}/g, ')')
-  );
+  // Replace { } inside quoted string values with ( ) using a character-by-character
+  // walk so structural braces are preserved and escaped quotes are handled correctly.
+  function sanitizeNestedBraces(str) {
+    let result = '';
+    let inString = false;
+    let escaped = false;
+    for (let i = 0; i < str.length; i++) {
+      const ch = str[i];
+      if (escaped) { result += ch; escaped = false; continue; }
+      if (ch === '\\') { escaped = true; result += ch; continue; }
+      if (ch === '"') { inString = !inString; result += ch; continue; }
+      if (inString && ch === '{') { result += '('; continue; }
+      if (inString && ch === '}') { result += ')'; continue; }
+      result += ch;
+    }
+    return result;
+  }
+  t = sanitizeNestedBraces(t);
 
   // Fix trailing commas before closing braces/brackets
   t = t.replace(/,\s*}/g, '}').replace(/,\s*]/g, ']');
