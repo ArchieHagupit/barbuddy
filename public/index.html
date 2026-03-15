@@ -4670,7 +4670,7 @@ async function submitEssay(){
     }
     try{
       const controller=new AbortController();
-      const timeoutId=setTimeout(()=>controller.abort(),35000);
+      const timeoutId=setTimeout(()=>controller.abort(),120000);
       try{
         const r=await fetch('/api/evaluate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),signal:controller.signal});
         clearTimeout(timeoutId);
@@ -4701,7 +4701,7 @@ async function retryEvaluation(idx){
     if(attempt>1) await new Promise(r=>setTimeout(r,attempt*1000));
     try{
       const controller=new AbortController();
-      const timeoutId=setTimeout(()=>controller.abort(),35000);
+      const timeoutId=setTimeout(()=>controller.abort(),120000);
       try{
         const r=await fetch('/api/evaluate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q.prompt||q.q,answer:ans,context:q.context||'',modelAnswer:q.modelAnswer,keyPoints:q.keyPoints,subject:q.subject,questionId:q.id||null}),signal:controller.signal});
         clearTimeout(timeoutId);
@@ -5315,7 +5315,7 @@ async function endMockSession(){
         for(let attempt=1;attempt<=3;attempt++){
           try{
             const controller=new AbortController();
-            const tid=setTimeout(()=>controller.abort(),35000);
+            const tid=setTimeout(()=>controller.abort(),120000);
             try{
               const r=await fetch('/api/evaluate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q.prompt||q.q,answer:ans,context:q.context||'',modelAnswer:q.modelAnswer,keyPoints:q.keyPoints,subject:q.subject,questionId:q.id||null}),signal:controller.signal});
               clearTimeout(tid);

@@ -722,6 +722,13 @@ async function authOrAdmin(req, res, next) {
   } catch(e) { res.status(500).json({ error: 'Auth error' }); }
 }
 
+// ── Block WordPress/bot probe paths ──────────────────────────
+app.use((req, res, next) => {
+  const blocked = ['/wp-admin', '/wordpress', '/wp-login', '/wp-includes', '/xmlrpc.php'];
+  if (blocked.some(p => req.path.startsWith(p))) return res.status(404).send('Not found');
+  next();
+});
+
 // ── Auth routes ──────────────────────────────────────────────
 app.post('/api/auth/register', async (req, res) => {
   try {
@@ -1051,7 +1058,10 @@ app.get('/api/spaced-repetition/due', requireAuth, async (req, res) => {
       .not('next_review_at', 'is', null)
       .lte('next_review_at', new Date().toISOString())
       .order('next_review_at', { ascending: true });
-    if (error) throw error;
+    if (error) {
+      console.error('[spaced-rep/due] Supabase error (table may not exist):', error.message);
+      return res.json({ due: [], total: 0 });
+    }
     const items = (data || []).map(row => {
       const q = row.questions || {};
       const daysOverdue = row.next_review_at
@@ -1072,7 +1082,10 @@ app.get('/api/spaced-repetition/due', requireAuth, async (req, res) => {
       };
     });
     res.json(items);
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) {
+    console.error('[spaced-rep/due]', e);
+    res.json({ due: [], total: 0 });
+  }
 });
 
 // ── Spaced repetition: stats ──────────────────────────────────
@@ -1578,7 +1591,22 @@ app.get('/api/gen/progress', (req, res) => {
   res.setHeader('Connection', 'keep-alive');
   GEN.clients.add(res);
   sseSend(res, { done:GEN.done, total:GEN.total, current:GEN.current, running:GEN.running, finished:!!GEN.finishedAt&&!GEN.running });
-  req.on('close', () => GEN.clients.delete(res));
+
+  // Heartbeat every 30s to keep connection alive
+  const heartbeat = setInterval(() => { try { res.write(': heartbeat\n\n'); } catch(e) {} }, 30000);
+
+  // Max 5 minutes — prevents Railway connection pool exhaustion
+  const maxDuration = setTimeout(() => {
+    GEN.clients.delete(res);
+    clearInterval(heartbeat);
+    try { res.end(); } catch(e) {}
+  }, 300000);
+
+  req.on('close', () => {
+    GEN.clients.delete(res);
+    clearInterval(heartbeat);
+    clearTimeout(maxDuration);
+  });
 });
 
 function sseSend(client, data) { try { client.write(`data: ${JSON.stringify(data)}\n\n`); } catch(e){} }
