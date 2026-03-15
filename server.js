@@ -773,8 +773,17 @@ async function authOrAdmin(req, res, next) {
 
 // ── Block WordPress/bot probe paths ──────────────────────────
 app.use((req, res, next) => {
-  const blocked = ['/wp-admin', '/wordpress', '/wp-login', '/wp-includes', '/xmlrpc.php'];
-  if (blocked.some(p => req.path.startsWith(p))) return res.status(404).send('Not found');
+  const path = req.path.toLowerCase();
+  const blocked = [
+    '/wp-admin', '/wp-includes', '/wp-login',
+    '/wp-content', '/wp-json', '/wp-cron',
+    '/wordpress', '/xmlrpc.php', '/wlwmanifest',
+    '/feed', '/wp1', '/wp2',
+    'license.txt', 'readme.html',
+    'setup-config'
+  ];
+  const normalizedPath = path.replace(/\/+/g, '/');
+  if (blocked.some(b => normalizedPath.includes(b))) return res.status(404).send('Not found');
   next();
 });
 
