@@ -1731,7 +1731,8 @@ select.form-input{cursor:pointer;}
   <div class="modal-t">📧 Email Results</div>
   <p class="modal-s">Send your mock bar results to an email address.</p>
   <label class="form-label" style="margin-top:4px;">Email Address</label>
-  <input class="form-input" id="email-to" type="email" placeholder="you@example.com" style="margin-bottom:10px;">
+  <input class="form-input" id="email-to" type="email" value="barbuddyphilippines@gmail.com" readonly style="margin-bottom:4px;opacity:.75;cursor:default;">
+  <p style="font-size:12px;color:var(--text-muted,#888);margin:0 0 10px;">Results will be sent to the BarBuddy admin email</p>
   <label class="form-label">Subject Line</label>
   <input class="form-input" id="email-subject" type="text" style="margin-bottom:10px;">
   <div id="email-status" style="display:none;font-size:13px;padding:8px 12px;border-radius:8px;margin-bottom:10px;"></div>
@@ -5763,7 +5764,7 @@ function printMockResults(){
 }
 
 async function sendEmailResults(){
-  const to=document.getElementById('email-to').value.trim();
+  const to='barbuddyphilippines@gmail.com';
   const subject=document.getElementById('email-subject').value.trim();
   const sta=document.getElementById('email-status');
   const btn=document.getElementById('emailSendBtn');
