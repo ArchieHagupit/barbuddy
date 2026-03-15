@@ -7965,6 +7965,13 @@ function showLevelUpModal(xpResult, onContinue) {
 <!-- Highlight color picker toolbar — shown on text selection inside exam-content -->
 <div id="highlight-toolbar" style="display:none;position:fixed;z-index:9999;background:#1a2235;border:1px solid #2a3347;border-radius:8px;padding:6px 10px;box-shadow:0 4px 20px rgba(0,0,0,0.4);align-items:center;gap:6px;">
   <span style="font-size:11px;color:#888;margin-right:2px;">Highlight:</span>
+  <button class="hl-color-btn" data-color="#ffd700" style="width:18px;height:18px;border-radius:50%;background:#ffd700;border:2px solid transparent;cursor:pointer;" title="Yellow"></button>
+  <button class="hl-color-btn" data-color="#90ee90" style="width:18px;height:18px;border-radius:50%;background:#90ee90;border:2px solid transparent;cursor:pointer;" title="Green"></button>
+  <button class="hl-color-btn" data-color="#ffb6c1" style="width:18px;height:18px;border-radius:50%;background:#ffb6c1;border:2px solid transparent;cursor:pointer;" title="Pink"></button>
+  <button class="hl-color-btn" data-color="#87ceeb" style="width:18px;height:18px;border-radius:50%;background:#87ceeb;border:2px solid transparent;cursor:pointer;" title="Blue"></button>
+  <button id="hl-remove-btn" style="display:none;margin-left:4px;padding:2px 8px;font-size:11px;background:rgba(239,68,68,0.2);color:#f87171;border:1px solid rgba(239,68,68,0.3);border-radius:6px;cursor:pointer;">Remove</button>
+</div>
+
 <!-- BOOKMARKS PANEL -->
 <div id="bm-overlay" onclick="closeBookmarksPanel()"></div>
 <div id="bm-panel">
@@ -7976,14 +7983,6 @@ function showLevelUpModal(xpResult, onContinue) {
     <div class="bm-empty"><span class="bm-empty-icon">🔖</span>No bookmarks yet.<br>Bookmark topics to find them quickly later.</div>
   </div>
 </div>
-
-  <button class="hl-color-btn" data-color="#ffd700" style="width:18px;height:18px;border-radius:50%;background:#ffd700;border:2px solid transparent;cursor:pointer;" title="Yellow"></button>
-  <button class="hl-color-btn" data-color="#90ee90" style="width:18px;height:18px;border-radius:50%;background:#90ee90;border:2px solid transparent;cursor:pointer;" title="Green"></button>
-  <button class="hl-color-btn" data-color="#ffb6c1" style="width:18px;height:18px;border-radius:50%;background:#ffb6c1;border:2px solid transparent;cursor:pointer;" title="Pink"></button>
-  <button class="hl-color-btn" data-color="#87ceeb" style="width:18px;height:18px;border-radius:50%;background:#87ceeb;border:2px solid transparent;cursor:pointer;" title="Blue"></button>
-  <button id="hl-remove-btn" style="display:none;margin-left:4px;padding:2px 8px;font-size:11px;background:rgba(239,68,68,0.2);color:#f87171;border:1px solid rgba(239,68,68,0.3);border-radius:6px;cursor:pointer;">Remove</button>
-</div>
-
 
 </body>
 </html>
