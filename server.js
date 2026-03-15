@@ -3414,7 +3414,10 @@ app.post('/api/email-results', async (req, res) => {
       html: `<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body>${htmlBody}</body></html>`,
     });
     res.json({ success: true });
-  } catch(err) { res.status(500).json({ error: err.message }); }
+  } catch(err) {
+    console.error('[email] Send error:', err.message, err.code);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── ADMIN: Manual past bar question entry (no AI) ────────────
