@@ -3664,6 +3664,10 @@ app.get('/api/status', async (req, res) => {
 // CONTENT is kept in-memory only (regenerable from KB); no disk persistence needed
 function saveContent() { /* no-op — CONTENT is in-memory only */ }
 
+app.get('/robots.txt', (_req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'robots.txt'));
+});
+
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
 async function migrateOldQuestionTypes() {
