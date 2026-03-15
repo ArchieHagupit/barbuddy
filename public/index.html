@@ -5283,11 +5283,36 @@ async function endMockSession(){
   let scores=[];
   const authHdr=sessionToken||'';
   const submissionId='sub_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);
+
+  // Compute session type early so it can be passed to evaluate-batch
+  const _sessionType = window.isReviewSession ? 'review_session' : window.isSpeedDrill ? 'speed_drill' : 'mock_bar';
+
+  // Pre-save result record to get resultId BEFORE evaluation starts.
+  // Server will update it with final scores + award XP once evaluate-batch completes.
+  let _resultId = null;
+  if (sessionToken && currentUser) {
+    try {
+      const preR = await fetch('/api/results/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-session-token': sessionToken },
+        body: JSON.stringify({
+          score: 0, total: mockQs.length, subject: currentSubject || 'Mock Bar',
+          questions: mockQs.map(q => ({ q: (q.prompt||q.q||'').slice(0, 120), score: 0, max: 10, improvements: [], keyMissed: [] })),
+          timeTakenMs: window.mockStartTime ? Date.now() - window.mockStartTime : null,
+          sessionType: _sessionType,
+        }),
+      });
+      const preData = await preR.json();
+      _resultId = preData.id || null;
+      if (_resultId) window.mockResultId = _resultId;
+    } catch(e) { console.warn('[endMock] pre-save failed:', e.message); }
+  }
+
   try{
     // Persist so a page refresh can resume polling
     sessionStorage.setItem('bb_pending_eval',JSON.stringify({submissionId,total:mockQs.length}));
     // POST returns immediately — server enqueues all jobs and replies with { submissionId, total }
-    const startRes=await fetch('/api/evaluate-batch',{method:'POST',headers:{'Content-Type':'application/json','x-session-token':authHdr},body:JSON.stringify({questions:batchPayload,submissionId})});
+    const startRes=await fetch('/api/evaluate-batch',{method:'POST',headers:{'Content-Type':'application/json','x-session-token':authHdr},body:JSON.stringify({questions:batchPayload,submissionId,resultId:_resultId,sessionType:_sessionType,subject:currentSubject})});
     const startData=await startRes.json();
     if(startData.error)throw new Error(startData.error);
     // Poll every 3 s, update UI, wait for complete, then fetch scores
@@ -5350,12 +5375,23 @@ async function endMockSession(){
   const pct=maxScore>0?Math.round(rawScore/maxScore*100):0;
   totalQDone+=answered;totalCorrect+=Math.round(pct/100*answered);updateDash();
 
-  // Determine session type for XP
-  const _sessionType = window.isReviewSession ? 'review_session' : window.isSpeedDrill ? 'speed_drill' : 'mock_bar';
-  const xpResult = await saveMockBarResults(
-    scores.map((s,i)=>({q:(mockQs[i]?.prompt||mockQs[i]?.q||'').slice(0,120),score:effectiveScore(s),max:10,improvements:s.improvements||[],keyMissed:s.keyMissed||[]})),
-    _sessionType
-  );
+  // Update result record with evaluated scores; server already handled XP via evaluate-batch.
+  // If pre-save failed (_resultId is null), fall back to full save (old path).
+  if (_resultId && sessionToken) {
+    fetch(`/api/results/${_resultId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'x-session-token': sessionToken },
+      body: JSON.stringify({
+        score: rawScore,
+        questions: scores.map((s,i) => ({ q: (mockQs[i]?.prompt||mockQs[i]?.q||'').slice(0, 120), score: effectiveScore(s), max: 10, improvements: s.improvements||[], keyMissed: s.keyMissed||[] })),
+      }),
+    }).catch(e => console.warn('[endMock] result patch failed:', e.message));
+  } else if (!_resultId) {
+    await saveMockBarResults(
+      scores.map((s,i)=>({q:(mockQs[i]?.prompt||mockQs[i]?.q||'').slice(0,120),score:effectiveScore(s),max:10,improvements:s.improvements||[],keyMissed:s.keyMissed||[]})),
+      _sessionType
+    );
+  }
 
   // Pre-fill email modal subject
   const emailSubj=`BarBuddy Mock Bar Results — ${new Date().toLocaleDateString('en-PH')} — ${fmt(rawScore)}/${maxScore} (${pct}%)`;
