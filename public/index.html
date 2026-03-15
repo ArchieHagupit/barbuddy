@@ -5204,19 +5204,26 @@ async function pollForResults(submissionId, authHdr, expectedCount) {
       if (rem > 0) noteEl.innerHTML = `Please keep this window open.<br><span style="font-size:11px;color:var(--muted);">~${rem} question${rem !== 1 ? 's' : ''} remaining</span>`;
     }
 
-    // Fetch results when complete flag is set OR when all questions are done
-    // (handles race window where done reaches total before complete propagates)
+    // Fetch results when complete flag is set OR when all questions are done.
+    // Uses an inner retry loop so waiting: true retries /api/eval-results directly
+    // every 1.5s instead of bouncing back through the 3s outer poll cycle.
     if (data.complete || allDone) {
-      const rRes  = await fetch('/api/eval-results/' + submissionId, { headers: { 'x-session-token': authHdr } });
-      const rData = await rRes.json();
-      if (rData.scores) return rData.scores;
-      // Server not ready yet — short retry (skips the 3s poll delay)
-      if (rData.waiting || !rData.complete) {
-        if (msgEl) msgEl.textContent = 'Preparing your results...';
-        await new Promise(r => setTimeout(r, 1500));
-        continue;
+      let resultRetries = 0;
+      const maxResultRetries = 20; // 20 × 1.5s = 30s max
+      while (resultRetries < maxResultRetries) {
+        const rRes = await fetch('/api/eval-results/' + submissionId, { headers: { 'x-session-token': authHdr } });
+        const rData = await rRes.json();
+        if (rData.scores) return rData.scores;
+        if (rData.waiting || !rData.complete) {
+          resultRetries++;
+          if (msgEl) msgEl.textContent = 'Preparing your results...';
+          if (noteEl) noteEl.textContent = '';
+          await new Promise(r => setTimeout(r, 1500));
+          continue; // retry inner loop — NOT the outer poll loop
+        }
+        throw new Error('Results unavailable after evaluation completed');
       }
-      if (data.complete) throw new Error('Results unavailable after evaluation completed');
+      throw new Error('Results timed out waiting for server');
     }
   }
 }
