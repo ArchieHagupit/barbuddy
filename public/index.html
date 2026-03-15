@@ -5216,7 +5216,7 @@ async function pollForResults(submissionId, authHdr, expectedCount) {
         console.log('[poll] attempt', resultRetries, 'rData:', JSON.stringify(rData).slice(0, 200));
         if (rData.scores) {
           console.log('[poll] scores received, returning');
-          return rData.scores;
+          return { scores: rData.scores, xpData: rData.xpData || null };
         }
         if (rData.waiting || !rData.complete) {
           console.log('[poll] waiting, retry', resultRetries);
@@ -5267,17 +5267,24 @@ async function resumePendingEvaluation() {
   </div>`;
 
   try {
-    const scores = await pollForResults(submissionId, authHdr, total);
+    const { scores: resumeScores, xpData: resumeXpData } = await pollForResults(submissionId, authHdr, total);
     sessionStorage.removeItem('bb_pending_eval');
     const fillEl = document.getElementById('eval-progress-fill');
     if (fillEl) fillEl.style.width = '100%';
-    // mockQs/mockAnswers are gone after a refresh — show a clean completion notice
-    res.innerHTML = `<div class="mock-results" style="text-align:center;padding:48px 24px;">
-      <div style="font-size:48px;margin-bottom:12px;">✅</div>
-      <div style="font-family:var(--fd);font-size:22px;font-weight:700;color:var(--gold-l);margin-bottom:10px;">Evaluation Complete!</div>
-      <p style="color:var(--muted);font-size:14px;margin-bottom:24px;">Your ${scores.length} answer${scores.length !== 1 ? 's have' : ' has'} been evaluated and your score has been saved.</p>
-      <button class="btn-mock" onclick="navToSubject(window.lastExamSubject||'overview','mockbar')">⏱ New Session</button>
-    </div>`;
+    // mockQs/mockAnswers are gone after a refresh — show completion notice (with XP popup if available)
+    const _showResumeComplete = () => {
+      res.innerHTML = `<div class="mock-results" style="text-align:center;padding:48px 24px;">
+        <div style="font-size:48px;margin-bottom:12px;">✅</div>
+        <div style="font-family:var(--fd);font-size:22px;font-weight:700;color:var(--gold-l);margin-bottom:10px;">Evaluation Complete!</div>
+        <p style="color:var(--muted);font-size:14px;margin-bottom:24px;">Your ${resumeScores.length} answer${resumeScores.length !== 1 ? 's have' : ' has'} been evaluated and your score has been saved.</p>
+        <button class="btn-mock" onclick="navToSubject(window.lastExamSubject||'overview','mockbar')">⏱ New Session</button>
+      </div>`;
+    };
+    if (resumeXpData && resumeXpData.xpEarned > 0 && sessionToken) {
+      showXPPopup(resumeXpData, _showResumeComplete);
+    } else {
+      _showResumeComplete();
+    }
   } catch(e) {
     sessionStorage.removeItem('bb_pending_eval');
     res.innerHTML = `<div style="text-align:center;padding:40px 20px;color:var(--muted);">Could not resume evaluation. Please start a new session.</div>`;
@@ -5317,6 +5324,7 @@ async function endMockSession(){
   // Pre-save result record to get resultId BEFORE evaluation starts.
   // Server will update it with final scores + award XP once evaluate-batch completes.
   let _resultId = null;
+  let _xpData = null;
   if (sessionToken && currentUser) {
     try {
       const preR = await fetch('/api/results/save', {
@@ -5343,7 +5351,8 @@ async function endMockSession(){
     const startData=await startRes.json();
     if(startData.error)throw new Error(startData.error);
     // Poll every 3 s, update UI, wait for complete, then fetch scores
-    scores=await pollForResults(submissionId,authHdr,mockQs.length);
+    const _pollResult=await pollForResults(submissionId,authHdr,mockQs.length);
+    scores=_pollResult.scores; _xpData=_pollResult.xpData;
     sessionStorage.removeItem('bb_pending_eval');
     // Normalize: pad error stubs for any questions the server missed
     while(scores.length<mockQs.length){
@@ -5489,11 +5498,9 @@ async function endMockSession(){
   </div>`;
   }
 
-  // XP is now awarded server-side after evaluate-batch completes (no client-side xpResult)
-  const xpResult = null;
-  // Show XP popup first if we earned XP, then reveal results
-  if (xpResult && xpResult.xpEarned > 0 && sessionToken) {
-    showXPPopup(xpResult, _renderResults);
+  // Show XP popup (with server-returned xpData) before revealing results
+  if (_xpData && _xpData.xpEarned > 0 && sessionToken) {
+    showXPPopup(_xpData, _renderResults);
   } else {
     _renderResults();
   }

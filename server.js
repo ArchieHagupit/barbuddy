@@ -30,6 +30,7 @@ const aiSemaphore = new Semaphore(20);
 // ── Per-submission evaluation progress ──────────────────────
 const evalProgress = new Map(); // submissionId → { total, done, complete }
 const evalResults  = new Map(); // submissionId → scores array (set after all jobs finish)
+const xpResults    = new Map(); // submissionId → xpData (set after awardXP resolves)
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -303,6 +304,12 @@ function extractJSON(text) {
   t = t.replace(/"([^"\\]*(\\.[^"\\]*)*)"/g, (match) =>
     match.replace(/\{/g, '(').replace(/\}/g, ')')
   );
+
+  // Fix trailing commas before closing braces/brackets
+  t = t.replace(/,\s*}/g, '}').replace(/,\s*]/g, ']');
+
+  // Fix non-JSON numeric literals
+  t = t.replace(/:\s*NaN/g, ': null').replace(/:\s*Infinity/g, ': null').replace(/:\s*undefined/g, ': null');
 
   // Strip markdown fences (Sonnet fallback returns ```json ... ```)
   t = t
@@ -3265,8 +3272,8 @@ app.post('/api/evaluate-batch', requireAuth, async (req, res) => {
       // but we set it again here as a safety net in case of any race.
       const prog = evalProgress.get(submissionId);
       if (prog) prog.complete = true;
-      // Clean up both maps after 10 minutes
-      setTimeout(() => { evalProgress.delete(submissionId); evalResults.delete(submissionId); }, 10 * 60 * 1000);
+      // Clean up all maps after 10 minutes
+      setTimeout(() => { evalProgress.delete(submissionId); evalResults.delete(submissionId); xpResults.delete(submissionId); }, 10 * 60 * 1000);
 
       // ── Post-eval: update result record + award XP ───────────
       // review_session XP is awarded at save time; skip here
@@ -3314,19 +3321,25 @@ app.post('/api/evaluate-batch', requireAuth, async (req, res) => {
         }).length;
         const bonusXP = highScoreCount * XP_VALUES.HIGH_SCORE_BONUS;
 
+        let xpData = null;
         if (sessionType === 'speed_drill') {
-          await awardXP(userId, 'COMPLETE_SPEED_DRILL', `Completed Speed Drill — ${subjectKey}`, bonusXP);
+          xpData = await awardXP(userId, 'COMPLETE_SPEED_DRILL', `Completed Speed Drill — ${subjectKey}`, bonusXP);
         } else {
           const isFullSession = totalQuestions === 20;
           const baseXP = isFullSession
             ? XP_VALUES.MOCK_BAR_FULL_BONUS
             : totalQuestions * XP_VALUES.MOCK_BAR_PER_QUESTION;
-          await awardXP(
+          xpData = await awardXP(
             userId,
             isFullSession ? 'MOCK_BAR_FULL' : 'MOCK_BAR_PARTIAL',
             `Completed Mock Bar — ${subjectKey} (${totalQuestions} question${totalQuestions !== 1 ? 's' : ''})`,
             baseXP + bonusXP
           );
+        }
+        if (xpData) {
+          xpData.highScoreCount = highScoreCount;
+          xpData.highScoreBonus = bonusXP;
+          xpResults.set(submissionId, xpData);
         }
       } catch (xpErr) {
         console.error('[xp] evaluate-batch completion error:', xpErr.message);
@@ -3348,7 +3361,7 @@ app.get('/api/eval-results/:submissionId', requireAuth, (req, res) => {
   if (!prog.complete || !evalResults.has(submissionId)) {
     return res.status(202).json({ complete: false, waiting: true, done: prog.done, total: prog.total });
   }
-  res.json({ complete: true, scores: evalResults.get(submissionId) });
+  res.json({ complete: true, scores: evalResults.get(submissionId), xpData: xpResults.get(submissionId) || null });
 });
 
 
