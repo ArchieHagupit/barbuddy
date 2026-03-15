@@ -282,8 +282,21 @@ function extractJSON(text) {
     .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')
     .trim();
 
-  // Fix escaped apostrophes (char 39) that break JSON.parse
-  t = t.replace(/\\'/g, "'");
+  // Fix invalid JSON escape sequences that AI models emit
+  t = t
+    .replace(/\\'/g,  "'")   // \' → '
+    .replace(/\\s/g,  "s")   // \s → s
+    .replace(/\\d/g,  "d")   // \d → d
+    .replace(/\\w/g,  "w")   // \w → w
+    .replace(/\\-/g,  "-")   // \- → -
+    .replace(/\\%/g,  "%")   // \% → %
+    .replace(/\\&/g,  "&")   // \& → &
+    .replace(/\\\(/g, "(")   // \( → (
+    .replace(/\\\)/g, ")")   // \) → )
+    .replace(/\\\./g, ".")   // \. → .  (note: /\\./ would match any char — use /\\\. /)
+    .replace(/\\,/g,  ",")   // \, → ,
+    .replace(/\\:/g,  ":")   // \: → :
+    .replace(/\\;/g,  ";");  // \; → ;
 
   // Strip markdown fences (Sonnet fallback returns ```json ... ```)
   t = t
