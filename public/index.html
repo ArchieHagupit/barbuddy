@@ -5178,13 +5178,21 @@ async function pollForResults(submissionId, authHdr, expectedCount) {
     if (totalEl) totalEl.textContent = total;
     if (fillEl)  fillEl.style.width  = pct + '%';
 
-    // Stall detection — compare before updating lastDone
-    if (data.done === lastDone) { stalledChecks++; } else { stalledChecks = 0; lastDone = data.done; }
+    // Stall detection — reaching 100% is never a stall; only count if mid-flight
+    const allDone = data.done >= total;
+    if (allDone) {
+      stalledChecks = 0;  // don't count done === total as a stall
+    } else if (data.done === lastDone) {
+      stalledChecks++;
+    } else {
+      stalledChecks = 0;
+    }
+    lastDone = data.done;
 
     if (msgEl) {
-      if (stalledChecks >= 10) {
+      if (!allDone && stalledChecks >= 10) {
         msgEl.innerHTML = 'Evaluation seems stalled \u2014 <button onclick="window._evalForceCheck&&window._evalForceCheck()" style="background:rgba(201,168,76,.2);border:1px solid rgba(201,168,76,.4);color:#c9a84c;border-radius:6px;padding:3px 11px;font-size:12px;font-weight:700;cursor:pointer;">\u21ba Check Again</button>';
-      } else if (stalledChecks >= 3) {
+      } else if (!allDone && stalledChecks >= 3) {
         msgEl.textContent = 'Evaluation seems slow \u2014 still processing...';
       } else if (pct < 30) { msgEl.textContent = 'BarBuddy is reviewing your answers...';
       } else if (pct < 70) { msgEl.textContent = 'Analyzing your responses...';
@@ -5192,17 +5200,20 @@ async function pollForResults(submissionId, authHdr, expectedCount) {
       } else               { msgEl.textContent = 'Preparing your results!'; }
     }
     if (noteEl && data.done > 0 && !data.complete) {
-      const rem = total - data.done;
+      const rem = allDone ? 0 : Math.max(0, total - data.done);
       if (rem > 0) noteEl.innerHTML = `Please keep this window open.<br><span style="font-size:11px;color:var(--muted);">~${rem} question${rem !== 1 ? 's' : ''} remaining</span>`;
     }
 
-    if (data.complete) {
+    // Fetch results when complete flag is set OR when all questions are done
+    // (handles race window where done reaches total before complete propagates)
+    if (data.complete || allDone) {
       const rRes  = await fetch('/api/eval-results/' + submissionId, { headers: { 'x-session-token': authHdr } });
       const rData = await rRes.json();
       if (rData.scores) return rData.scores;
-      // Server guarded: complete flag set but results not yet stored — wait one more tick
+      // Results not yet stored — wait one tick and retry without the full 3s poll delay
       if (!rData.complete) { await new Promise(r => setTimeout(r, 1500)); continue; }
-      throw new Error('Results unavailable after evaluation completed');
+      if (data.complete) throw new Error('Results unavailable after evaluation completed');
+      // complete not yet true but allDone — keep polling normally
     }
   }
 }
