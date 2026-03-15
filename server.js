@@ -299,8 +299,8 @@ function extractJSON(text) {
     .replace(/\\:/g,  ":")   // \: → :
     .replace(/\\;/g,  ";");  // \; → ;
 
-  // Replace { } inside quoted string values with ( ) using a character-by-character
-  // walk so structural braces are preserved and escaped quotes are handled correctly.
+  // Strip { } inside quoted string values using a character-by-character walk so
+  // structural braces are preserved and escaped quotes are handled correctly.
   function sanitizeNestedBraces(str) {
     let result = '';
     let inString = false;
@@ -310,8 +310,8 @@ function extractJSON(text) {
       if (escaped) { result += ch; escaped = false; continue; }
       if (ch === '\\') { escaped = true; result += ch; continue; }
       if (ch === '"') { inString = !inString; result += ch; continue; }
-      if (inString && ch === '{') { result += '('; continue; }
-      if (inString && ch === '}') { result += ')'; continue; }
+      if (inString && ch === '{') { result += ''; continue; }
+      if (inString && ch === '}') { result += ''; continue; }
       result += ch;
     }
     return result;
