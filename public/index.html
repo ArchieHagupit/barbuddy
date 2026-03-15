@@ -3020,7 +3020,7 @@ async function renderXPLevelTab() {
 
     const fmtDate = ts => {
       const d = new Date(ts);
-      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      return d.toLocaleDateString('en-US', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', year: 'numeric' });
     };
 
     const histRows = recentTransactions.length
@@ -5066,7 +5066,7 @@ function fmt(n,decimals=1){
 function formatDate(iso){
   if(!iso)return'Unknown date';
   const d=new Date(iso);
-  return d.toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric',hour:'2-digit',minute:'2-digit'});
+  return d.toLocaleDateString('en-PH',{timeZone:'Asia/Manila',year:'numeric',month:'long',day:'numeric',hour:'2-digit',minute:'2-digit'});
 }
 function runTimer(){
   if(mockTimer)clearInterval(mockTimer);
@@ -5431,7 +5431,7 @@ async function endMockSession(){
   }
 
   // Pre-fill email modal subject
-  const emailSubj=`BarBuddy Mock Bar Results — ${new Date().toLocaleDateString('en-PH')} — ${fmt(rawScore)}/${maxScore} (${pct}%)`;
+  const emailSubj=`BarBuddy Mock Bar Results — ${new Date().toLocaleDateString('en-PH',{timeZone:'Asia/Manila'})} — ${fmt(rawScore)}/${maxScore} (${pct}%)`;
   document.getElementById('email-subject').value=emailSubj;
 
   // Capture current session flags before async gap resets them
@@ -5440,7 +5440,7 @@ async function endMockSession(){
 
   function _renderResults() {
     res.innerHTML=`<div class="mock-results">
-    ${currentUser?`<div style="background:rgba(201,168,76,.07);border:1px solid rgba(201,168,76,.18);border-radius:9px;padding:8px 14px;margin-bottom:14px;text-align:left;"><div class="result-user">👤 ${h(currentUser.name)}</div><div style="font-size:11px;color:var(--muted);">${new Date().toLocaleDateString('en-PH')}</div></div>`:''}
+    ${currentUser?`<div style="background:rgba(201,168,76,.07);border:1px solid rgba(201,168,76,.18);border-radius:9px;padding:8px 14px;margin-bottom:14px;text-align:left;"><div class="result-user">👤 ${h(currentUser.name)}</div><div style="font-size:11px;color:var(--muted);">${new Date().toLocaleDateString('en-PH',{timeZone:'Asia/Manila'})}</div></div>`:''}
     <div style="font-size:32px;margin-bottom:8px;">🏛</div>
     <div style="font-family:var(--fd);font-size:20px;font-weight:700;color:#ff8c42;margin-bottom:4px;">Mock Bar Results</div>
     <div class="mr-grade"><span class="score-fraction">${fmt(rawScore)}/${maxScore}</span></div>
