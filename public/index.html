@@ -498,6 +498,39 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .btn-mark-done:hover{border-color:var(--gold);color:var(--gold);}
 .btn-mark-done.is-done{background:rgba(20,180,160,.12);border-color:rgba(20,180,160,.35);color:var(--teal,#14b4a0);}
 .btn-mark-done.is-done:hover{background:rgba(20,180,160,.05);border-color:rgba(20,180,160,.2);color:var(--text-muted,var(--muted));}
+/* Bookmark button */
+.btn-bookmark{padding:7px 14px;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer;border:1.5px solid var(--bdr2);background:transparent;color:var(--text-muted,var(--muted));font-family:var(--fb);transition:all .2s;white-space:nowrap;}
+.btn-bookmark:hover{border-color:var(--gold);color:var(--gold);}
+.btn-bookmark.is-bookmarked{background:rgba(212,168,67,.12);border-color:rgba(212,168,67,.4);color:var(--gold);}
+.btn-bookmark.is-bookmarked:hover{background:rgba(212,168,67,.06);border-color:rgba(212,168,67,.2);color:var(--text-muted,var(--muted));}
+/* Bookmark badge in topic list */
+.tl-bm-badge{font-size:10px;flex-shrink:0;opacity:.75;line-height:1;}
+/* Bookmarks sidebar button */
+.pl-bm-btn{width:100%;display:flex;align-items:center;justify-content:center;gap:5px;padding:7px 10px;font-size:11px;font-weight:700;border-radius:8px;border:1.5px solid rgba(212,168,67,.3);background:rgba(212,168,67,.08);color:var(--gold);cursor:pointer;font-family:var(--fb);transition:all .2s;}
+.pl-bm-btn:hover{border-color:rgba(212,168,67,.55);background:rgba(212,168,67,.16);}
+/* Bookmarks overlay */
+#bm-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:998;display:none;}
+#bm-overlay.open{display:block;}
+/* Bookmarks panel */
+#bm-panel{position:fixed;top:0;right:0;width:340px;height:100vh;background:var(--card,#1a2235);border-left:1px solid var(--bdr2);z-index:999;display:flex;flex-direction:column;box-shadow:-6px 0 32px rgba(0,0,0,.5);transform:translateX(100%);transition:transform .25s cubic-bezier(.4,0,.2,1);}
+#bm-panel.open{transform:translateX(0);}
+.bm-panel-head{display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid var(--bdr2);flex-shrink:0;}
+.bm-panel-head h3{margin:0;font-size:14px;font-weight:700;color:var(--text);}
+.bm-panel-close{background:none;border:none;cursor:pointer;color:var(--muted);font-size:22px;padding:0 4px;line-height:1;transition:color .15s;}
+.bm-panel-close:hover{color:var(--text);}
+.bm-panel-body{flex:1;overflow-y:auto;padding:8px 0;}
+.bm-subject-group{margin-bottom:2px;}
+.bm-subject-label{padding:10px 18px 4px;font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);display:block;}
+.bm-item{display:flex;align-items:center;gap:6px;padding:8px 18px;border-bottom:1px solid rgba(255,255,255,.04);transition:background .12s;}
+.bm-item:hover{background:var(--hover,rgba(255,255,255,.04));}
+.bm-item-title{flex:1;font-size:12px;color:var(--text);line-height:1.4;cursor:pointer;border:none;background:none;text-align:left;padding:0;font-family:inherit;}
+.bm-item-title:hover{color:var(--gold);}
+.bm-item-nav{background:none;border:none;cursor:pointer;color:var(--teal);font-size:16px;padding:2px 5px;opacity:.8;transition:opacity .12s;line-height:1;}
+.bm-item-nav:hover{opacity:1;}
+.bm-item-rm{background:none;border:none;cursor:pointer;color:var(--muted);font-size:16px;padding:2px 5px;opacity:.6;transition:all .12s;line-height:1;}
+.bm-item-rm:hover{color:#e05060;opacity:1;}
+.bm-empty{padding:48px 20px;text-align:center;color:var(--muted);font-size:13px;line-height:1.7;}
+.bm-empty-icon{font-size:32px;margin-bottom:12px;opacity:.4;display:block;}
 /* Subject progress bar (inside learn tab header) */
 .subj-progress-bar-wrap{display:flex;align-items:center;gap:10px;margin-top:8px;}
 .subj-progress-bar-track{flex:1;max-width:240px;height:6px;background:rgba(255,255,255,.08);border-radius:3px;overflow:hidden;}
@@ -3238,12 +3271,16 @@ function renderLearnTab(subj, container) {
           </div>
           <span class="subj-progress-text" id="subj-progress-text-${subj}">${prog.done}/${prog.total} topics · ${pct}%</span>
         </div>
+        <div style="padding:0 12px 8px;">
+          <button class="pl-bm-btn" onclick="openBookmarksPanel()">🔖 My Bookmarks</button>
+        </div>
         <div class="tree" id="syllabusTree"></div>
       </aside>
       <div class="panel-r">
         <div class="pr-top" id="lpTopbar" style="display:none;">
           <div class="pr-bc" id="lpBC"></div>
           <div style="display:flex;gap:7px;align-items:center;">
+            <button class="btn-bookmark" id="bookmark-btn" onclick="toggleBookmark()">🔖 Bookmark</button>
             <button class="btn-mark-done" id="mark-done-btn" onclick="markDone()">○ Mark as Done</button>
             <button class="btn-og" style="font-size:11px;" onclick="switchSubjectTab(currentSubject,'quiz')">Take Quiz →</button>
           </div>
@@ -3748,8 +3785,9 @@ function renderTopicTree(nodes, container, subj, depth) {
 
     } else {
       // Learnable topic — clickable leaf
-      const cached  = !node.pdfId && isTopicCached(subj, displayName);
-      const done    = node.id ? isTopicDone(subj, node.id) : false;
+      const cached     = !node.pdfId && isTopicCached(subj, displayName);
+      const done       = node.id ? isTopicDone(subj, node.id) : false;
+      const bookmarked = node.id ? isTopicBookmarked(subj, node.id) : false;
       const genNow  = !node.pdfId && KB.genState?.running && KB.genState?.current?.includes(displayName);
       const topicEl = document.createElement('div');
       topicEl.className = 'tl-topic' + ((done || cached) ? ' tl-done' : '') + (node.pdfId ? ' tl-has-pdf' : '');
@@ -3764,6 +3802,13 @@ function renderTopicTree(nodes, container, subj, depth) {
       nameEl.textContent = (node.label ? node.label + '. ' : '') + displayName;
       topicEl.appendChild(checkEl);
       topicEl.appendChild(nameEl);
+      if (bookmarked) {
+        const bmBadge = document.createElement('span');
+        bmBadge.className = 'tl-bm-badge';
+        bmBadge.setAttribute('data-bm-badge', node.id);
+        bmBadge.textContent = '🔖';
+        topicEl.appendChild(bmBadge);
+      }
       if (node.pdfId) {
         const b = document.createElement('span');
         b.className = 'tl-cached-badge';
@@ -3896,6 +3941,14 @@ async function clickSyllabusNode(subjKey, node) {
       btn.textContent = done ? '✓ Completed' : '○ Mark as Done';
       btn.classList.toggle('is-done', done);
       btn.onclick = () => handleMarkDone(subjKey, node.id);
+    }
+    // Sync Bookmark button state
+    const bmBtn = document.getElementById('bookmark-btn');
+    if (bmBtn) {
+      const bookmarked = isTopicBookmarked(subjKey, node.id);
+      bmBtn.textContent = bookmarked ? '🔖 Bookmarked' : '🔖 Bookmark';
+      bmBtn.classList.toggle('is-bookmarked', bookmarked);
+      bmBtn.onclick = () => toggleBookmark(subjKey, node);
     }
   }
   // If node has a PDF — show PDF viewer (token-authenticated, no download)
@@ -4108,6 +4161,185 @@ function getSubjectProgress(subject) {
   }
   for (const sec of sections) countNodes(sec.children || []);
   return { done, total };
+}
+
+// ══════════════════════════════════
+// BOOKMARKS
+// ══════════════════════════════════
+
+function getBookmarks() {
+  const userId = currentUser?.id || 'guest';
+  try { return JSON.parse(localStorage.getItem('bb_bookmarks_' + userId) || '{}'); } catch { return {}; }
+}
+
+function isTopicBookmarked(subject, topicId) {
+  return !!getBookmarks()[subject]?.[topicId];
+}
+
+function setBookmarkLocal(subject, topicId, topicTitle, bookmarked) {
+  const userId = currentUser?.id || 'guest';
+  const bms = getBookmarks();
+  if (!bms[subject]) bms[subject] = {};
+  if (bookmarked) {
+    bms[subject][topicId] = { topic_title: topicTitle, created_at: new Date().toISOString() };
+  } else {
+    delete bms[subject][topicId];
+    if (!Object.keys(bms[subject]).length) delete bms[subject];
+  }
+  localStorage.setItem('bb_bookmarks_' + userId, JSON.stringify(bms));
+}
+
+async function toggleBookmark(subjKey, node) {
+  subjKey = subjKey || curSubj;
+  node = node || { id: null, title: curTopic, name: curTopic };
+  const topicId = node.id;
+  const topicTitle = node.title || node.name || curTopic;
+  if (!topicId || !subjKey) return;
+
+  const wasBookmarked = isTopicBookmarked(subjKey, topicId);
+  const nowBookmarked = !wasBookmarked;
+
+  // Optimistic update
+  setBookmarkLocal(subjKey, topicId, topicTitle, nowBookmarked);
+  const bmBtn = document.getElementById('bookmark-btn');
+  if (bmBtn) {
+    bmBtn.textContent = nowBookmarked ? '🔖 Bookmarked' : '🔖 Bookmark';
+    bmBtn.classList.toggle('is-bookmarked', nowBookmarked);
+  }
+  updateBookmarkBadgeInTree(topicId, nowBookmarked);
+  showToast(nowBookmarked ? '🔖 Topic bookmarked' : 'Bookmark removed', nowBookmarked ? 'success' : 'info');
+
+  // Persist to server
+  if (sessionToken) {
+    try {
+      if (nowBookmarked) {
+        await fetch('/api/bookmarks', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-session-token': sessionToken },
+          body: JSON.stringify({ topicId, topicTitle, subject: subjKey })
+        });
+      } else {
+        await fetch('/api/bookmarks/' + encodeURIComponent(topicId), {
+          method: 'DELETE',
+          headers: { 'x-session-token': sessionToken }
+        });
+      }
+    } catch(e) {
+      // Rollback on network error
+      setBookmarkLocal(subjKey, topicId, topicTitle, wasBookmarked);
+      if (bmBtn) {
+        bmBtn.textContent = wasBookmarked ? '🔖 Bookmarked' : '🔖 Bookmark';
+        bmBtn.classList.toggle('is-bookmarked', wasBookmarked);
+      }
+      updateBookmarkBadgeInTree(topicId, wasBookmarked);
+      showToast('Failed to save bookmark', 'error');
+    }
+  }
+}
+
+function updateBookmarkBadgeInTree(topicId, bookmarked) {
+  const topicEl = document.querySelector(`.tl-topic[data-node-id="${topicId}"]`);
+  if (!topicEl) return;
+  const existing = topicEl.querySelector('.tl-bm-badge');
+  if (bookmarked && !existing) {
+    const bmBadge = document.createElement('span');
+    bmBadge.className = 'tl-bm-badge';
+    bmBadge.setAttribute('data-bm-badge', topicId);
+    bmBadge.textContent = '🔖';
+    const nameEl = topicEl.querySelector('.tl-topic-name');
+    if (nameEl) nameEl.after(bmBadge);
+    else topicEl.appendChild(bmBadge);
+  } else if (!bookmarked && existing) {
+    existing.remove();
+  }
+}
+
+async function syncBookmarksFromServer() {
+  if (!sessionToken) return;
+  try {
+    const r = await fetch('/api/bookmarks', { headers: { 'x-session-token': sessionToken } });
+    if (!r.ok) return;
+    const items = await r.json();
+    const bms = {};
+    for (const bm of items) {
+      if (!bms[bm.subject]) bms[bm.subject] = {};
+      bms[bm.subject][bm.topic_id] = { topic_title: bm.topic_title, created_at: bm.created_at };
+    }
+    if (currentUser?.id) {
+      localStorage.setItem('bb_bookmarks_' + currentUser.id, JSON.stringify(bms));
+    }
+  } catch(e) {}
+}
+
+function openBookmarksPanel() {
+  renderBookmarksPanelBody();
+  document.getElementById('bm-panel')?.classList.add('open');
+  document.getElementById('bm-overlay')?.classList.add('open');
+}
+
+function closeBookmarksPanel() {
+  document.getElementById('bm-panel')?.classList.remove('open');
+  document.getElementById('bm-overlay')?.classList.remove('open');
+}
+
+function renderBookmarksPanelBody() {
+  const body = document.getElementById('bm-panel-body');
+  if (!body) return;
+  const bms = getBookmarks();
+  const subjects = Object.keys(bms).filter(s => Object.keys(bms[s]).length > 0);
+  if (!subjects.length) {
+    body.innerHTML = `<div class="bm-empty"><span class="bm-empty-icon">🔖</span>No bookmarks yet.<br>Bookmark topics to find them quickly later.</div>`;
+    return;
+  }
+  let html = '';
+  for (const subj of subjects) {
+    const subjInfo = SUBJS.find(s => s.key === subj);
+    const subjName = subjInfo?.name || subj;
+    const topics = Object.entries(bms[subj]).sort((a, b) => new Date(b[1].created_at) - new Date(a[1].created_at));
+    html += `<div class="bm-subject-group"><span class="bm-subject-label">${h(subjName)}</span>`;
+    for (const [topicId, info] of topics) {
+      const safeSubj = h(subj);
+      const safeId = h(topicId);
+      html += `<div class="bm-item">
+        <button class="bm-item-title" onclick="navToBookmark('${safeSubj}','${safeId}')">${h(info.topic_title || topicId)}</button>
+        <button class="bm-item-nav" onclick="navToBookmark('${safeSubj}','${safeId}')" title="Go to topic">→</button>
+        <button class="bm-item-rm" onclick="removeBookmarkFromPanel('${safeSubj}','${safeId}')" title="Remove bookmark">×</button>
+      </div>`;
+    }
+    html += `</div>`;
+  }
+  body.innerHTML = html;
+}
+
+async function navToBookmark(subject, topicId) {
+  closeBookmarksPanel();
+  await navToSubject(subject, 'learn');
+  await loadSubjectSyllabus(subject);
+  renderSyllabusTree('', subject);
+  setTimeout(() => {
+    const topicEl = document.querySelector(`.tl-topic[data-node-id="${topicId}"]`);
+    if (topicEl) topicEl.click();
+  }, 250);
+}
+
+function removeBookmarkFromPanel(subject, topicId) {
+  const bms = getBookmarks();
+  const topicTitle = bms[subject]?.[topicId]?.topic_title || topicId;
+  setBookmarkLocal(subject, topicId, topicTitle, false);
+  updateBookmarkBadgeInTree(topicId, false);
+  // If currently viewing this topic, reset its bookmark button
+  const selected = document.querySelector(`.tl-topic.tl-selected[data-node-id="${topicId}"]`);
+  if (selected) {
+    const bmBtn = document.getElementById('bookmark-btn');
+    if (bmBtn) { bmBtn.textContent = '🔖 Bookmark'; bmBtn.classList.remove('is-bookmarked'); }
+  }
+  renderBookmarksPanelBody();
+  if (sessionToken) {
+    fetch('/api/bookmarks/' + encodeURIComponent(topicId), {
+      method: 'DELETE',
+      headers: { 'x-session-token': sessionToken }
+    }).catch(() => {});
+  }
 }
 
 // Load all subject syllabuses in background so overview progress bars are accurate
@@ -6240,6 +6472,7 @@ async function onAuthSuccess(token, user) {
     refreshKBState(),
     applyTabSettings(),
     syncProgressFromServer(),
+    syncBookmarksFromServer(),
     fetch('/api/settings').then(r => r.json()).then(s => {
       if (s.barExamDate) window._barExamDate = s.barExamDate;
     }).catch(() => {}),
@@ -7732,6 +7965,18 @@ function showLevelUpModal(xpResult, onContinue) {
 <!-- Highlight color picker toolbar — shown on text selection inside exam-content -->
 <div id="highlight-toolbar" style="display:none;position:fixed;z-index:9999;background:#1a2235;border:1px solid #2a3347;border-radius:8px;padding:6px 10px;box-shadow:0 4px 20px rgba(0,0,0,0.4);align-items:center;gap:6px;">
   <span style="font-size:11px;color:#888;margin-right:2px;">Highlight:</span>
+<!-- BOOKMARKS PANEL -->
+<div id="bm-overlay" onclick="closeBookmarksPanel()"></div>
+<div id="bm-panel">
+  <div class="bm-panel-head">
+    <h3>🔖 My Bookmarks</h3>
+    <button class="bm-panel-close" onclick="closeBookmarksPanel()" title="Close">×</button>
+  </div>
+  <div class="bm-panel-body" id="bm-panel-body">
+    <div class="bm-empty"><span class="bm-empty-icon">🔖</span>No bookmarks yet.<br>Bookmark topics to find them quickly later.</div>
+  </div>
+</div>
+
   <button class="hl-color-btn" data-color="#ffd700" style="width:18px;height:18px;border-radius:50%;background:#ffd700;border:2px solid transparent;cursor:pointer;" title="Yellow"></button>
   <button class="hl-color-btn" data-color="#90ee90" style="width:18px;height:18px;border-radius:50%;background:#90ee90;border:2px solid transparent;cursor:pointer;" title="Green"></button>
   <button class="hl-color-btn" data-color="#ffb6c1" style="width:18px;height:18px;border-radius:50%;background:#ffb6c1;border:2px solid transparent;cursor:pointer;" title="Pink"></button>

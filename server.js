@@ -1396,6 +1396,49 @@ app.post('/api/user/progress', requireAuth, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── Bookmarks ─────────────────────────────────────────────────
+app.get('/api/bookmarks', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('bookmarks')
+      .select('*')
+      .eq('user_id', req.userId)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    res.json(data || []);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/bookmarks', requireAuth, async (req, res) => {
+  try {
+    const { topicId, topicTitle, subject } = req.body;
+    if (!topicId || !subject) return res.status(400).json({ error: 'topicId and subject required' });
+    const id = 'bm_' + req.userId.slice(-8) + '_' + topicId.slice(0, 20).replace(/[^a-zA-Z0-9]/g, '_');
+    const { data, error } = await supabase
+      .from('bookmarks')
+      .upsert(
+        { id, user_id: req.userId, subject, topic_id: topicId, topic_title: topicTitle || topicId },
+        { onConflict: 'user_id,topic_id' }
+      )
+      .select()
+      .single();
+    if (error) throw error;
+    res.json({ bookmarked: true, bookmark: data });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/bookmarks/:topicId', requireAuth, async (req, res) => {
+  try {
+    const { error } = await supabase
+      .from('bookmarks')
+      .delete()
+      .eq('user_id', req.userId)
+      .eq('topic_id', req.params.topicId);
+    if (error) throw error;
+    res.json({ bookmarked: false });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 app.post('/api/user/change-password', requireAuth, async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body || {};
