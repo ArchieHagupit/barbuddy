@@ -6,7 +6,7 @@ const fs         = require('fs');
 const multer     = require('multer');
 const pdfParse   = require('pdf-parse');
 const mammoth    = require('mammoth');
-const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 const crypto     = require('crypto');
 const bcrypt     = require('bcryptjs');
 const { createClient } = require('@supabase/supabase-js');
@@ -3389,26 +3389,15 @@ app.get('/api/eval-results/:submissionId', requireAuth, (req, res) => {
 
 // ── EMAIL RESULTS ────────────────────────────────────────────
 app.post('/api/email-results', async (req, res) => {
-  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-    return res.json({ error: 'Email not configured. Add EMAIL_USER and EMAIL_PASS to Railway environment variables.' });
+  if (!process.env.RESEND_API_KEY) {
+    return res.json({ error: 'Email not configured. Add RESEND_API_KEY to Railway environment variables.' });
   }
   const { to, subject, htmlBody } = req.body;
   if (!to || !htmlBody) return res.status(400).json({ error: 'to and htmlBody required' });
   try {
-    const transporter = nodemailer.createTransport({
-      host: 'smtp.gmail.com',
-      port: 465,
-      secure: true,
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS
-      },
-      connectionTimeout: 10000,
-      greetingTimeout: 10000,
-      socketTimeout: 10000,
-    });
-    await transporter.sendMail({
-      from: process.env.EMAIL_FROM || `BarBuddy Results <${process.env.EMAIL_USER}>`,
+    const resend = new Resend(process.env.RESEND_API_KEY);
+    await resend.emails.send({
+      from: 'BarBuddy Results <onboarding@resend.dev>',
       to,
       subject: subject || 'BarBuddy Mock Bar Results',
       html: `<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body>${htmlBody}</body></html>`,
