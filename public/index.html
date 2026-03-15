@@ -5210,10 +5210,13 @@ async function pollForResults(submissionId, authHdr, expectedCount) {
       const rRes  = await fetch('/api/eval-results/' + submissionId, { headers: { 'x-session-token': authHdr } });
       const rData = await rRes.json();
       if (rData.scores) return rData.scores;
-      // Results not yet stored — wait one tick and retry without the full 3s poll delay
-      if (!rData.complete) { await new Promise(r => setTimeout(r, 1500)); continue; }
+      // Server not ready yet — short retry (skips the 3s poll delay)
+      if (rData.waiting || !rData.complete) {
+        if (msgEl) msgEl.textContent = 'Preparing your results...';
+        await new Promise(r => setTimeout(r, 1500));
+        continue;
+      }
       if (data.complete) throw new Error('Results unavailable after evaluation completed');
-      // complete not yet true but allDone — keep polling normally
     }
   }
 }

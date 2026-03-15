@@ -3042,7 +3042,7 @@ async function runEvalJob(job) {
 
   if (!answer || !answer.trim()) {
     const prog = evalProgress.get(submissionId);
-    if (prog) { prog.done++; if (prog.done >= prog.total) prog.complete = true; }
+    if (prog) { prog.done++; }  // complete set only after evalResults.set() in .then()
     return { score: '0/10', numericScore: 0, grade: 'Not Answered', overallFeedback: 'No answer provided.', keyMissed: [] };
   }
 
@@ -3172,7 +3172,9 @@ Respond ONLY with valid JSON: {"score":"X/10","numericScore":0,"grade":"...","br
     return { score: '0/10', numericScore: 0, grade: 'Error', overallFeedback: 'Evaluation temporarily unavailable.', keyMissed: [], _evalError: true };
   } finally {
     const prog = evalProgress.get(submissionId);
-    if (prog) { prog.done++; if (prog.done >= prog.total) prog.complete = true; }
+    // Increment done counter. Do NOT set complete here — complete is set only after
+    // evalResults.set() in the Promise.all .then() handler to close the race window.
+    if (prog) { prog.done++; }
   }
 }
 
@@ -3336,7 +3338,7 @@ app.get('/api/eval-results/:submissionId', requireAuth, (req, res) => {
   if (!prog) return res.status(404).json({ error: 'Submission not found or expired' });
   // Guard against the brief window where complete=true but evalResults isn't stored yet
   if (!prog.complete || !evalResults.has(submissionId)) {
-    return res.status(202).json({ complete: false, done: prog.done, total: prog.total });
+    return res.status(202).json({ complete: false, waiting: true, done: prog.done, total: prog.total });
   }
   res.json({ complete: true, scores: evalResults.get(submissionId) });
 });
