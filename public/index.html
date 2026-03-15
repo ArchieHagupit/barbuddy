@@ -6339,6 +6339,7 @@ async function refreshAdminKB(){
   }).join('');
 }
 async function loadStorageInfo(){
+  if(!adminKey)return;
   const el=document.getElementById('storageIndicator');if(!el)return;
   try{
     const r=await fetch('/api/storage-info',{headers:{'x-admin-key':adminKey}});
