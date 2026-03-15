@@ -1004,12 +1004,16 @@ function _mapResult(r) {
   };
 }
 
-app.get('/api/admin/results', adminOnly, async (_req, res) => {
+app.get('/api/admin/results', adminOnly, async (req, res) => {
   try {
-    const { data } = await supabase.from('results')
-      .select('*, users(id, name, email)')
-      .order('finished_at', { ascending: false });
-    res.json((data || []).map(_mapResult));
+    const limit  = Math.min(parseInt(req.query.limit)  || 20, 500);
+    const offset = parseInt(req.query.offset) || 0;
+    const { data, count, error } = await supabase.from('results')
+      .select('*, users(id, name, email)', { count: 'exact' })
+      .order('finished_at', { ascending: false })
+      .range(offset, offset + limit - 1);
+    if (error) throw error;
+    res.json({ results: (data || []).map(_mapResult), total: count || 0, offset, limit });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -1093,10 +1097,16 @@ app.get('/api/spaced-repetition/stats', requireAuth, async (req, res) => {
 // ── Admin: aggregated Improve items across all results ──────────
 app.get('/api/admin/improve-items', adminOnly, async (req, res) => {
   try {
+    const limit  = Math.min(parseInt(req.query.limit)  || 20, 100);
+    const offset = parseInt(req.query.offset) || 0;
+    const { count: totalResults } = await supabase
+      .from('results')
+      .select('id', { count: 'exact', head: true });
     const { data, error } = await supabase
       .from('results')
       .select('id, subject, finished_at, questions, users(id, name, email)')
-      .order('finished_at', { ascending: false });
+      .order('finished_at', { ascending: false })
+      .range(offset, offset + limit - 1);
     if (error) throw error;
     const items = [];
     for (const row of data || []) {
@@ -1119,7 +1129,7 @@ app.get('/api/admin/improve-items', adminOnly, async (req, res) => {
         }
       }
     }
-    res.json(items);
+    res.json({ items, total: totalResults || 0, offset, limit });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 

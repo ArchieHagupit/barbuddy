@@ -1555,6 +1555,7 @@ select.form-input{cursor:pointer;}
         </div>
       </div>
       <div id="adminResultsList"><div style="font-size:12px;color:var(--muted);">Loading…</div></div>
+      <div id="adminResultsFooter" style="text-align:center;padding:14px 0 4px;display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;"></div>
     </div>
 
     <!-- QUESTIONS BANK PANEL -->
@@ -1563,12 +1564,12 @@ select.form-input{cursor:pointer;}
         <h3 style="font-family:var(--fd);font-size:18px;font-weight:700;color:var(--gold-l);margin:0;">📝 Questions Bank</h3>
         <div style="display:flex;align-items:center;gap:10px;">
           <span id="adminQTotal" style="font-size:12px;color:var(--muted);"></span>
-          <button class="btn-og" onclick="loadAdminQuestions(0)" style="font-size:11px;">↺ Refresh</button>
+          <button class="btn-og" onclick="loadAdminQuestions()" style="font-size:11px;">↺ Refresh</button>
         </div>
       </div>
       <!-- Filters row -->
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
-        <input id="adminQSearch" class="sp-search" placeholder="Search questions…" style="flex:1;min-width:180px;padding:6px 10px;font-size:12px;" onkeydown="if(event.key==='Enter')loadAdminQuestions(0)">
+        <input id="adminQSearch" class="sp-search" placeholder="Search questions…" style="flex:1;min-width:180px;padding:6px 10px;font-size:12px;" onkeydown="if(event.key==='Enter')loadAdminQuestions()">
         <select id="adminQSubject" style="background:var(--card2);color:var(--white);border:1px solid var(--bdr2);border-radius:8px;padding:6px 8px;font-size:12px;min-width:130px;">
           <option value="">All Subjects</option>
         </select>
@@ -1580,12 +1581,12 @@ select.form-input{cursor:pointer;}
           <option value="situational">Situational (ALAC)</option>
           <option value="conceptual">Conceptual</option>
         </select>
-        <button class="btn-gold" onclick="loadAdminQuestions(0)" style="padding:6px 14px;font-size:12px;">Search</button>
+        <button class="btn-gold" onclick="loadAdminQuestions()" style="padding:6px 14px;font-size:12px;">Search</button>
       </div>
       <!-- Question list -->
       <div id="adminQList"></div>
-      <!-- Pagination -->
-      <div id="adminQPager" style="display:flex;gap:8px;margin-top:10px;justify-content:flex-end;align-items:center;"></div>
+      <!-- Load More footer -->
+      <div id="adminQPager" style="text-align:center;padding:14px 0 4px;display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;"></div>
     </div>
 
     <!-- QUESTION SOURCES PANEL -->
@@ -1604,7 +1605,7 @@ select.form-input{cursor:pointer;}
         <h3 style="font-family:var(--fd);font-size:18px;font-weight:700;color:var(--gold-l);margin:0;">💡 Improve Items</h3>
         <div style="display:flex;gap:8px;">
           <button class="btn-og" onclick="exportImproveCSV()" style="font-size:11px;">⬇ Export CSV</button>
-          <button class="btn-og" onclick="loadImproveItems()" style="font-size:11px;">↺ Refresh</button>
+          <button class="btn-og" onclick="loadImproveItems(true)" style="font-size:11px;">↺ Refresh</button>
         </div>
       </div>
       <!-- Filter controls -->
@@ -1641,6 +1642,8 @@ select.form-input{cursor:pointer;}
           <tbody id="improveTableBody"><tr><td colspan="5" style="padding:16px;color:var(--muted);">Loading…</td></tr></tbody>
         </table>
       </div>
+      <!-- Load More footer -->
+      <div id="improveFooter" style="text-align:center;padding:14px 0 4px;display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;"></div>
       <!-- Aggregated insights -->
       <div id="improveInsights" style="margin-top:24px;display:none;">
         <h4 style="font-family:var(--fd);font-size:15px;font-weight:700;color:var(--gold-l);margin:0 0 12px;">Top 10 Most Common Improve Items</h4>
@@ -2384,7 +2387,7 @@ function showAdminTab(tabName) {
   if (activeBtn) activeBtn.classList.add('active');
   if (tabName === 'users')     loadAdminUsers();
   if (tabName === 'results')   loadAdminResults();
-  if (tabName === 'questions') loadAdminQuestions(0);
+  if (tabName === 'questions') loadAdminQuestions();
   if (tabName === 'sources')   loadAdminSources();
   if (tabName === 'syllabus')  loadSyllabusBuilder();
   if (tabName === 'kb')        refreshAdminKB();
@@ -6788,14 +6791,30 @@ function _normalizeResult(row) {
   return { userId, score, total, maxScore, passed, subject, finishedAt, userName, pct };
 }
 
-async function loadAdminResults() {
-  const el = document.getElementById('adminResultsList');
+let _resultsOffset = 0;
+let _resultsTotal  = 0;
+
+async function loadAdminResults(reset = true) {
+  const el     = document.getElementById('adminResultsList');
+  const footer = document.getElementById('adminResultsFooter');
   if (!el) return;
+  if (reset) {
+    _resultsOffset = 0;
+    el.innerHTML = '<div style="font-size:12px;color:var(--muted);">Loading…</div>';
+  }
+  if (footer) footer.innerHTML = '<span style="font-size:12px;color:var(--muted);">Loading…</span>';
   try {
-    const r    = await fetch('/api/admin/results', { headers:{'x-admin-key': window._adminKey||''} });
-    const rows = await r.json();
-    if (!Array.isArray(rows) || !rows.length) { el.innerHTML = '<div style="font-size:12px;color:var(--muted);">No results saved yet.</div>'; return; }
-    el.innerHTML = rows.map(row => {
+    const params = new URLSearchParams({ limit: 20, offset: _resultsOffset });
+    const r    = await fetch('/api/admin/results?' + params, { headers:{'x-admin-key': window._adminKey||''} });
+    const data = await r.json();
+    const rows = data.results || [];
+    _resultsTotal = data.total || 0;
+    if (reset && !rows.length) {
+      el.innerHTML = '<div style="font-size:12px;color:var(--muted);">No results saved yet.</div>';
+      if (footer) footer.innerHTML = '';
+      return;
+    }
+    const html = rows.map(row => {
       const { userName, finishedAt, total, maxScore, score, pct, passed } = _normalizeResult(row);
       const dateStr = finishedAt ? finishedAt.slice(0,10) : '—';
       return `<div class="ur-row">
@@ -6805,7 +6824,21 @@ async function loadAdminResults() {
         <button class="ur-act del" onclick="deleteResult('${row.id}')">Delete</button>
       </div>`;
     }).join('');
-  } catch(e) { el.innerHTML = '<div style="font-size:12px;color:#e07080;">Failed to load results.</div>'; }
+    if (reset) el.innerHTML = html;
+    else el.insertAdjacentHTML('beforeend', html);
+    _resultsOffset += rows.length;
+    if (footer) {
+      if (_resultsOffset >= _resultsTotal) {
+        footer.innerHTML = `<span style="font-size:12px;color:var(--muted);">All ${_resultsTotal} results loaded</span>`;
+      } else {
+        footer.innerHTML = `<span style="font-size:12px;color:var(--muted);">Showing ${_resultsOffset} of ${_resultsTotal} results</span>
+          <button class="btn-og" onclick="loadAdminResults(false)" style="font-size:11px;">Load More Results</button>`;
+      }
+    }
+  } catch(e) {
+    el.innerHTML = '<div style="font-size:12px;color:#e07080;">Failed to load results.</div>';
+    if (footer) footer.innerHTML = '';
+  }
 }
 
 // ── Admin Question Sources ────────────────────────────────────
@@ -6847,13 +6880,17 @@ async function toggleBatchSource(id, enable) {
 }
 
 // ── Admin Questions Bank ─────────────────────────────────────
-let _adminQPage = 0;
-const _ADMIN_Q_LIMIT = 50;
+let _adminQOffset = 0;
+let _adminQTotal  = 0;
+const _ADMIN_Q_LIMIT = 20;
 
-async function loadAdminQuestions(page = 0) {
-  _adminQPage = page;
+async function loadAdminQuestions(reset = true) {
   const el = document.getElementById('adminQList');
   if (!el) return;
+  if (reset) {
+    _adminQOffset = 0;
+    el.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:8px 0;">Loading…</div>';
+  }
 
   // Populate subject dropdown once
   const subjSel = document.getElementById('adminQSubject');
@@ -6869,25 +6906,24 @@ async function loadAdminQuestions(page = 0) {
   const subject = document.getElementById('adminQSubject')?.value || '';
   const year    = document.getElementById('adminQYear')?.value || '';
   const type    = document.getElementById('adminQType')?.value || '';
-  const params  = new URLSearchParams({ limit: _ADMIN_Q_LIMIT, offset: page * _ADMIN_Q_LIMIT });
+  const params  = new URLSearchParams({ limit: _ADMIN_Q_LIMIT, offset: _adminQOffset });
   if (q)       params.set('q', q);
   if (subject) params.set('subject', subject);
   if (year)    params.set('year', year);
   if (type)    params.set('type', type);
 
-  el.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:8px 0;">Loading…</div>';
-
   try {
     const r    = await fetch('/api/admin/questions?' + params, { headers: { 'x-admin-key': window._adminKey || '' } });
     const data = await r.json();
+    _adminQTotal = data.total ?? 0;
 
     const totalEl = document.getElementById('adminQTotal');
-    if (totalEl) totalEl.textContent = `${data.total ?? 0} questions total`;
+    if (totalEl) totalEl.textContent = `${_adminQTotal} questions total`;
 
     if (!data.questions || data.questions.length === 0) {
-      el.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:8px 0;">No questions found.</div>';
+      if (reset) el.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:8px 0;">No questions found.</div>';
     } else {
-      el.innerHTML = data.questions.map(q => {
+      const html = data.questions.map(q => {
         const safeQ = h(q.question_text || '');
         const qJson = h(JSON.stringify(q));
         return `<div class="ur-row">
@@ -6900,16 +6936,22 @@ async function loadAdminQuestions(page = 0) {
           <button class="ur-act del" onclick="deleteQuestion('${q.id}')">Delete</button>
         </div>`;
       }).join('');
+      if (reset) el.innerHTML = html;
+      else el.insertAdjacentHTML('beforeend', html);
+      _adminQOffset += data.questions.length;
     }
 
-    // Pagination
+    // Load More footer
     const pager = document.getElementById('adminQPager');
     if (pager) {
-      const totalPages = Math.ceil((data.total || 0) / _ADMIN_Q_LIMIT);
-      pager.innerHTML = totalPages <= 1 ? '' :
-        `<button class="btn-og" ${page === 0 ? 'disabled' : ''} onclick="loadAdminQuestions(${page-1})" style="font-size:11px;padding:4px 12px;">◀ Prev</button>
-         <span style="font-size:11px;color:var(--muted);align-self:center;">Page ${page+1} / ${totalPages}</span>
-         <button class="btn-og" ${page >= totalPages-1 ? 'disabled' : ''} onclick="loadAdminQuestions(${page+1})" style="font-size:11px;padding:4px 12px;">Next ▶</button>`;
+      if (_adminQOffset >= _adminQTotal || !data.questions?.length) {
+        pager.innerHTML = _adminQOffset > 0
+          ? `<span style="font-size:12px;color:var(--muted);">All ${_adminQTotal} questions loaded</span>`
+          : '';
+      } else {
+        pager.innerHTML = `<span style="font-size:12px;color:var(--muted);">Showing ${_adminQOffset} of ${_adminQTotal} questions</span>
+          <button class="btn-og" onclick="loadAdminQuestions(false)" style="font-size:11px;">Load More Questions</button>`;
+      }
     }
   } catch(e) {
     el.innerHTML = `<div style="font-size:12px;color:#e07080;">Failed to load questions: ${h(e.message)}</div>`;
@@ -6922,7 +6964,7 @@ async function deleteQuestion(id) {
     const r = await fetch(`/api/admin/questions/${encodeURIComponent(id)}`, {
       method: 'DELETE', headers: { 'x-admin-key': window._adminKey || '' }
     });
-    if (r.ok) loadAdminQuestions(_adminQPage);
+    if (r.ok) loadAdminQuestions();
     else { const d = await r.json(); alert('Delete failed: ' + (d.error || r.status)); }
   } catch(e) { alert('Delete failed: ' + e.message); }
 }
@@ -7420,10 +7462,11 @@ async function resetUserAccess() {
 }
 
 async function exportResultsCSV() {
-  const r    = await fetch('/api/admin/results', { headers:{'x-admin-key': window._adminKey||''} });
-  const rows = await r.json();
+  const r    = await fetch('/api/admin/results?limit=9999&offset=0', { headers:{'x-admin-key': window._adminKey||''} });
+  const data = await r.json();
+  const rows = data.results || (Array.isArray(data) ? data : []);
   const lines = ['Name,Date,Subject,Score,Total,Pct,Passed'];
-  (Array.isArray(rows) ? rows : []).forEach(row => {
+  rows.forEach(row => {
     const { userName, finishedAt, subject, score, total, pct, passed } = _normalizeResult(row);
     lines.push(`"${userName}","${finishedAt?finishedAt.slice(0,10):''}","${subject}","${score}","${total}","${pct}%","${passed?'Yes':'No'}"`);
   });
@@ -7434,18 +7477,42 @@ async function exportResultsCSV() {
 // ══════════════════════════════════
 // ADMIN: IMPROVE ITEMS INSIGHTS
 // ══════════════════════════════════
-let _improveData = [];  // raw items from server
+let _improveData   = [];  // raw items from server (accumulated across pages)
+let _improveOffset = 0;
+let _improveTotal  = 0;
 
-async function loadImproveItems() {
-  const tbody = document.getElementById('improveTableBody');
-  if (tbody) tbody.innerHTML = '<tr><td colspan="5" style="padding:16px;color:var(--muted);">Loading…</td></tr>';
+async function loadImproveItems(reset = true) {
+  const tbody  = document.getElementById('improveTableBody');
+  const footer = document.getElementById('improveFooter');
+  if (reset) {
+    _improveData   = [];
+    _improveOffset = 0;
+    if (tbody) tbody.innerHTML = '<tr><td colspan="5" style="padding:16px;color:var(--muted);">Loading…</td></tr>';
+  }
+  if (footer) footer.innerHTML = '<span style="font-size:12px;color:var(--muted);">Loading…</span>';
   try {
-    const r = await fetch('/api/admin/improve-items', { headers:{'x-admin-key': window._adminKey||''} });
-    _improveData = await r.json();
-    if (!Array.isArray(_improveData)) _improveData = [];
+    const params = new URLSearchParams({ limit: 20, offset: _improveOffset });
+    const r    = await fetch('/api/admin/improve-items?' + params, { headers:{'x-admin-key': window._adminKey||''} });
+    const data = await r.json();
+    const newItems = Array.isArray(data.items) ? data.items : [];
+    _improveTotal  = data.total || 0;
+    _improveData   = [..._improveData, ...newItems];
+    _improveOffset += 20;  // advance by results fetched (server uses limit=20 results)
     renderImproveTable();
+    if (footer) {
+      const moreAvailable = _improveOffset < _improveTotal;
+      if (!moreAvailable || !newItems.length) {
+        footer.innerHTML = _improveData.length > 0
+          ? `<span style="font-size:12px;color:var(--muted);">All ${_improveTotal} results loaded</span>`
+          : '';
+      } else {
+        footer.innerHTML = `<span style="font-size:12px;color:var(--muted);">Loaded from ${Math.min(_improveOffset, _improveTotal)} of ${_improveTotal} results</span>
+          <button class="btn-og" onclick="loadImproveItems(false)" style="font-size:11px;">Load More Insights</button>`;
+      }
+    }
   } catch(e) {
     if (tbody) tbody.innerHTML = `<tr><td colspan="5" style="padding:16px;color:#e07080;">Failed to load: ${h(e.message)}</td></tr>`;
+    if (footer) footer.innerHTML = '';
   }
 }
 
