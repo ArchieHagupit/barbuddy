@@ -282,6 +282,16 @@ function extractJSON(text) {
     .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')
     .trim();
 
+  // Fix escaped apostrophes (char 39) that break JSON.parse
+  t = t.replace(/\\'/g, "'");
+
+  // Strip markdown fences (Sonnet fallback returns ```json ... ```)
+  t = t
+    .replace(/^```json\s*/i, '')
+    .replace(/^```\s*/i, '')
+    .replace(/```\s*$/i, '')
+    .trim();
+
   // Strategy 1: Direct parse
   try {
     return JSON.parse(t);
@@ -294,7 +304,7 @@ function extractJSON(text) {
     }
   }
 
-  // Strategy 2: Strip markdown fences
+  // Strategy 2: Strip markdown fences (secondary pass on original t)
   let stripped = t
     .replace(/^```(?:json)?[\r\n]*/i, '')
     .replace(/[\r\n]*```[\s\S]*$/i, '')
@@ -1175,7 +1185,10 @@ app.patch('/api/results/:resultId', requireAuth, async (req, res) => {
     }).eq('id', resultId);
     if (error) throw error;
     res.json({ ok: true });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) {
+    console.error('[results/patch] Error:', e.message, e);
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // ── Admin questions CRUD ───────────────────────────────────────
