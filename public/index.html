@@ -5468,7 +5468,7 @@ async function endMockSession(){
       const s={...scores[i],_qIdx:i};
       if(!s.modelAnswer&&q.modelAnswer)s.modelAnswer=q.modelAnswer;
       if(!s.keyPoints?.length&&q.keyPoints?.length)s.keyPoints=q.keyPoints;
-      const sub=SUBJS.find(x=>x.key===q.subject)||{name:q.subject,cls:'sg-gen'},ns=s.numericScore||0;
+      const sub=SUBJS.find(x=>x.key===q.subject)||{name:q.subject,cls:'sg-gen'},ns=effectiveScore(s);
       const qText=q.prompt||q.q||'';
       const isSit=(q.type==='situational')&&q.context;
       const qBadgeCls=ns>=7?'qsb-high':ns>=5?'qsb-mid':'qsb-low';
