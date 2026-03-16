@@ -2743,9 +2743,12 @@ async function _renderProgressDashboardInto(container) {
     labor:'var(--c-labor)',commercial:'var(--c-commercial)',taxation:'var(--c-taxation)',
     remedial:'var(--c-remedial)',ethics:'var(--c-ethics)',custom:'var(--c-custom)'};
 
+  const VALID_SUBJECTS = new Set(['civil','criminal','political','labor','commercial','taxation','remedial','ethics']);
+
   const subjMap = {};
   results.forEach(r => {
-    const key = r.subject || 'mixed';
+    const key = (r.subject || '').toLowerCase();
+    if (!VALID_SUBJECTS.has(key)) return; // skip mock_bar, all, mixed, etc.
     if (!subjMap[key]) subjMap[key] = [];
     subjMap[key].push(pct(r));
   });
