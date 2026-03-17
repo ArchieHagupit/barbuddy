@@ -8,7 +8,9 @@
 <meta property="og:title" content="BarBuddy — Philippine Bar 2026">
 <meta property="og:description" content="AI-powered Bar Exam review with ALAC scoring, Mock Bar sessions, Speed Drill, and personalized progress tracking.">
 <meta property="og:url" content="https://thebarbuddy.xyz">
-<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400&family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400&family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=fallback" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
 :root{
@@ -273,6 +275,7 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 /* Overview grid */
 /* ── New Overview Layout ─────────────────────── */
 .overview-inner{max-width:900px;margin:0 auto;padding:8px 0 32px;}
+#overviewContainer{min-height:600px;}
 .ov-quote-bar{display:flex;align-items:center;gap:10px;padding:12px 18px;background:rgba(201,168,76,.07);border:1px solid rgba(201,168,76,.15);border-radius:12px;margin-bottom:16px;}
 .ov-quote-star{color:var(--gold);font-size:16px;flex-shrink:0;}
 .ov-quote-text{font-size:13px;color:var(--text-muted,var(--muted));font-style:italic;line-height:1.5;}
@@ -994,6 +997,7 @@ select.form-input{cursor:pointer;}
   z-index: 0;
   user-select: none;
   filter: grayscale(20%);
+  contain: layout paint;
 }
 </style>
 </head>
@@ -1007,6 +1011,8 @@ select.form-input{cursor:pointer;}
   alt=""
   aria-hidden="true"
   loading="lazy"
+  decoding="async"
+  fetchpriority="low"
 />
 
 <!-- AUTH WALL -->
