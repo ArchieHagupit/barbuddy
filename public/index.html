@@ -6870,6 +6870,7 @@ function _normalizeResult(row) {
 
 let _resultsOffset = 0;
 let _resultsTotal  = 0;
+let _adminResultsCache = {};
 
 async function loadAdminResults(reset = true) {
   const el     = document.getElementById('adminResultsList');
@@ -6877,6 +6878,7 @@ async function loadAdminResults(reset = true) {
   if (!el) return;
   if (reset) {
     _resultsOffset = 0;
+    _adminResultsCache = {};
     el.innerHTML = '<div style="font-size:12px;color:var(--muted);">Loading…</div>';
   }
   if (footer) footer.innerHTML = '<span style="font-size:12px;color:var(--muted);">Loading…</span>';
@@ -6885,6 +6887,7 @@ async function loadAdminResults(reset = true) {
     const r    = await fetch('/api/admin/results?' + params, { headers:{'x-admin-key': window._adminKey||''} });
     const data = await r.json();
     const rows = data.results || [];
+    rows.forEach(row => { _adminResultsCache[row.id] = row; });
     _resultsTotal = data.total || 0;
     if (reset && !rows.length) {
       el.innerHTML = '<div style="font-size:12px;color:var(--muted);">No results saved yet.</div>';
@@ -7097,9 +7100,15 @@ async function viewUserResults(userId, name) {
 }
 
 async function viewResult(resultId) {
-  const r    = await fetch('/api/admin/results', { headers:{'x-admin-key': window._adminKey||''} });
-  const rows = await r.json();
-  const row  = (Array.isArray(rows) ? rows : []).find(x => x.id === resultId);
+  let row = _adminResultsCache[resultId];
+  if (!row) {
+    // fallback: fetch paginated endpoint and scan first page
+    const r    = await fetch('/api/admin/results?limit=20&offset=0', { headers:{'x-admin-key': window._adminKey||''} });
+    const data = await r.json();
+    const rows = data.results || [];
+    rows.forEach(r2 => { _adminResultsCache[r2.id] = r2; });
+    row = _adminResultsCache[resultId];
+  }
   if (!row) return;
   const { userName, finishedAt, total, maxScore, score, pct } = _normalizeResult(row);
   const dateStr = finishedAt ? formatDate(finishedAt) : '—';
