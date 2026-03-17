@@ -4527,6 +4527,9 @@ function renderEvalCard(ev){
 function renderDefCard(ev){
   const gc=ev.grade==='Excellent'?'#14b4a0':ev.grade==='Good'?'#50d090':ev.grade==='Satisfactory'?'#c9a84c':ev.grade==='Needs Improvement'?'#e09050':'#e07080';
   const bd=ev.breakdown||{};
+  // Normalise fields the AI sometimes nests inside breakdown instead of top-level
+  const overallFeedback=ev.overallFeedback||(typeof bd.overallFeedback==='string'?bd.overallFeedback:'')||'';
+  const keyMissedArr=ev.keyMissed?.length?ev.keyMissed:(Array.isArray(bd.keyMissed)?bd.keyMissed:[]);
   const cls=(s,max)=>s>=max*.8?'hi':s>=max*.5?'mid':'lo';
   const defRows=[['Accuracy',bd.accuracy,4],['Completeness',bd.completeness,3],['Clarity',bd.clarity,3]].filter(([,c])=>c);
   const tableRows=defRows.map(([label,c,max])=>`<tr>
@@ -4539,9 +4542,9 @@ function renderDefCard(ev){
   <div class="ai-fb-content">
     <table class="alac-table">
       <thead><tr><th>Component</th><th>Score</th><th>Max</th><th>Feedback</th></tr></thead>
-      <tbody>${tableRows}<tr class="alac-total-row"><td style="color:${gc};">Total</td><td style="color:${gc};">${h(ev.score||'?/10')}</td><td style="color:var(--muted);font-size:12px;">/10</td><td style="color:rgba(248,246,241,.6);font-size:12px;">${h(ev.overallFeedback||'')}</td></tr></tbody>
+      <tbody>${tableRows}<tr class="alac-total-row"><td style="color:${gc};">Total</td><td style="color:${gc};">${h(ev.score||'?/10')}</td><td style="color:var(--muted);font-size:12px;">/10</td><td style="color:rgba(248,246,241,.6);font-size:12px;">${h(overallFeedback)}</td></tr></tbody>
     </table>
-    ${ev.keyMissed?.length?`<p style="margin-top:10px;"><strong>📚 Missed:</strong></p><ul>${ev.keyMissed.map(s=>`<li>${h(s)}</li>`).join('')}</ul>`:''}
+    ${keyMissedArr.length?`<p style="margin-top:10px;"><strong>📚 Missed:</strong></p><ul>${keyMissedArr.map(s=>`<li>${h(s)}</li>`).join('')}</ul>`:''}
     <details style="margin-top:12px;"><summary style="cursor:pointer;color:var(--gold);font-weight:600;font-size:13px;">📖 Model Answer</summary>
     <div style="margin-top:8px;padding:12px;background:rgba(255,255,255,.03);border-radius:9px;">${renderModelAnswer(ev)}</div></details>
   </div>`;
@@ -5638,11 +5641,16 @@ function buildResultsHtml(){
     const qGrade=gradeFromScore(qEffScore);
     const scoreColor=qEffScore>=7?'#1a7a5e':qEffScore>=5?'#8b6914':'#b32d2d';
 
+    // Normalise fields that the AI sometimes nests inside breakdown
+    const _bd=s.breakdown||{};
+    const _overallFeedback=s.overallFeedback||(typeof _bd.overallFeedback==='string'?_bd.overallFeedback:'')||'';
+    const _keyMissed=s.keyMissed?.length?s.keyMissed:(Array.isArray(_bd.keyMissed)?_bd.keyMissed:[]);
+
     let card='';
     if(ans.trim()){
       // Score + overall feedback
       card+=`<div style="margin-bottom:8px;"><span style="font-size:15px;font-weight:bold;color:${scoreColor};">${e(qScoreStr)} — ${e(qGrade)}</span></div>`;
-      card+=`<div style="font-size:13px;line-height:1.7;margin-bottom:10px;">${e(s.overallFeedback||'')}</div>`;
+      card+=`<div style="font-size:13px;line-height:1.7;margin-bottom:10px;">${e(_overallFeedback)}</div>`;
 
       // ALAC breakdown table
       if(hasAlac){
@@ -5658,7 +5666,8 @@ function buildResultsHtml(){
 
       // Generic breakdown table (definition, enumeration)
       if(s.breakdown&&!hasAlac){
-        const bParts=Object.entries(s.breakdown);
+        // Only include actual scoring components (must have numeric score+max); skip misplaced top-level fields
+        const bParts=Object.entries(s.breakdown).filter(([,v])=>v&&typeof v==='object'&&v.score!=null&&v.max!=null);
         if(bParts.length){
           card+=`<div style="font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:.08em;color:#7a6128;margin:10px 0 5px;">COMPONENT BREAKDOWN</div>`;
           card+=`<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:12px;">
@@ -5675,7 +5684,7 @@ function buildResultsHtml(){
       if(s.improvements?.length) card+=`<div style="background:#fffbf0;border-left:3px solid #ff9800;padding:8px 12px;margin:8px 0;border-radius:4px;"><strong style="color:#e65100;font-size:12px;">⚠️ AREAS FOR IMPROVEMENT</strong><ul style="margin:4px 0 0 0;padding-left:18px;font-size:13px;">${s.improvements.map(x=>`<li style="margin:2px 0;">${e(x)}</li>`).join('')}</ul></div>`;
 
       // Key points missed
-      if(s.keyMissed?.length) card+=`<div style="background:#fff5f5;border-left:3px solid #f44336;padding:8px 12px;margin:8px 0;border-radius:4px;"><strong style="color:#c62828;font-size:12px;">❌ KEY POINTS MISSED</strong><ul style="margin:4px 0 0 0;padding-left:18px;font-size:13px;">${s.keyMissed.map(k=>`<li style="margin:2px 0;">${e(k)}</li>`).join('')}</ul></div>`;
+      if(_keyMissed.length) card+=`<div style="background:#fff5f5;border-left:3px solid #f44336;padding:8px 12px;margin:8px 0;border-radius:4px;"><strong style="color:#c62828;font-size:12px;">❌ KEY POINTS MISSED</strong><ul style="margin:4px 0 0 0;padding-left:18px;font-size:13px;">${_keyMissed.map(k=>`<li style="margin:2px 0;">${e(k)}</li>`).join('')}</ul></div>`;
 
       // Model answer — render with ALAC sections if structured
       card+=`<div style="font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:.08em;color:#7a6128;margin:12px 0 5px;">MODEL ANSWER</div>`;

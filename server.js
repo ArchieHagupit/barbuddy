@@ -2786,6 +2786,7 @@ Score out of 10 using these components:
 ${GRADE_SCALE}
 
 In your JSON response, all string values must use single quotes for any internal quotation. Example: use 'the court held' not "the court held". Keep each feedback field to one line.
+IMPORTANT: overallFeedback, keyMissed, strengths, improvements MUST be top-level fields — do NOT nest them inside breakdown.
 Respond ONLY with valid JSON (no markdown):
 {
   "score": "X/10", "numericScore": 0, "grade": "Excellent|Good|Satisfactory|Needs Improvement|Poor",
@@ -2795,8 +2796,10 @@ Respond ONLY with valid JSON (no markdown):
     "completeness": { "score": 0.0, "max": 3, "feedback": "under 50 words" },
     "clarity":      { "score": 0.0, "max": 3, "feedback": "under 50 words" }
   },
-  "overallFeedback": "Brief assessment under 100 words",
-  "keyMissed": ["key element the student missed"],
+  "overallFeedback": "Brief overall assessment under 100 words",
+  "keyMissed": ["key concept or point the student failed to mention"],
+  "strengths": ["what the student did well"],
+  "improvements": ["specific thing to improve"],
   "format": "conceptual"
 }`;
   }
@@ -3113,13 +3116,14 @@ Respond ONLY with valid JSON: {"score":"X/10","numericScore":0,"grade":"...","al
       prompt = `You are a Philippine Bar Exam examiner. Evaluate this conceptual/theoretical answer. Keep overallFeedback under 100 words and each component feedback under 50 words.
 CRITICAL JSON OUTPUT RULES: Use single quotes inside all string values (never double quotes inside strings). No newlines inside string values. No trailing commas. Keep all feedback fields on a single line.
 IMPORTANT: Return pure JSON only. Never include { or } characters inside any string value. Write all feedback as plain text sentences only. No code examples, no nested structures, no special characters inside strings.
+IMPORTANT: overallFeedback, keyMissed, strengths, improvements MUST be top-level fields — do NOT nest them inside breakdown.
 Question: ${question}
 ${maSection}
 ${(keyPoints || []).length ? `Key Points: ${keyPoints.join(', ')}` : ''}
 Student Answer: ${answer}
 Score: Accuracy(4pts) + Completeness(3pts) + Clarity(3pts) = 10.
 ${GRADE_SCALE}
-Respond ONLY with valid JSON: {"score":"X/10","numericScore":0,"grade":"...","breakdown":{"accuracy":{"score":0,"max":4,"feedback":"under 50 words"},"completeness":{"score":0,"max":3,"feedback":"under 50 words"},"clarity":{"score":0,"max":3,"feedback":"under 50 words"}},"overallFeedback":"under 100 words","keyMissed":[],"matchedAlternative":1,"format":"conceptual"}`;
+Respond ONLY with valid JSON: {"score":"X/10","numericScore":0,"grade":"...","breakdown":{"accuracy":{"score":0,"max":4,"feedback":"under 50 words"},"completeness":{"score":0,"max":3,"feedback":"under 50 words"},"clarity":{"score":0,"max":3,"feedback":"under 50 words"}},"overallFeedback":"under 100 words","keyMissed":[],"strengths":[],"improvements":[],"matchedAlternative":1,"format":"conceptual"}`;
     }
 
     const result = await callClaudeHaikuJSON(prompt, maxTok);
