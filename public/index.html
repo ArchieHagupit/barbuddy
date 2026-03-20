@@ -1384,6 +1384,21 @@ select.form-input{cursor:pointer;}
         <div id="backfillAlacLabel" style="font-size:12px;color:var(--muted);"></div>
       </div>
     </div>
+    <!-- CONCEPTUAL CACHE BACKFILL -->
+    <div style="background:var(--card);border:1px solid var(--bdr2);border-radius:16px;padding:20px;margin-top:18px;">
+      <h3 style="font-family:var(--fd);font-size:16px;font-weight:700;color:var(--teal);margin-bottom:4px;">⚡ Pre-generate Conceptual Cache</h3>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.55;">Generates and stores structured conceptual model answers (Accuracy, Completeness, Clarity) for all uncached conceptual questions. After running, evaluations skip redundant AI calls for these questions.</p>
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+        <button class="btn-gold" id="backfillConceptualBtn" onclick="startConceptualBackfill()" style="font-size:13px;padding:8px 18px;">⚡ Start Backfill</button>
+        <span id="backfillConceptualStatus" style="font-size:13px;color:var(--muted);"></span>
+      </div>
+      <div id="backfillConceptualProgress" style="display:none;margin-top:14px;">
+        <div style="background:var(--card3);border-radius:8px;height:8px;overflow:hidden;margin-bottom:8px;">
+          <div id="backfillConceptualBar" style="height:100%;width:0%;background:var(--teal);border-radius:8px;transition:width .4s;"></div>
+        </div>
+        <div id="backfillConceptualLabel" style="font-size:12px;color:var(--muted);"></div>
+      </div>
+    </div>
     <!-- BAR EXAM DATE CARD -->
     <div style="background:var(--card);border:1px solid var(--bdr2);border-radius:16px;padding:20px;margin-top:18px;">
       <h3 style="font-family:var(--fd);font-size:16px;font-weight:700;color:var(--gold-l);margin-bottom:4px;">⚖️ Bar Exam Date</h3>
@@ -4656,7 +4671,33 @@ function renderALACSections(components){
     </div>`).join('')}
   </div>`;
 }
-// Render model answer — prefers structured alacModelAnswer, falls back to ALAC string parse, then plain text
+// Render structured conceptual model answer (Accuracy, Completeness, Clarity)
+function renderConceptualSections(cm){
+  if(!cm) return '';
+  const DEFS=[
+    {field:'accuracy',      label:'Accuracy',      color:'#4a9eff', icon:'✅'},
+    {field:'completeness',  label:'Completeness',  color:'#4caf50', icon:'📋'},
+    {field:'clarity',       label:'Clarity',        color:'#ff9800', icon:'💡'},
+  ];
+  const parts=DEFS.filter(d=>cm[d.field]&&cm[d.field].content);
+  if(!parts.length) return '';
+  let html=`<div class="alac-model-answer">
+    <div class="alac-model-header">📋 Model Answer (Conceptual Breakdown)</div>`;
+  if(cm.overview) html+=`<div class="alac-section"><div class="alac-section-label" style="color:#5a3e1b;">Overview</div><div class="alac-section-content">${h(cm.overview)}</div></div>`;
+  parts.forEach(d=>{
+    const sec=cm[d.field];
+    html+=`<div class="alac-section">
+      <div class="alac-section-label" style="color:${d.color};">${d.icon} ${d.label}</div>
+      <div class="alac-section-content">${h(sec.content)}</div>`;
+    if(sec.keyPoints&&sec.keyPoints.length) html+=`<ul style="margin:6px 0 2px 0;padding-left:18px;font-size:13px;">${sec.keyPoints.map(p=>`<li style="margin:2px 0;color:var(--text);">${h(p)}</li>`).join('')}</ul>`;
+    html+=`</div>`;
+  });
+  if(cm.conclusion) html+=`<div class="alac-section"><div class="alac-section-label" style="color:#5a3e1b;">Conclusion</div><div class="alac-section-content">${h(cm.conclusion)}</div></div>`;
+  if(cm.keyProvisions&&cm.keyProvisions.length) html+=`<div class="alac-section"><div class="alac-section-label" style="color:#5a3e1b;">Key Provisions</div><ul style="margin:4px 0 2px 0;padding-left:18px;font-size:13px;">${cm.keyProvisions.map(p=>`<li style="margin:2px 0;color:var(--text);">${h(p)}</li>`).join('')}</ul></div>`;
+  html+=`</div>`;
+  return html;
+}
+// Render model answer — prefers structured alacModelAnswer or conceptualModelAnswer, falls back to ALAC string parse, then plain text
 // Accepts either an evaluation object or a plain string (legacy compat)
 function renderModelAnswer(evaluation, questionType){
   if(typeof evaluation==='string') evaluation={modelAnswer:evaluation};
@@ -4669,15 +4710,20 @@ function renderModelAnswer(evaluation, questionType){
        </div>`
     : '';
 
-  // 1. Structured components from server
+  // 1. Structured ALAC components from server
   if(evaluation.alacModelAnswer){
     const rendered=renderALACSections(evaluation.alacModelAnswer);
     if(rendered) return altBanner + rendered;
   }
-  // 2. Formatted ALAC string or plain modelAnswer
+  // 2. Structured conceptual components from server
+  if(evaluation.conceptualModelAnswer){
+    const rendered=renderConceptualSections(evaluation.conceptualModelAnswer);
+    if(rendered) return altBanner + rendered;
+  }
+  // 3. Formatted ALAC string or plain modelAnswer
   const text=evaluation.modelAnswerFormatted||evaluation.modelAnswer||evaluation.correctAnswer||'';
   if(!text) return '<em style="color:#777;font-size:13px;">No model answer available for this question.</em>';
-  // 3. Try parsing as ALAC text
+  // 4. Try parsing as ALAC text
   const comps=parseALACString(text);
   if(comps){
     const rendered=renderALACSections(comps);
@@ -5749,7 +5795,26 @@ function buildResultsHtml(){
           card+=sec;
           return;
         }
-        // 2. Fall back to plain text with ALAC string parsing
+        // 2. Structured conceptual model answer
+        const cm=s.conceptualModelAnswer;
+        if(cm&&(cm.accuracy||cm.completeness||cm.clarity)){
+          const CDEFS=[['Accuracy',cm.accuracy,'✅'],['Completeness',cm.completeness,'📋'],['Clarity',cm.clarity,'💡']];
+          let sec='<div class="alac-model-answer"><div class="alac-model-header">Model Answer (Conceptual Breakdown)</div>';
+          if(cm.overview) sec+=`<div class="alac-section"><div class="alac-section-label">Overview</div><div class="alac-section-content">${e(cm.overview)}</div></div>`;
+          CDEFS.forEach(([label,comp,icon])=>{
+            if(comp&&comp.content){
+              sec+=`<div class="alac-section"><div class="alac-section-label">${icon} ${label}</div><div class="alac-section-content">${e(comp.content)}</div>`;
+              if(comp.keyPoints&&comp.keyPoints.length) sec+=`<ul style="margin:4px 0 0 0;padding-left:18px;font-size:12px;">${comp.keyPoints.map(p=>`<li style="margin:2px 0;">${e(p)}</li>`).join('')}</ul>`;
+              sec+=`</div>`;
+            }
+          });
+          if(cm.conclusion) sec+=`<div class="alac-section"><div class="alac-section-label">Conclusion</div><div class="alac-section-content">${e(cm.conclusion)}</div></div>`;
+          if(cm.keyProvisions&&cm.keyProvisions.length) sec+=`<div class="alac-section"><div class="alac-section-label">Key Provisions</div><ul style="margin:4px 0 0 0;padding-left:18px;font-size:12px;">${cm.keyProvisions.map(p=>`<li style="margin:2px 0;">${e(p)}</li>`).join('')}</ul></div>`;
+          sec+='</div>';
+          card+=sec;
+          return;
+        }
+        // 3. Fall back to plain text with ALAC string parsing
         const ma=s.modelAnswerFormatted||s.modelAnswer||'';
         if(!ma){card+=`<div style="background:#f0f8f0;border:1px solid #b0d8b0;border-radius:4px;padding:10px 14px;font-size:13px;line-height:1.7;margin-bottom:10px;">—</div>`;return;}
         const PSEC=[{k:'ANSWER',l:'A — Answer'},{k:'LEGAL BASIS',l:'L — Legal Basis'},{k:'APPLICATION',l:'A — Application'},{k:'CONCLUSION',l:'C — Conclusion'}];
@@ -6511,6 +6576,51 @@ async function startAlacBackfill() {
           btn.textContent = '⚡ Re-run Backfill';
         } else {
           label.textContent = `Caching ${ps.done} / ${ps.total} questions…`;
+        }
+      } catch(e) { /* ignore poll errors */ }
+    }, 1500);
+  } catch(e) {
+    status.textContent = '❌ ' + e.message;
+    btn.disabled = false;
+  }
+}
+
+let _conceptualBackfillPollInterval = null;
+async function startConceptualBackfill() {
+  const btn = document.getElementById('backfillConceptualBtn');
+  const status = document.getElementById('backfillConceptualStatus');
+  const progressWrap = document.getElementById('backfillConceptualProgress');
+  const bar = document.getElementById('backfillConceptualBar');
+  const label = document.getElementById('backfillConceptualLabel');
+  const tok = sessionToken || '';
+
+  btn.disabled = true;
+  status.textContent = 'Starting…';
+
+  try {
+    const r = await fetch('/api/admin/backfill-conceptual-cache', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-session-token': tok } });
+    const d = await r.json();
+    if (d.error) { status.textContent = '❌ ' + d.error; btn.disabled = false; return; }
+    if (!d.started) { status.textContent = d.message || 'Nothing to cache.'; btn.disabled = false; return; }
+
+    progressWrap.style.display = 'block';
+    status.textContent = '';
+
+    clearInterval(_conceptualBackfillPollInterval);
+    _conceptualBackfillPollInterval = setInterval(async () => {
+      try {
+        const pr = await fetch('/api/admin/backfill-conceptual-cache/status', { headers: { 'x-session-token': tok } });
+        const ps = await pr.json();
+        const pct = ps.total > 0 ? Math.round((ps.done / ps.total) * 100) : 0;
+        bar.style.width = pct + '%';
+        if (ps.complete) {
+          label.textContent = `✅ All ${ps.done} conceptual questions cached${ps.errors ? ` (${ps.errors} errors)` : ''}.`;
+          status.textContent = '';
+          clearInterval(_conceptualBackfillPollInterval);
+          btn.disabled = false;
+          btn.textContent = '⚡ Re-run Backfill';
+        } else {
+          label.textContent = `Caching ${ps.done} / ${ps.total} conceptual questions…`;
         }
       } catch(e) { /* ignore poll errors */ }
     }, 1500);

@@ -75,10 +75,61 @@ civil, criminal, political, labor, commercial, taxation, remedial, ethics
 - Bot blocker middleware added for WordPress probes
 - RLS enabled with policies on all 8 tables
 
-#Refresh Fixes
+# Refresh Fixes
 - Login Form Flash Prevention
 - Location Persistence
 - Content Fade Transitions
 - Skeleton Loading States
 - Instant Sidebar Cache
 - Clear sessionStorage on Logout
+
+## Conceptual Question Model Answers
+
+### Caching Column
+- questions.model_answer_conceptual (JSONB) — cached 
+  structured model answer for conceptual questions
+- Cache invalidated (set to NULL) when model_answer 
+  is edited in admin — same as model_answer_alac
+
+### generateConceptualModelAnswer() (server.js)
+Generates structured model answer with these fields:
+  {
+    overview: string,
+    accuracy: { label, content, keyPoints[] },
+    completeness: { label, content, keyPoints[] },
+    clarity: { label, content, keyPoints[] },
+    conclusion: string,
+    keyProvisions: []
+  }
+
+### Cache-First Pattern (same as ALAC)
+1. Check question._cachedConceptual first
+2. If null → call generateConceptualModelAnswer()
+3. Fire-and-forget write to model_answer_conceptual
+4. Applied in both /api/evaluate and runEvalJob()
+
+### Backfill
+- POST /api/admin/backfill-conceptual-cache
+- GET /api/admin/backfill-conceptual-cache/status
+- Filters non-situational questions with null cache
+- 1.5s delay between questions
+- Admin button: "Pre-generate Conceptual Cache" (teal)
+
+### Frontend Rendering
+- renderConceptualSections() — renders structured 
+  conceptual model answer with all components
+- renderModelAnswer() checks in order:
+  1. ALAC format (situational)
+  2. Conceptual format (conceptual) ← new
+  3. Plain text fallback
+- Print/email uses same .alac-model-answer CSS classes
+
+### Scoring Criteria
+- Accuracy: 4 pts — correct legal concepts/provisions
+- Completeness: 3 pts — all essential elements covered
+- Clarity: 3 pts — clear organized presentation
+- Total: 10 pts
+
+### Question Type Detection
+- situational → ALAC scoring + ALAC model answer
+- conceptual → Breakdown scoring + Conceptual model answer

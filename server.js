@@ -218,6 +218,7 @@ function mapQRow(q) {
     // Cache fields — populated from DB, used by runEvalJob to skip redundant AI calls
     _cachedAlternatives: q.alternative_answers || null,
     _cachedAlac: q.model_answer_alac || null,
+    _cachedConceptual: q.model_answer_conceptual || null,
   };
 }
 
@@ -1113,7 +1114,7 @@ app.get('/api/spaced-repetition/due', requireAuth, async (req, res) => {
     const questionIds = dueRecords.map(r => r.question_id).filter(Boolean);
     const { data: questions, error: qError } = await supabase
       .from('questions')
-      .select('id, question_text, context, model_answer, key_points, subject, source, year, type, max_score, alternative_answers, model_answer_alac')
+      .select('id, question_text, context, model_answer, key_points, subject, source, year, type, max_score, alternative_answers, model_answer_alac, model_answer_conceptual')
       .in('id', questionIds);
     if (qError) console.error('[spaced-rep/due] Questions query error:', qError.message);
     const qMap = {};
@@ -1135,7 +1136,8 @@ app.get('/api/spaced-repetition/due', requireAuth, async (req, res) => {
           subject: row.subject, source: q.source || '', year: q.year || '',
           type: q.type || 'essay', max: q.max_score || 10,
           _cachedAlternatives: q.alternative_answers || null,
-          _cachedAlac: q.model_answer_alac || null, isReal: true,
+          _cachedAlac: q.model_answer_alac || null,
+          _cachedConceptual: q.model_answer_conceptual || null, isReal: true,
         },
       };
     });
@@ -1271,8 +1273,9 @@ app.patch('/api/admin/questions/:id', adminOnly, async (req, res) => {
     for (const k of allowed) { if (req.body[k] !== undefined) updates[k] = req.body[k]; }
     // Cache bust — model_answer was edited by admin; force full regeneration on next evaluation
     if (updates.model_answer !== undefined) {
-      updates.model_answer_alac   = null;
-      updates.alternative_answers = null;
+      updates.model_answer_alac        = null;
+      updates.alternative_answers      = null;
+      updates.model_answer_conceptual  = null;
     }
     const { data, error } = await supabase
       .from('questions').update(updates).eq('id', req.params.id).select().single();
@@ -1337,6 +1340,54 @@ app.post('/api/admin/backfill-alac-cache', adminOnly, async (_req, res) => {
     backfillState.running  = false;
     backfillState.complete = true;
     console.log(`[backfill] complete — ${backfillState.done} processed, ${backfillState.errors} errors`);
+  })();
+});
+
+// ── Admin: Pre-generate conceptual model answer cache ─────────────────────────
+const conceptualBackfillState = { running: false, done: 0, total: 0, errors: 0, complete: false };
+
+app.get('/api/admin/backfill-conceptual-cache/status', adminOnly, (_req, res) => {
+  res.json({ ...conceptualBackfillState });
+});
+
+app.post('/api/admin/backfill-conceptual-cache', adminOnly, async (_req, res) => {
+  if (conceptualBackfillState.running) return res.json({ started: false, message: 'Conceptual backfill already in progress' });
+
+  const { data, error } = await supabase
+    .from('questions')
+    .select('id, question_text, model_answer, type')
+    .is('model_answer_conceptual', null)
+    .not('model_answer', 'is', null);
+  if (error) return res.status(500).json({ error: error.message });
+
+  // Filter to conceptual questions only (non-situational)
+  const conceptualQs = (data || []).filter(q => {
+    const t = (q.type || '').toLowerCase();
+    return t !== 'situational' && t !== 'essay' && t !== 'alac';
+  });
+  if (conceptualQs.length === 0) return res.json({ started: false, message: 'All conceptual questions already cached' });
+
+  Object.assign(conceptualBackfillState, { running: true, done: 0, total: conceptualQs.length, errors: 0, complete: false });
+  res.json({ started: true, total: conceptualQs.length });
+
+  (async () => {
+    for (const q of conceptualQs) {
+      try {
+        const result = await generateConceptualModelAnswer(q.question_text, q.model_answer);
+        if (result) {
+          const { error: ue } = await supabase.from('questions').update({ model_answer_conceptual: result }).eq('id', q.id);
+          if (ue) { console.warn(`[conceptual-backfill] update failed for ${q.id}:`, ue.message); conceptualBackfillState.errors++; }
+        }
+      } catch (e) {
+        console.warn(`[conceptual-backfill] error on ${q.id}:`, e.message);
+        conceptualBackfillState.errors++;
+      }
+      conceptualBackfillState.done++;
+      await new Promise(r => setTimeout(r, 1500)); // 1.5s delay between questions
+    }
+    conceptualBackfillState.running  = false;
+    conceptualBackfillState.complete = true;
+    console.log(`[conceptual-backfill] complete — ${conceptualBackfillState.done} processed, ${conceptualBackfillState.errors} errors`);
   })();
 });
 
@@ -2676,19 +2727,22 @@ app.post('/api/evaluate', async (req, res) => {
   const isSituational = qtype === 'situational' || qtype === 'essay' || qtype === 'alac';
   console.log(`[evaluate] type=${qtype} q="${(question||'').slice(0,60)}"`);
 
-  // ── Cache lookup (alternatives + ALAC) ────────────────────
-  let _cachedAlternatives = null;
-  let _cachedAlac         = null;
-  let _needsAltCache      = false;
-  let _needsAlacCache     = false;
+  // ── Cache lookup (alternatives + ALAC + conceptual) ──────
+  let _cachedAlternatives    = null;
+  let _cachedAlac            = null;
+  let _cachedConceptual      = null;
+  let _needsAltCache         = false;
+  let _needsAlacCache        = false;
+  let _needsConceptualCache  = false;
   if (questionId) {
     const { data: qCache } = await supabase
       .from('questions')
-      .select('alternative_answers, model_answer_alac')
+      .select('alternative_answers, model_answer_alac, model_answer_conceptual')
       .eq('id', questionId)
       .single();
-    _cachedAlternatives = qCache?.alternative_answers || null;
-    _cachedAlac         = qCache?.model_answer_alac   || null;
+    _cachedAlternatives = qCache?.alternative_answers      || null;
+    _cachedAlac         = qCache?.model_answer_alac        || null;
+    _cachedConceptual   = qCache?.model_answer_conceptual  || null;
   }
 
   // ── Alternative answer detection ──────────────────────────
@@ -2850,11 +2904,25 @@ Respond ONLY with valid JSON (no markdown):
       }
     }
 
+    // Generate structured conceptual model answer for conceptual questions
+    if (!isSituational && result.modelAnswer) {
+      if (_cachedConceptual) {
+        result.conceptualModelAnswer = _cachedConceptual;
+      } else {
+        const conceptualResult = await generateConceptualModelAnswer(question, result.modelAnswer);
+        if (conceptualResult) {
+          result.conceptualModelAnswer = conceptualResult;
+          _needsConceptualCache = true;
+        }
+      }
+    }
+
     // ── Write cache to Supabase (fire-and-forget) ─────────────
-    if (questionId && (_needsAltCache || _needsAlacCache)) {
+    if (questionId && (_needsAltCache || _needsAlacCache || _needsConceptualCache)) {
       const cacheUpdate = {};
-      if (_needsAltCache)  cacheUpdate.alternative_answers = alternatives;
-      if (_needsAlacCache) cacheUpdate.model_answer_alac   = result.alacModelAnswer;
+      if (_needsAltCache)        cacheUpdate.alternative_answers      = alternatives;
+      if (_needsAlacCache)       cacheUpdate.model_answer_alac        = result.alacModelAnswer;
+      if (_needsConceptualCache) cacheUpdate.model_answer_conceptual  = result.conceptualModelAnswer;
       supabase.from('questions').update(cacheUpdate).eq('id', questionId)
         .then(({ error: ce }) => { if (ce) console.warn('[cache-write] /api/evaluate failed:', ce.message); });
     }
@@ -2969,6 +3037,51 @@ Respond ONLY with raw JSON (no markdown, no backticks):
   return { formatted: plainModelAnswer, components: parseComponents(plainModelAnswer) };
 }
 
+// ── Conceptual model answer generator ──────────────────────────────────────────
+// Returns structured { overview, accuracy, completeness, clarity, conclusion, keyProvisions }
+async function generateConceptualModelAnswer(questionText, plainModelAnswer) {
+  if (!plainModelAnswer) return null;
+
+  const prompt = `You are a Philippine bar exam expert.
+
+Generate a model answer for this CONCEPTUAL bar exam question that demonstrates perfect Accuracy, Completeness, and Clarity.
+
+Question: ${questionText}
+Suggested Answer: ${plainModelAnswer}
+
+Return ONLY this JSON (no markdown, no preamble):
+{
+  "overview": "Direct one-sentence answer",
+  "accuracy": {
+    "label": "Accuracy",
+    "content": "Accurate legal definition with correct provisions and jurisprudence",
+    "keyPoints": ["point1", "point2"]
+  },
+  "completeness": {
+    "label": "Completeness",
+    "content": "All essential elements covered including exceptions and qualifications",
+    "keyPoints": ["element1", "element2"]
+  },
+  "clarity": {
+    "label": "Clarity",
+    "content": "Clear organized presentation with proper legal language and conclusion",
+    "keyPoints": ["structure1", "structure2"]
+  },
+  "conclusion": "Conclusory statement",
+  "keyProvisions": ["provision1", "case1"]
+}
+
+IMPORTANT: Return pure JSON only. No { } inside string values. Plain text sentences only.`;
+
+  try {
+    const res = await callClaudeJSON([{ role: 'user', content: prompt }], 2000);
+    if (res?.overview || res?.accuracy) return res;
+  } catch (e) {
+    console.warn('[generateConceptualModelAnswer] AI call failed:', e.message);
+  }
+  return null;
+}
+
 // ── callClaudeHaikuJSON — haiku-only, semaphore-guarded, for fast batch eval ─
 async function callClaudeHaikuJSON(prompt, maxTokens = 400) {
   await aiSemaphore.acquire();
@@ -3073,10 +3186,12 @@ async function runEvalJob(job) {
   const { submissionId, item, idx } = job;
   const { question, answer, context, modelAnswer, keyPoints, subject } = item;
   // Cache fields injected by mapQRow (or by evaluate-batch client payload if present)
-  const questionId        = item.id || null;
-  let   _cachedAlac       = item._cachedAlac        || null;
-  let   _needsAltCache    = false;
-  let   _needsAlacCache   = false;
+  const questionId             = item.id || null;
+  let   _cachedAlac            = item._cachedAlac            || null;
+  let   _cachedConceptual      = item._cachedConceptual      || null;
+  let   _needsAltCache         = false;
+  let   _needsAlacCache        = false;
+  let   _needsConceptualCache  = false;
 
   if (!answer || !answer.trim()) {
     const prog = evalProgress.get(submissionId);
@@ -3165,11 +3280,25 @@ Respond ONLY with valid JSON: {"score":"X/10","numericScore":0,"grade":"...","br
         }
       }
 
+      // Generate structured conceptual model answer for conceptual questions
+      if (!isSit && result.modelAnswer) {
+        if (_cachedConceptual) {
+          result.conceptualModelAnswer = _cachedConceptual;
+        } else {
+          const conceptualResult = await generateConceptualModelAnswer(question, result.modelAnswer);
+          if (conceptualResult) {
+            result.conceptualModelAnswer = conceptualResult;
+            _needsConceptualCache = true;
+          }
+        }
+      }
+
       // ── Write cache to Supabase (fire-and-forget) ───────────
-      if (questionId && (_needsAltCache || _needsAlacCache)) {
+      if (questionId && (_needsAltCache || _needsAlacCache || _needsConceptualCache)) {
         const cacheUpdate = {};
-        if (_needsAltCache)  cacheUpdate.alternative_answers = alternatives;
-        if (_needsAlacCache) cacheUpdate.model_answer_alac   = result.alacModelAnswer;
+        if (_needsAltCache)        cacheUpdate.alternative_answers      = alternatives;
+        if (_needsAlacCache)       cacheUpdate.model_answer_alac        = result.alacModelAnswer;
+        if (_needsConceptualCache) cacheUpdate.model_answer_conceptual  = result.conceptualModelAnswer;
         supabase.from('questions').update(cacheUpdate).eq('id', questionId)
           .then(({ error: ce }) => { if (ce) console.warn(`[cache-write] Q${idx + 1} failed:`, ce.message); });
       }
