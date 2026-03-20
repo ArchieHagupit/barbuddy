@@ -179,3 +179,41 @@ Load More fetches next 20 results from server.
 _improveData accumulates across loads.
 renderImproveTable() does client-side text search 
 on all accumulated data.
+
+## Spaced Repetition — Score Computation Fix
+
+### Critical Rule (same as results display)
+ALWAYS recompute scores from components — never 
+trust AI-returned numericScore directly.
+
+### Score Computation Order (server.js ~3324-3329)
+  1. ALAC questions: answer + legalBasis + application + conclusion
+  2. Conceptual questions: accuracy + completeness + clarity
+  3. Fallback: numericScore (only if neither alac nor breakdown present)
+
+This applies in THREE places:
+  1. SR mastery check (~3324) — determines if question is mastered
+  2. Post-eval total score (~3461) — updates result record + pass/fail
+  3. High score count for XP (~3490) — awards HIGH_SCORE_BONUS
+
+### Mastery Threshold
+Score >= 8.0 → mastered = true, next_review_at = null
+Score < 8.0 → recalculate next interval (3/7/14 days)
+
+### Debug Logging
+Railway logs show after each SR update:
+  [spaced-rep] Q1 score:8.5 mastered:true 
+  qtype:conceptual alac:false breakdown:true 
+  numericScore:8
+
+### Why This Was Broken
+Conceptual questions return breakdown components 
+AND numericScore. If AI numericScore didn't match 
+actual component sum, mastery threshold was 
+evaluated against wrong value — keeping mastered 
+permanently false.
+
+### Verification SQL
+  SELECT COUNT(*) as total,
+    COUNT(CASE WHEN mastered = true THEN 1 END) as mastered
+  FROM spaced_repetition;

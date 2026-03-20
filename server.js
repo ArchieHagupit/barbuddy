@@ -3321,13 +3321,17 @@ Respond ONLY with valid JSON: {"score":"X/10","numericScore":0,"grade":"...","br
       // ── Spaced repetition upsert (fire-and-forget) ───────────
       if (questionId && job.userId && !result._evalError) {
         const al = result.alac || {};
+        const bd = result.breakdown || {};
         const srScore = (al.answer?.score != null)
           ? Number(((al.answer.score||0)+(al.legalBasis?.score||0)+(al.application?.score||0)+(al.conclusion?.score||0)).toFixed(2))
-          : (result.numericScore || 0);
+          : (bd.accuracy?.score != null)
+            ? Number(((bd.accuracy.score||0)+(bd.completeness?.score||0)+(bd.clarity?.score||0)).toFixed(2))
+            : (result.numericScore || 0);
         const reviewDays = srScore < 5 ? 3 : srScore < 7 ? 7 : srScore < 8 ? 14 : null;
         const mastered   = srScore >= 8;
         const nextReviewAt = reviewDays ? new Date(Date.now() + reviewDays * 86400000).toISOString() : null;
         const srId = `sr_${job.userId}_${questionId}`;
+        console.log(`[spaced-rep] Q${idx+1} score:${srScore} mastered:${mastered} qtype:${qtype} alac:${!!al.answer} breakdown:${!!bd.accuracy} numericScore:${result.numericScore}`);
         supabase.from('spaced_repetition').select('review_count, mastered').eq('id', srId).single()
           .then(({ data: ex }) => {
             const wasAlreadyMastered = ex?.mastered || false;
@@ -3459,6 +3463,10 @@ app.post('/api/evaluate-batch', requireAuth, async (req, res) => {
             return sum + (s.alac.answer?.score || 0) + (s.alac.legalBasis?.score || 0)
                        + (s.alac.application?.score || 0) + (s.alac.conclusion?.score || 0);
           }
+          if (s.breakdown) {
+            return sum + (s.breakdown.accuracy?.score || 0) + (s.breakdown.completeness?.score || 0)
+                       + (s.breakdown.clarity?.score || 0);
+          }
           return sum + (s.numericScore || 0);
         }, 0);
 
@@ -3486,7 +3494,10 @@ app.post('/api/evaluate-batch', requireAuth, async (req, res) => {
           const qScore = s.alac
             ? (s.alac.answer?.score || 0) + (s.alac.legalBasis?.score || 0)
               + (s.alac.application?.score || 0) + (s.alac.conclusion?.score || 0)
-            : (s.numericScore || 0);
+            : s.breakdown
+              ? (s.breakdown.accuracy?.score || 0) + (s.breakdown.completeness?.score || 0)
+                + (s.breakdown.clarity?.score || 0)
+              : (s.numericScore || 0);
           return qScore >= 8.0;
         }).length;
         const bonusXP = highScoreCount * XP_VALUES.HIGH_SCORE_BONUS;
