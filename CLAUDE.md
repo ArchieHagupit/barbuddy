@@ -74,3 +74,11 @@ civil, criminal, political, labor, commercial, taxation, remedial, ethics
 - Resend API used for email (onboarding@resend.dev)
 - Bot blocker middleware added for WordPress probes
 - RLS enabled with policies on all 8 tables
+
+#Refresh Fixes
+- Login Form Flash Prevention
+- Location Persistence
+- Content Fade Transitions
+- Skeleton Loading States
+- Instant Sidebar Cache
+- Clear sessionStorage on Logout

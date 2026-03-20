@@ -349,7 +349,8 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .avatar{width:32px;height:32px;background:linear-gradient(135deg,var(--crim),var(--blue));border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;border:2px solid var(--bdr);}
 /* MAIN */
 .main{margin-left:var(--sw);flex:1;display:flex;flex-direction:column;min-height:100vh;}
-.page{display:none;flex:1;} .page.on{display:block;}
+.page{display:none;flex:1;} .page.on{display:block;animation:pageFadeIn 0.15s ease forwards;}
+@keyframes pageFadeIn{from{opacity:0}to{opacity:1}}
 /* PREGEN BANNER */
 .pregen-banner{background:linear-gradient(135deg,#1a1000,#2a1800);border-bottom:1px solid rgba(255,140,66,.25);padding:11px 22px;display:none;align-items:center;gap:14px;position:sticky;top:58px;z-index:190;}
 .pregen-banner.on{display:flex;}
@@ -808,7 +809,7 @@ select.form-input{cursor:pointer;}
 .dl-picker{display:none;align-items:center;gap:6px;flex-wrap:wrap;padding:7px 10px 10px 40px;background:rgba(255,255,255,.03);border:1px solid var(--bdr2);border-top:none;border-radius:0 0 9px 9px;margin-top:-6px;margin-bottom:6px;}
 /* Auth wall */
 @keyframes authBgShift{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
-#authWall{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(8,12,24,.85);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);background-image:radial-gradient(ellipse at 20% 50%,rgba(120,40,40,.15) 0%,transparent 60%),radial-gradient(ellipse at 80% 20%,rgba(201,168,76,.08) 0%,transparent 50%);}
+#authWall{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(8,12,24,.85);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);background-image:radial-gradient(ellipse at 20% 50%,rgba(120,40,40,.15) 0%,transparent 60%),radial-gradient(ellipse at 80% 20%,rgba(201,168,76,.08) 0%,transparent 50%);opacity:0;transition:opacity 0.25s ease;}
 .auth-card{background:rgba(16,22,42,.97);border:1px solid rgba(201,168,76,.25);border-radius:20px;width:100%;max-width:440px;padding:36px 32px;position:relative;box-shadow:0 32px 80px rgba(0,0,0,.6),0 0 0 1px rgba(201,168,76,.08),inset 0 1px 0 rgba(255,255,255,.06);}
 .auth-card::before{content:'';position:absolute;top:0;left:10%;right:10%;height:1px;background:linear-gradient(90deg,transparent,var(--gold),transparent);}
 .auth-logo{font-family:var(--fd);font-size:28px;font-weight:800;color:var(--gold-l);text-align:center;margin-bottom:4px;letter-spacing:.02em;}
@@ -824,6 +825,9 @@ select.form-input{cursor:pointer;}
 .auth-btn{width:100%;padding:13px;background:linear-gradient(135deg,#b8932a,#d4a843);border:none;border-radius:11px;color:#0a0e1a;font-family:var(--fm);font-size:15px;font-weight:800;cursor:pointer;transition:opacity .2s;letter-spacing:.03em;}
 .auth-btn:hover{opacity:.88;}
 .auth-btn:disabled{opacity:.5;cursor:not-allowed;}
+/* Skeleton loading shimmer */
+.subject-skeleton{height:40px;background:linear-gradient(90deg,rgba(255,255,255,.04) 25%,rgba(255,255,255,.08) 50%,rgba(255,255,255,.04) 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:8px;margin-bottom:4px;}
+@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
 /* Topbar user display */
 #userNameDisplay{font-size:12px;font-weight:700;color:var(--gold);background:rgba(201,168,76,.1);border:1px solid rgba(201,168,76,.25);border-radius:8px;padding:5px 10px;white-space:nowrap;}
 /* Results detail modal */
@@ -1079,7 +1083,7 @@ select.form-input{cursor:pointer;}
 
   <hr class="sb-divider">
   <div class="sb-section-label">SUBJECTS</div>
-  <div id="sbSubjectList"></div>
+  <div id="sbSubjectList"><div class="subject-skeleton"></div><div class="subject-skeleton"></div><div class="subject-skeleton"></div><div class="subject-skeleton"></div><div class="subject-skeleton"></div><div class="subject-skeleton"></div><div class="subject-skeleton"></div><div class="subject-skeleton"></div></div>
 
   <hr class="sb-divider">
   <button class="sb-subject" id="sb-subj-custom" style="border-left-color:var(--c-custom);" onclick="navToCustom()">
@@ -2108,6 +2112,12 @@ function getMotivationalQuote() {
 // ══════════════════════════════════
 async function init() {
   loadLocalCache();
+  // Show cached sidebar instantly while fresh data loads
+  const cachedSB = sessionStorage.getItem('bb_sidebar_cache');
+  if (cachedSB) {
+    const list = document.getElementById('sbSubjectList');
+    if (list) list.innerHTML = cachedSB;
+  }
   renderSidebar();
   updateSidebarAdminVisibility();
   renderSubjectTracker();
@@ -2168,16 +2178,36 @@ window.addEventListener('DOMContentLoaded', async () => {
   }
   const hasSession = await checkExistingSession();
   if (!hasSession) {
-    // Auth wall stays visible; app boots once user logs in
-    document.getElementById('authWall').style.display = 'flex';
+    // Auth wall stays visible; fade it in so there's no flash
+    const aw = document.getElementById('authWall');
+    aw.style.display = 'flex';
+    requestAnimationFrame(() => { aw.style.opacity = '1'; });
   }
   await init();
-  // After init, always land on overview
-  navToOverview();
-  // If already logged in via stored session, check for an interrupted exam or pending evaluation
+  // Restore last view or fall back to overview
   if (hasSession) {
+    try {
+      const lastView = sessionStorage.getItem('bb_last_view');
+      const lastSubj = sessionStorage.getItem('bb_last_subject');
+      const lastTab  = sessionStorage.getItem('bb_last_tab');
+      if (lastView === 'subject' && lastSubj) {
+        navToSubject(lastSubj, lastTab || 'learn');
+      } else if (lastView === 'admin') {
+        navToAdmin();
+      } else if (lastView === 'progress') {
+        navToProgress(lastTab || 'progress');
+      } else if (lastView === 'custom') {
+        navToCustom();
+      } else {
+        navToOverview();
+      }
+    } catch(e) {
+      navToOverview();
+    }
     checkForInterruptedExam().catch(() => {});
     resumePendingEvaluation().catch(() => {});
+  } else {
+    navToOverview();
   }
 });
 
@@ -2357,6 +2387,9 @@ function navToOverview() {
   showPage('dashboard');
   updateBreadcrumb(null, null);
   renderOverview();
+  sessionStorage.setItem('bb_last_view', 'overview');
+  sessionStorage.removeItem('bb_last_subject');
+  sessionStorage.removeItem('bb_last_tab');
 }
 
 function navToAdmin() {
@@ -2365,6 +2398,9 @@ function navToAdmin() {
   document.getElementById('sb-admin')?.classList.add('active');
   showPage('admin');
   updateBreadcrumb(null, null);
+  sessionStorage.setItem('bb_last_view', 'admin');
+  sessionStorage.removeItem('bb_last_subject');
+  sessionStorage.removeItem('bb_last_tab');
   // Auto-unlock admin panel for users with server-granted isAdmin flag
   if (currentUser?.isAdmin && document.getElementById('adminLocked')?.style.display !== 'none') {
     autoUnlockAdminUI();
@@ -2668,6 +2704,9 @@ function navToProgress(tab) {
   updateBreadcrumb(null, null);
   if (tab) _progressActiveTab = tab;
   renderProgressPage();
+  sessionStorage.setItem('bb_last_view', 'progress');
+  sessionStorage.removeItem('bb_last_subject');
+  sessionStorage.setItem('bb_last_tab', tab || 'progress');
 }
 
 function switchProgressTab(tab) {
@@ -3151,7 +3190,6 @@ function navToCustom() {
   updateBreadcrumb('custom', 'mockbar');
   const hasCustom = (KB.customRefs > 0) || (KB.customPastBar > 0) || (KB.customQuestions > 0);
   if (hasCustom) {
-    // Use the real mock bar page so initMockBarSetup targets the correct DOM elements
     showPage('mockbar');
     initMockBarSetup('custom');
   } else {
@@ -3159,6 +3197,9 @@ function navToCustom() {
     document.getElementById('customEmptyState').style.display = 'block';
     document.getElementById('customMockSetup').style.display = 'none';
   }
+  sessionStorage.setItem('bb_last_view', 'custom');
+  sessionStorage.removeItem('bb_last_subject');
+  sessionStorage.removeItem('bb_last_tab');
 }
 
 function navToSubject(subj, mode) {
@@ -3188,6 +3229,9 @@ function navToSubject(subj, mode) {
   renderSubjectHeader(subj);
   renderSubjectTabs(subj, targetMode);
   switchSubjectTab(subj, targetMode);
+  sessionStorage.setItem('bb_last_view', 'subject');
+  sessionStorage.setItem('bb_last_subject', subj);
+  sessionStorage.setItem('bb_last_tab', targetMode);
 }
 
 function renderSubjectHeader(subj) {
@@ -3580,7 +3624,7 @@ function nav(id, btn) {
 function renderSidebar() {
   const list = document.getElementById('sbSubjectList');
   if (!list) return;
-  list.innerHTML = SUBJS.map(s => {
+  const html = SUBJS.map(s => {
     const hasMaterials = (KB.references||[]).some(r=>r.subject===s.key) || (KB.pastBar||[]).some(p=>p.subject===s.key);
     const qCount = (KB.pastBar||[]).filter(p=>p.subject===s.key).reduce((a,p)=>a+(p.qCount||0),0);
     const srDue = window._srDueCounts?.[s.key] || 0;
@@ -3592,7 +3636,10 @@ function renderSidebar() {
       <span class="sb-lock-icon" style="display:none;">🔒</span>
     </button>`;
   }).join('');
+  list.innerHTML = html;
+  sessionStorage.setItem('bb_sidebar_cache', html);
 }
+
 
 function refreshSidebarDots() {
   SUBJS.forEach(s => {
@@ -6569,7 +6616,9 @@ async function onAuthSuccess(token, user) {
   localStorage.setItem('bb_token', token);
   localStorage.setItem('bb_user', JSON.stringify(user));
   if (user?.name) localStorage.setItem('bb_user_name', user.name);
-  document.getElementById('authWall').style.display = 'none';
+  const aw = document.getElementById('authWall');
+  aw.style.opacity = '0';
+  setTimeout(() => { aw.style.display = 'none'; }, 260);
   updateUserDisplay();
   updateSidebarAdminVisibility();
   // Prefetch KB and progress in parallel before rendering
@@ -6582,8 +6631,25 @@ async function onAuthSuccess(token, user) {
       if (s.barExamDate) window._barExamDate = s.barExamDate;
     }).catch(() => {}),
   ]);
-  // Navigate to overview — always
-  navToOverview();
+  // Restore last view or land on overview
+  try {
+    const lastView = sessionStorage.getItem('bb_last_view');
+    const lastSubj = sessionStorage.getItem('bb_last_subject');
+    const lastTab  = sessionStorage.getItem('bb_last_tab');
+    if (lastView === 'subject' && lastSubj) {
+      navToSubject(lastSubj, lastTab || 'learn');
+    } else if (lastView === 'admin') {
+      navToAdmin();
+    } else if (lastView === 'progress') {
+      navToProgress(lastTab || 'progress');
+    } else if (lastView === 'custom') {
+      navToCustom();
+    } else {
+      navToOverview();
+    }
+  } catch(e) {
+    navToOverview();
+  }
   // Check for an interrupted exam session and show resume banner
   checkForInterruptedExam().catch(() => {});
   // Check for spaced repetition reviews due
@@ -6645,7 +6711,10 @@ async function doLogout() {
   localStorage.removeItem('bb_token');
   localStorage.removeItem('bb_user');
   localStorage.removeItem('bb_user_name');
-  document.getElementById('authWall').style.display = 'flex';
+  sessionStorage.clear();
+  const aw = document.getElementById('authWall');
+  aw.style.display = 'flex';
+  requestAnimationFrame(() => { aw.style.opacity = '1'; });
   updateUserDisplay();
 }
 
@@ -6659,7 +6728,9 @@ async function checkExistingSession() {
     sessionToken = savedToken;
     currentUser  = user;
     localStorage.setItem('bb_user', JSON.stringify(user));
-    document.getElementById('authWall').style.display = 'none';
+    const aw = document.getElementById('authWall');
+    aw.style.display = 'none';
+    aw.style.opacity = '0';
     updateUserDisplay();
     updateSidebarAdminVisibility();
     return true;
