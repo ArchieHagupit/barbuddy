@@ -217,3 +217,34 @@ permanently false.
   SELECT COUNT(*) as total,
     COUNT(CASE WHEN mastered = true THEN 1 END) as mastered
   FROM spaced_repetition;
+
+  ## AI Temperature Settings
+
+### Scoring/Evaluation — temperature: 0
+All evaluation calls use temperature: 0 for 
+deterministic, consistent scoring.
+Same answer on same question always gets same score.
+
+Updated call sites:
+1. callClaudeHaikuJSON() — batch evaluation (runEvalJob)
+2. /api/evaluate endpoint — single question eval
+3. callClaude() — accepts optional { temperature } param
+
+### Generation/Content — default temperature
+These intentionally keep default temperature 
+for creative variation:
+- generateALACModelAnswer()
+- generateConceptualModelAnswer()
+- generateTopicContent()
+- generateAIQuestions()
+- Any content/lesson/summary generation
+
+### How Temperature is Passed
+callClaudeJSON() and callClaude() accept optional 
+options object: { temperature }
+Example: callClaudeJSON(messages, maxTok, { temperature: 0 })
+If not provided → uses API default temperature
+
+### Rule
+Any new evaluation/scoring API call → temperature: 0
+Any new generation/content API call → no temperature set

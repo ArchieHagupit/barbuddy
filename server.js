@@ -2874,7 +2874,7 @@ Respond ONLY with valid JSON (no markdown):
   }
 
   try {
-    const result = await callClaudeJSON([{ role:'user', content: prompt }], maxTok);
+    const result = await callClaudeJSON([{ role:'user', content: prompt }], maxTok, 3, { temperature: 0 });
     if (!result) {
       console.error(`[evaluate] callClaudeJSON returned null (all JSON parse retries exhausted). qtype=${qtype} answerLen=${answer?.length}`);
       return res.status(422).json({ error:'Evaluation failed — could not parse scoring response. Please try submitting your answer again.' });
@@ -3106,6 +3106,7 @@ async function callClaudeHaikuJSON(prompt, maxTokens = 400) {
     const body = JSON.stringify({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: maxTokens,
+      temperature: 0,
       system: JSON_SYSTEM,
       messages: [{ role: 'user', content: prompt + JSON_SUFFIX }],
     });
@@ -3879,7 +3880,7 @@ async function extractPastBarInBackground(id, content, name, subject, year) {
 // callClaudeJSON: like callClaude but retries until it gets valid JSON back
 const JSON_FORMAT_REMINDER = '\n\nRESPONSE FORMAT — STRICTLY FOLLOW:\n1. Your ENTIRE response must be valid JSON only\n2. Start with { or [ immediately — no preamble\n3. End with } or ] — no text after\n4. No markdown code fences (no ```)\n5. No explanations before or after the JSON\n6. If unsure, return the JSON with empty arrays rather than explaining why';
 
-async function callClaudeJSON(messages, maxTokens, retries = 3) {
+async function callClaudeJSON(messages, maxTokens, retries = 3, { temperature } = {}) {
   const msgs = messages.map((m, i) => {
     if (i !== messages.length - 1 || m.role !== 'user') return m;
     const alreadyHasInstruction = m.content.includes('valid JSON') || m.content.includes('ONLY JSON') || m.content.includes('ONLY with valid JSON');
@@ -3893,7 +3894,7 @@ async function callClaudeJSON(messages, maxTokens, retries = 3) {
         content: msgs[msgs.length - 1].content +
           '\n\nCRITICAL: Output ONLY the JSON object/array. Do NOT write any words or sentences. Do NOT use markdown. Start with { or [. If you cannot comply, return {}.'
       }];
-      const raw = sanitizeAIResponse(await callClaude(attempt === 1 ? msgs : [attemptMsgs[0]], maxTokens));
+      const raw = sanitizeAIResponse(await callClaude(attempt === 1 ? msgs : [attemptMsgs[0]], maxTokens, { temperature }));
       const parsed = extractJSON(raw);
       if (parsed !== null) return parsed;
       console.warn(`[callClaudeJSON] attempt ${attempt}/${retries} — extractJSON failed, retrying`);
@@ -3909,7 +3910,7 @@ async function callClaudeJSON(messages, maxTokens, retries = 3) {
 }
 
 // callClaude: Sonnet first → 20s wait → Sonnet again → Haiku → 60s wait → Haiku → throw
-async function callClaude(messages, max_tokens=2000) {
+async function callClaude(messages, max_tokens=2000, { temperature } = {}) {
   const SONNET = 'claude-sonnet-4-20250514';
   const HAIKU  = 'claude-haiku-4-5-20251001';
   // [model, milliseconds to wait BEFORE this attempt]
@@ -3933,7 +3934,7 @@ async function callClaude(messages, max_tokens=2000) {
     const r = await fetch('https://api.anthropic.com/v1/messages', {
       method:'POST',
       headers:{ 'Content-Type':'application/json', 'x-api-key':API_KEY, 'anthropic-version':'2023-06-01' },
-      body:JSON.stringify({ model, max_tokens, messages, system: STRICT_SYSTEM_PROMPT }),
+      body:JSON.stringify({ model, max_tokens, ...(temperature != null && { temperature }), messages, system: STRICT_SYSTEM_PROMPT }),
     });
     const d = await r.json();
     if (d.usage) {
