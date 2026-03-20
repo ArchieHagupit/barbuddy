@@ -1170,21 +1170,36 @@ app.get('/api/spaced-repetition/stats', requireAuth, async (req, res) => {
 // ── Admin: aggregated Improve items across all results ──────────
 app.get('/api/admin/improve-items', adminOnly, async (req, res) => {
   try {
-    const limit  = Math.min(parseInt(req.query.limit)  || 20, 100);
-    const offset = parseInt(req.query.offset) || 0;
-    const { count: totalResults } = await supabase
-      .from('results')
-      .select('id', { count: 'exact', head: true });
-    const { data, error } = await supabase
-      .from('results')
-      .select('id, subject, finished_at, questions, users(id, name, email)')
+    const limit    = Math.min(parseInt(req.query.limit)  || 20, 100);
+    const offset   = parseInt(req.query.offset) || 0;
+    const subject  = req.query.subject  || '';
+    const dateFrom = req.query.dateFrom || '';
+    const dateTo   = req.query.dateTo   || '';
+
+    // Build filtered query for total count
+    let countQ = supabase.from('results').select('id', { count: 'exact', head: true })
+      .not('questions', 'is', null);
+    if (subject && subject !== 'all') countQ = countQ.eq('subject', subject);
+    if (dateFrom) countQ = countQ.gte('finished_at', dateFrom);
+    if (dateTo)   countQ = countQ.lte('finished_at', dateTo + 'T23:59:59.999Z');
+    const { count: totalResults } = await countQ;
+
+    // Build filtered data query
+    let dataQ = supabase.from('results')
+      .select('id, user_id, subject, finished_at, questions, users(id, name, email)')
+      .not('questions', 'is', null)
       .order('finished_at', { ascending: false })
       .range(offset, offset + limit - 1);
+    if (subject && subject !== 'all') dataQ = dataQ.eq('subject', subject);
+    if (dateFrom) dataQ = dataQ.gte('finished_at', dateFrom);
+    if (dateTo)   dataQ = dataQ.lte('finished_at', dateTo + 'T23:59:59.999Z');
+
+    const { data, error } = await dataQ;
     if (error) throw error;
     const items = [];
     for (const row of data || []) {
       const studentName = row.users?.name || row.user_id || 'Unknown';
-      const subject     = row.subject     || '';
+      const subj        = row.subject     || '';
       const date        = row.finished_at || '';
       for (const q of row.questions || []) {
         const improves = Array.isArray(q.improvements) ? q.improvements : [];
@@ -1193,7 +1208,7 @@ app.get('/api/admin/improve-items', adminOnly, async (req, res) => {
           items.push({
             resultId:    row.id,
             studentName,
-            subject,
+            subject: subj,
             question:    q.q || '',
             improvements: improves,
             keyMissed:    missed,

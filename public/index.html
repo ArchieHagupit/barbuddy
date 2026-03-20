@@ -1637,7 +1637,7 @@ select.form-input{cursor:pointer;}
       <!-- Filter controls -->
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
         <input id="improveSearch" class="sp-search" placeholder="Search improve items…" style="flex:1;min-width:180px;padding:6px 10px;font-size:12px;" oninput="renderImproveTable()">
-        <select id="improveSubject" style="background:var(--card2);color:var(--white);border:1px solid var(--bdr2);border-radius:8px;padding:6px 8px;font-size:12px;min-width:130px;" onchange="renderImproveTable()">
+        <select id="improveSubject" style="background:var(--card2);color:var(--white);border:1px solid var(--bdr2);border-radius:8px;padding:6px 8px;font-size:12px;min-width:130px;" onchange="loadImproveItems(true)">
           <option value="">All Subjects</option>
           <option value="civil">Civil Law</option>
           <option value="criminal">Criminal Law</option>
@@ -1648,8 +1648,8 @@ select.form-input{cursor:pointer;}
           <option value="remedial">Remedial Law</option>
           <option value="ethics">Legal Ethics</option>
         </select>
-        <input id="improveDateFrom" type="date" style="background:var(--card2);color:var(--white);border:1px solid var(--bdr2);border-radius:8px;padding:6px 8px;font-size:12px;" onchange="renderImproveTable()">
-        <input id="improveDateTo" type="date" style="background:var(--card2);color:var(--white);border:1px solid var(--bdr2);border-radius:8px;padding:6px 8px;font-size:12px;" onchange="renderImproveTable()">
+        <input id="improveDateFrom" type="date" style="background:var(--card2);color:var(--white);border:1px solid var(--bdr2);border-radius:8px;padding:6px 8px;font-size:12px;" onchange="loadImproveItems(true)">
+        <input id="improveDateTo" type="date" style="background:var(--card2);color:var(--white);border:1px solid var(--bdr2);border-radius:8px;padding:6px 8px;font-size:12px;" onchange="loadImproveItems(true)">
       </div>
       <!-- Count badge -->
       <div id="improveCount" style="font-size:12px;color:var(--muted);margin-bottom:10px;"></div>
@@ -7774,7 +7774,14 @@ async function loadImproveItems(reset = true) {
   }
   if (footer) footer.innerHTML = '<span style="font-size:12px;color:var(--muted);">Loading…</span>';
   try {
+    // Pass filters to server so it returns filtered results
+    const subj     = document.getElementById('improveSubject')?.value  || '';
+    const dateFrom = document.getElementById('improveDateFrom')?.value || '';
+    const dateTo   = document.getElementById('improveDateTo')?.value   || '';
     const params = new URLSearchParams({ limit: 20, offset: _improveOffset });
+    if (subj)     params.set('subject', subj);
+    if (dateFrom) params.set('dateFrom', dateFrom);
+    if (dateTo)   params.set('dateTo', dateTo);
     const r    = await fetch('/api/admin/improve-items?' + params, { headers:{'x-admin-key': window._adminKey||''} });
     const data = await r.json();
     const newItems = Array.isArray(data.items) ? data.items : [];
@@ -7824,8 +7831,12 @@ function renderImproveTable() {
 
   // Flatten to individual improve rows for count
   let totalItems = 0;
-  filtered.forEach(item => { totalItems += (item.improvements||[]).length + (item.keyMissed||[]).length; });
-  if (countEl) countEl.textContent = `${filtered.length} question(s) · ${totalItems} item(s)`;
+  const studentSet = new Set();
+  filtered.forEach(item => {
+    totalItems += (item.improvements||[]).length + (item.keyMissed||[]).length;
+    if (item.studentName) studentSet.add(item.studentName);
+  });
+  if (countEl) countEl.textContent = `${filtered.length} question(s) · ${totalItems} item(s) from ${studentSet.size} student(s)`;
 
   if (!filtered.length) {
     if (tbody) tbody.innerHTML = '<tr><td colspan="5" style="padding:16px;color:var(--muted);">No improve items found.</td></tr>';

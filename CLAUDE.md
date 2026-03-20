@@ -133,3 +133,49 @@ Generates structured model answer with these fields:
 ### Question Type Detection
 - situational → ALAC scoring + ALAC model answer
 - conceptual → Breakdown scoring + Conceptual model answer
+
+## Admin Insights Tab
+
+### Endpoint
+GET /api/admin/improve-items
+Query params: subject, dateFrom, dateTo, limit, offset
+
+### Server-Side Filtering
+All three filters (subject, dateFrom, dateTo) are 
+applied directly in the Supabase query — not client-side.
+Subject filter uses .eq('subject', subject) when not 'all'.
+Date filter uses .gte('finished_at', dateFrom) and 
+.lte('finished_at', dateTo).
+
+### Data Extraction
+Improve items extracted from ALL questions in ALL 
+result records matching the filter:
+- Loops through results → evaluations array → 
+  each evaluation's improve/keyMissed array
+- Returns flat list of { student, subject, question, 
+  improveItems[], date }
+
+### Student Names
+Joined via users(id, name, email) in Supabase select.
+studentName read from row.users?.name with 
+row.user_id as fallback.
+
+### Top 10 Statistics
+Computed client-side from _improveData (all loaded items).
+Re-computed and re-rendered when:
+- Subject filter changes → loadImproveItems(true)
+- Date filter changes → loadImproveItems(true)
+- Load More clicked → appends then recomputes
+- Search field → client-side only (renderImproveTable)
+
+### Count Display
+Format: "X question(s) · Y item(s) from Z student(s)"
+Uses Set to count unique student names from 
+filtered results.
+Total count reflects active server-side filters.
+
+### Pagination
+Load More fetches next 20 results from server.
+_improveData accumulates across loads.
+renderImproveTable() does client-side text search 
+on all accumulated data.
