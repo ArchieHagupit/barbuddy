@@ -718,12 +718,14 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .mc-subj-tag:not(.on){background:rgba(255,255,255,.04);border-color:var(--bdr2);color:var(--muted);}
 /* SESSION */
 .mock-session{display:none;} .mock-session.on{display:block;}
-.ms-header{background:linear-gradient(135deg,#1a0a00,#2a1400);border:1px solid rgba(255,140,66,.2);border-radius:13px;padding:15px 20px;display:flex;align-items:center;gap:16px;margin-bottom:18px;}
+.ms-header{background:linear-gradient(135deg,#1a0a00,#2a1400);border:1px solid rgba(255,140,66,.2);border-radius:13px;padding:15px 20px;display:flex;align-items:center;gap:16px;margin-bottom:18px;position:sticky;top:0;z-index:100;backdrop-filter:blur(10px);}
 .ms-q-num{font-family:var(--fd);font-size:22px;font-weight:700;color:#ff8c42;}
 .ms-of{font-size:12px;color:#a08060;font-family:var(--fm);}
 .ms-timer{display:flex;align-items:center;gap:6px;font-size:22px;font-weight:700;color:#ff8c42;font-family:var(--fm);margin-left:auto;}
 .ms-timer.warn{color:#e07080;animation:blink 1s infinite;}
+.ms-timer.critical{color:#ff4444;animation:timerPulse .8s infinite;}
 @keyframes blink{0%,100%{opacity:1;}50%{opacity:.4;}}
+@keyframes timerPulse{0%,100%{opacity:1;}50%{opacity:.6;}}
 .ms-source{font-size:10px;color:#a08060;background:rgba(255,140,66,.1);border-radius:5px;padding:2px 7px;font-family:var(--fm);}
 .q-markers{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:16px;}
 .q-marker{width:26px;height:26px;border-radius:6px;border:1px solid var(--bdr2);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;cursor:pointer;transition:all .18s;color:var(--muted);}
@@ -5180,7 +5182,9 @@ function runTimer(){
   mockTimer=setInterval(()=>{
     mockLeft--;
     document.getElementById('timer-val').textContent=fmtTime(mockLeft);
-    document.getElementById('ms-timer').classList.toggle('warn',mockLeft<=300);
+    const timerEl=document.getElementById('ms-timer');
+    timerEl.classList.toggle('critical',mockLeft<=30);
+    timerEl.classList.toggle('warn',mockLeft>30&&mockLeft<=60);
     // Track elapsed time for session restore
     if (window.activeExamSession) {
       window.activeExamSession.timeElapsed = (mockTimeLimitSecs||0) - mockLeft;

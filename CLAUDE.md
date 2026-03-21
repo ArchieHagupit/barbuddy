@@ -248,3 +248,32 @@ If not provided → uses API default temperature
 ### Rule
 Any new evaluation/scoring API call → temperature: 0
 Any new generation/content API call → no temperature set
+
+## Session Header & Timer
+
+### Sticky Header
+.ms-header has position:sticky;top:0;z-index:100;
+backdrop-filter:blur(10px) — stays pinned at top 
+during scroll in both Mock Bar and Speed Drill.
+
+Contains: question number, source badge, timer, 
+Flag/Exit/End & Score buttons — all always visible.
+
+### Timer Warning Colors (runTimer() ~line 5185)
+Controlled by CSS classes on the timer element:
+- >60s remaining: normal gold color (no class)
+- 30-60s remaining: .warn — pink/red with blink
+- ≤30s remaining: .critical — bright red with 
+  faster pulse animation (timerPulse keyframe)
+
+### CSS Classes (index.html ~line 721-727)
+- .ms-header — sticky session header
+- .ms-timer — base timer styles
+- .ms-timer.warn — 30-60s warning state
+- .ms-timer.critical — ≤30s critical state
+- @keyframes timerPulse — pulse animation for critical
+
+### Applies To
+Both Mock Bar and Speed Drill share .ms-header 
+and runTimer() — sticky header and timer colors 
+work in both modes automatically.
