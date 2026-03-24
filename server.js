@@ -483,6 +483,7 @@ function mapUser(u) {
     mockBarCount:      u.mock_bar_count || 0,
     avgScore:          u.avg_score || 0,
     school:            u.school || null,
+    spacedRepEnabled:  u.spaced_repetition_enabled !== false,
     stats: { totalAttempts: u.mock_bar_count || 0, totalScore: 0, totalQuestions: 0 },
   };
 }
@@ -855,7 +856,7 @@ app.post('/api/auth/login', async (req, res) => {
       awardXP(user.id, 'DAILY_LOGIN', 'Daily login bonus').catch(() => {});
     }
     const u = mapUser(user);
-    res.json({ token, user: { id: u.id, name: u.name, email: u.email, role: u.role, isAdmin: u.isAdmin } });
+    res.json({ token, user: { id: u.id, name: u.name, email: u.email, role: u.role, isAdmin: u.isAdmin, spacedRepEnabled: u.spacedRepEnabled } });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -868,7 +869,7 @@ app.post('/api/auth/logout', requireAuth, async (req, res) => {
 
 app.get('/api/auth/me', requireAuth, (req, res) => {
   const u = req.user;
-  res.json({ id: u.id, name: u.name, email: u.email, role: u.role, isAdmin: u.isAdmin || false });
+  res.json({ id: u.id, name: u.name, email: u.email, role: u.role, isAdmin: u.isAdmin || false, spacedRepEnabled: u.spacedRepEnabled !== false });
 });
 
 // TEMPORARY EXPORT ROUTES
@@ -1440,6 +1441,16 @@ app.patch('/api/admin/users/:userId/role', adminOnly, async (req, res) => {
     const { error } = await supabase.from('users').update({ is_admin: !!isAdmin }).eq('id', req.params.userId);
     if (error) throw error;
     res.json({ success: true, userId: req.params.userId, isAdmin: !!isAdmin });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.patch('/api/admin/users/:userId/spaced-repetition', adminOnly, async (req, res) => {
+  try {
+    const { enabled } = req.body;
+    const { userId } = req.params;
+    const { error } = await supabase.from('users').update({ spaced_repetition_enabled: !!enabled }).eq('id', userId);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ ok: true, userId, enabled: !!enabled });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 

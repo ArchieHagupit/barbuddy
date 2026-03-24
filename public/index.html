@@ -2588,12 +2588,17 @@ async function saveBarExamDate() {
 }
 
 // ── Spaced Repetition helpers ─────────────────────────────────
+function isSREnabled() {
+  const globalOk = window.TAB_SETTINGS?.spaced_repetition !== false;
+  const userOk = currentUser?.spacedRepEnabled !== false;
+  return globalOk && userOk;
+}
 const _SR_SUBJ_NAMES = {civil:'Civil Law',criminal:'Criminal Law',political:'Political Law',
   labor:'Labor Law',commercial:'Commercial Law',taxation:'Taxation Law',
   remedial:'Remedial Law',ethics:'Legal Ethics',custom:'Custom',mixed:'Mixed'};
 
 function refreshSidebarReviewBadges() {
-  const srEnabled = window.TAB_SETTINGS?.spaced_repetition !== false;
+  const srEnabled = isSREnabled();
   SUBJS.forEach(s => {
     const badge = document.getElementById('sb-sr-' + s.key);
     if (!badge) return;
@@ -2609,7 +2614,7 @@ function refreshSidebarReviewBadges() {
 
 function showSrReviewBanner(count) {
   document.getElementById('sr-review-banner')?.remove();
-  if (window.TAB_SETTINGS?.spaced_repetition === false) return;
+  if (!isSREnabled()) return;
   const banner = document.createElement('div');
   banner.id = 'sr-review-banner';
   banner.innerHTML = `
@@ -2644,7 +2649,7 @@ async function checkDueReviews() {
 }
 
 async function startReviewSession() {
-  if (window.TAB_SETTINGS?.spaced_repetition === false) { showToast('Spaced Repetition is currently disabled', 'info'); return; }
+  if (!isSREnabled()) { showToast('Spaced Repetition is currently disabled', 'info'); return; }
   const dueItems = window._srDueItems || [];
   if (!dueItems.length) { showToast('No reviews due right now', 'info'); return; }
   const questions = dueItems.map(item => item.question).filter(q => q?.q);
@@ -2665,7 +2670,7 @@ async function startReviewSession() {
 }
 
 function _renderSRDueWidget(dueItems) {
-  if (window.TAB_SETTINGS?.spaced_repetition === false) {
+  if (!isSREnabled()) {
     return `<div class="prog-section sr-due-widget">
       <div class="prog-section-title">🧠 Spaced Repetition Review</div>
       <div style="text-align:center;padding:20px;color:var(--muted);font-size:13px;line-height:1.6;">
@@ -2704,7 +2709,7 @@ function _renderSRDueWidget(dueItems) {
 }
 
 function _renderSRStats(srStats) {
-  if (window.TAB_SETTINGS?.spaced_repetition === false) return '';
+  if (!isSREnabled()) return '';
   const { total=0, mastered=0, dueNow=0, upcomingThisWeek=0 } = srStats;
   const pct = total > 0 ? Math.round(mastered / total * 100) : 0;
   return `<div class="prog-section">
@@ -6018,8 +6023,8 @@ async function applyTabSettings() {
         if (first) switchSubjectTab(currentSubject, first);
       }
     }
-    // Enforce spaced repetition toggle
-    if (settings.spaced_repetition === false) {
+    // Enforce spaced repetition toggle (global + per-user)
+    if (!isSREnabled()) {
       document.getElementById('sr-review-banner')?.remove();
       refreshSidebarReviewBadges();
     }
@@ -7051,6 +7056,7 @@ async function loadAdminUsers() {
           ${isSelf?'disabled title="Cannot change own role"':''}>
           ${u.isAdmin?'Revoke Admin':'Grant Admin'}
         </button>
+        <button onclick="toggleUserSR('${u.id}',${u.spacedRepEnabled !== false})" style="background:${u.spacedRepEnabled !== false ? 'rgba(0,200,150,0.15)' : 'rgba(255,50,50,0.15)'};border:1px solid ${u.spacedRepEnabled !== false ? 'rgba(0,200,150,0.4)' : 'rgba(255,50,50,0.4)'};color:${u.spacedRepEnabled !== false ? '#00c896' : '#ff6b6b'};border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer;font-family:var(--fd);">🧠 SR: ${u.spacedRepEnabled !== false ? 'ON' : 'OFF'}</button>
         <button class="ur-act ${u.active?'disable':'enable'}" onclick="toggleUserAccess('${u.id}',${!u.active})">${u.active?'Disable':'Enable'}</button>
         <button class="ur-act del" onclick="deleteUser('${u.id}','${h(u.name)}')" ${isSelf?'disabled':''}>Delete</button>
       </div>`;
@@ -7070,6 +7076,17 @@ async function toggleUserAdmin(userId, grantAdmin) {
     const r = await adminFetch(`/api/admin/users/${userId}/role`, { method:'PATCH', body: JSON.stringify({ isAdmin: grantAdmin }) });
     const d = await r.json();
     if (d.success) { loadAdminUsers(); }
+    else alert('Failed: ' + (d.error || 'Unknown error'));
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+async function toggleUserSR(userId, currentState) {
+  const newState = !currentState;
+  if (!confirm(`${newState ? 'Enable' : 'Disable'} Spaced Repetition for this user?`)) return;
+  try {
+    const r = await adminFetch(`/api/admin/users/${userId}/spaced-repetition`, { method:'PATCH', body: JSON.stringify({ enabled: newState }) });
+    const d = await r.json();
+    if (d.ok) { showToast(newState ? '🧠 SR enabled for user' : '🧠 SR disabled for user'); loadAdminUsers(); }
     else alert('Failed: ' + (d.error || 'Unknown error'));
   } catch(e) { alert('Error: ' + e.message); }
 }
