@@ -1416,7 +1416,8 @@ app.get('/api/admin/users', adminOnly, async (_req, res) => {
       const m = mapUser(u);
       return { id: m.id, name: m.name, email: m.email, role: m.role, isAdmin: m.isAdmin,
                active: m.active, status: m.status, createdAt: m.createdAt, registeredAt: m.registeredAt,
-               school: m.school, stats: m.stats, tabSettings: m.tabSettings || null };
+               school: m.school, stats: m.stats, tabSettings: m.tabSettings || null,
+               spacedRepEnabled: m.spacedRepEnabled };
     }));
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
