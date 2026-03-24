@@ -277,3 +277,45 @@ Controlled by CSS classes on the timer element:
 Both Mock Bar and Speed Drill share .ms-header 
 and runTimer() — sticky header and timer colors 
 work in both modes automatically.
+
+## Tab Access Control — Spaced Repetition
+
+### Global Toggle
+spaced_repetition is a GLOBAL setting (not per-subject)
+stored in tab_settings root level:
+  {
+    overview: true,
+    spaced_repetition: true,  // global
+    subjects: { ... }
+  }
+
+### Admin Panel
+Located in Admin → Tab Access panel.
+Global controls section has:
+  [ 🧠 Spaced Rep ON ]  [ 🧠 Spaced Rep OFF ]
+Dedicated toggle card below subject rows.
+Matches existing Learn/Quiz/Mock Bar/Speed Drill 
+toggle styling.
+
+### Client Enforcement
+After tab settings load on login:
+  const srEnabled = tabSettings?.spaced_repetition !== false;
+
+When disabled (srEnabled = false):
+- Start Review Session button hidden
+- Due reviews widget hidden
+- SR sidebar badges ("X due") hidden
+- Shows: "🔒 Spaced Repetition Review is currently 
+  unavailable. Check back later."
+
+When enabled (srEnabled = true):
+- Full spaced repetition functionality available
+- Default state for all users
+
+### Default State
+spaced_repetition: true — enabled by default
+for all existing and new users.
+
+### Handler Function
+setAllSpacedRep(enabled) — saves setting and 
+re-renders Tab Access panel with toast notification.

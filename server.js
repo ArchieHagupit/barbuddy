@@ -249,6 +249,7 @@ async function getQuestionsForSubjects(subjects, limit = 800) {
 // Tab visibility settings (admin-controlled)
 const DEFAULT_TAB_SETTINGS = {
   overview: true,
+  spaced_repetition: true,
   subjects: {
     civil:      { learn: true, quiz: true, mockbar: true, speeddrill: true },
     criminal:   { learn: true, quiz: true, mockbar: true, speeddrill: true },
@@ -1623,6 +1624,7 @@ app.get('/api/user/tab-settings', requireAuth, (req, res) => {
       }
     }
     if (userTS.overview === false) merged.overview = false;
+    if (userTS.spaced_repetition === false) merged.spaced_repetition = false;
   }
   res.json(merged);
 });

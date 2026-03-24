@@ -1432,6 +1432,8 @@ select.form-input{cursor:pointer;}
           <button class="tab-global-btn" onclick="setAllOfMode('mockbar',false)">⏱ All Mock ▼</button>
           <button class="tab-global-btn" onclick="setAllOfMode('speeddrill',true)">⚡ All Speed Drill ▲</button>
           <button class="tab-global-btn" onclick="setAllOfMode('speeddrill',false)">⚡ All Speed Drill ▼</button>
+          <button class="tab-global-btn" onclick="setSpacedRepToggle(true)">🧠 Spaced Rep ON</button>
+          <button class="tab-global-btn" onclick="setSpacedRepToggle(false)">🧠 Spaced Rep OFF</button>
         </div>
       </div>
       <!-- Per-subject controls rendered by JS -->
@@ -2591,11 +2593,12 @@ const _SR_SUBJ_NAMES = {civil:'Civil Law',criminal:'Criminal Law',political:'Pol
   remedial:'Remedial Law',ethics:'Legal Ethics',custom:'Custom',mixed:'Mixed'};
 
 function refreshSidebarReviewBadges() {
+  const srEnabled = window.TAB_SETTINGS?.spaced_repetition !== false;
   SUBJS.forEach(s => {
     const badge = document.getElementById('sb-sr-' + s.key);
     if (!badge) return;
     const count = window._srDueCounts?.[s.key] || 0;
-    if (count > 0) {
+    if (srEnabled && count > 0) {
       badge.textContent = count + ' due';
       badge.style.display = '';
     } else {
@@ -2606,6 +2609,7 @@ function refreshSidebarReviewBadges() {
 
 function showSrReviewBanner(count) {
   document.getElementById('sr-review-banner')?.remove();
+  if (window.TAB_SETTINGS?.spaced_repetition === false) return;
   const banner = document.createElement('div');
   banner.id = 'sr-review-banner';
   banner.innerHTML = `
@@ -2640,6 +2644,7 @@ async function checkDueReviews() {
 }
 
 async function startReviewSession() {
+  if (window.TAB_SETTINGS?.spaced_repetition === false) { showToast('Spaced Repetition is currently disabled', 'info'); return; }
   const dueItems = window._srDueItems || [];
   if (!dueItems.length) { showToast('No reviews due right now', 'info'); return; }
   const questions = dueItems.map(item => item.question).filter(q => q?.q);
@@ -2660,6 +2665,14 @@ async function startReviewSession() {
 }
 
 function _renderSRDueWidget(dueItems) {
+  if (window.TAB_SETTINGS?.spaced_repetition === false) {
+    return `<div class="prog-section sr-due-widget">
+      <div class="prog-section-title">🧠 Spaced Repetition Review</div>
+      <div style="text-align:center;padding:20px;color:var(--muted);font-size:13px;line-height:1.6;">
+        🔒 Spaced Repetition Review is currently unavailable. Check back later.
+      </div>
+    </div>`;
+  }
   const SUBJ_COLORS = {civil:'var(--c-civil)',criminal:'var(--c-criminal)',political:'var(--c-political)',
     labor:'var(--c-labor)',commercial:'var(--c-commercial)',taxation:'var(--c-taxation)',
     remedial:'var(--c-remedial)',ethics:'var(--c-ethics)',custom:'var(--c-custom)',mixed:'var(--muted)'};
@@ -2691,6 +2704,7 @@ function _renderSRDueWidget(dueItems) {
 }
 
 function _renderSRStats(srStats) {
+  if (window.TAB_SETTINGS?.spaced_repetition === false) return '';
   const { total=0, mastered=0, dueNow=0, upcomingThisWeek=0 } = srStats;
   const pct = total > 0 ? Math.round(mastered / total * 100) : 0;
   return `<div class="prog-section">
@@ -5934,6 +5948,7 @@ let pendingUserTabSettings = null;
 function getDefaultTabSettings() {
   return {
     overview: true,
+    spaced_repetition: true,
     subjects: {
       civil:      { learn: true, quiz: true, mockbar: true, speeddrill: true },
       criminal:   { learn: true, quiz: true, mockbar: true, speeddrill: true },
@@ -6003,6 +6018,11 @@ async function applyTabSettings() {
         if (first) switchSubjectTab(currentSubject, first);
       }
     }
+    // Enforce spaced repetition toggle
+    if (settings.spaced_repetition === false) {
+      document.getElementById('sr-review-banner')?.remove();
+      refreshSidebarReviewBadges();
+    }
     updateAccessControlBadge();
   } catch(e) { console.warn('Tab settings load failed:', e.message); }
 }
@@ -6030,6 +6050,8 @@ function renderTabControls() {
     <button class="tab-global-btn" onclick="setAllOfMode('quiz',false)">Hide All Quiz</button>
     <button class="tab-global-btn" onclick="setAllOfMode('mockbar',false)">Hide All Mock Bar</button>
     <button class="tab-global-btn" onclick="setAllOfMode('speeddrill',false)">Hide All Speed Drill</button>
+    <button class="tab-global-btn" onclick="setSpacedRepToggle(true)">🧠 Spaced Rep ON</button>
+    <button class="tab-global-btn" onclick="setSpacedRepToggle(false)">🧠 Spaced Rep OFF</button>
     <button class="tab-global-btn" style="margin-left:auto;color:var(--muted);" onclick="resetTabSettings()">↺ Reset Defaults</button>
   </div>`;
   // Per-subject rows
@@ -6068,7 +6090,29 @@ function renderTabControls() {
       </div>
     </div>
   </div>`;
+  // Spaced Repetition global toggle card
+  const srOn = s.spaced_repetition !== false;
+  html += `<div style="margin-top:16px;padding:16px;border:1px solid var(--bdr2);border-radius:12px;background:rgba(26,138,116,.04);">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+      <span style="font-size:16px;">🧠</span>
+      <span style="font-size:14px;font-weight:700;color:var(--teal);">Spaced Repetition Review</span>
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:12px;line-height:1.5;">Controls student access to the Review Session feature globally</div>
+    <div class="tab-ctrl-row">
+      <span style="font-size:12px;min-width:140px;color:var(--muted);">Spaced Repetition</span>
+      <div class="tab-ctrl-btns">
+        <button class="tct-on${srOn?' tct-active':''}" onclick="setSpacedRepToggle(true)">ON</button>
+        <button class="tct-off${!srOn?' tct-active':''}" onclick="setSpacedRepToggle(false)">OFF</button>
+      </div>
+    </div>
+  </div>`;
   container.innerHTML = html;
+}
+
+function setSpacedRepToggle(value) {
+  if (!pendingTabSettings) pendingTabSettings = getDefaultTabSettings();
+  pendingTabSettings.spaced_repetition = value;
+  renderTabControls();
 }
 
 function setTabSetting(subject, mode, value) {
@@ -6081,6 +6125,7 @@ function setTabSetting(subject, mode, value) {
 
 function setAllTabs(value) {
   if (!pendingTabSettings) pendingTabSettings = getDefaultTabSettings();
+  pendingTabSettings.spaced_repetition = value;
   SUBJS.forEach(s => {
     if (!pendingTabSettings.subjects[s.key]) pendingTabSettings.subjects[s.key] = {};
     const modes = s.key === 'custom' ? ['mockbar'] : ['learn','quiz','mockbar','speeddrill'];
@@ -6129,7 +6174,7 @@ function updateAccessControlBadge() {
   if (!s || !adminKey) { badge.style.display = 'none'; return; }
   const anyDisabled = SUBJS.some(subj =>
     ['learn','quiz','mockbar','speeddrill'].some(m => s.subjects?.[subj.key]?.[m] === false)
-  ) || s.subjects?.custom?.mockbar === false;
+  ) || s.subjects?.custom?.mockbar === false || s.spaced_repetition === false;
   badge.style.display = anyDisabled ? '' : 'none';
 }
 
