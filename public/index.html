@@ -838,7 +838,8 @@ select.form-input{cursor:pointer;}
 .res-dstat-val{font-family:var(--fd);font-size:22px;font-weight:800;color:var(--gold-l);}
 .res-dstat-lbl{font-size:11px;color:var(--muted);margin-top:2px;}
 /* Admin user/results panels */
-.ur-row{display:flex;align-items:center;gap:10px;padding:10px 12px;background:rgba(255,255,255,.03);border:1px solid var(--bdr2);border-radius:10px;margin-bottom:7px;flex-wrap:wrap;}
+.ur-row{display:flex;align-items:center;gap:12px;padding:12px 16px;background:var(--card);border:1px solid var(--bdr2);border-radius:10px;margin-bottom:6px;cursor:pointer;transition:all .18s;}
+.ur-row:hover{border-color:rgba(201,168,76,.35);background:rgba(201,168,76,.03);}
 .ur-name{font-weight:700;font-size:14px;flex:1;min-width:120px;}
 .ur-meta{font-size:11px;color:var(--muted);}
 .ur-badge{font-size:10px;font-weight:700;padding:2px 7px;border-radius:5px;background:rgba(20,180,160,.15);color:#14b4a0;}
@@ -855,6 +856,29 @@ select.form-input{cursor:pointer;}
 .ur-act-admin-revoke{font-size:11px;padding:4px 9px;border-radius:7px;cursor:pointer;border:1px solid rgba(224,80,96,.35);background:transparent;color:#e05060;font-family:var(--fm);font-weight:700;transition:all .18s;}
 .ur-act-admin-revoke:hover{background:rgba(224,80,96,.08);}
 .ur-act-admin-grant:disabled,.ur-act-admin-revoke:disabled{opacity:.35;cursor:not-allowed;}
+/* User search */
+.user-search-input{width:100%;padding:10px 14px 10px 36px;border:1px solid var(--bdr2);border-radius:10px;background:var(--card);color:var(--text);font-size:13px;font-family:var(--fm);outline:none;transition:border-color .2s;}
+.user-search-input:focus{border-color:rgba(201,168,76,.5);}
+.user-search-wrap{position:relative;margin-bottom:14px;}
+.user-search-wrap::before{content:'🔍';position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:13px;pointer-events:none;}
+/* User manage slide panel */
+.user-manage-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:900;opacity:0;transition:opacity .25s;pointer-events:none;}
+.user-manage-backdrop.on{opacity:1;pointer-events:all;}
+.user-manage-panel{position:fixed;top:0;right:-400px;width:380px;max-width:100vw;height:100vh;background:var(--card);border-left:3px solid var(--gold);z-index:901;overflow-y:auto;transition:right .3s cubic-bezier(.4,0,.2,1);box-shadow:-4px 0 24px rgba(0,0,0,.2);}
+.user-manage-panel.on{right:0;}
+.ump-header{display:flex;align-items:center;justify-content:space-between;padding:20px 20px 14px;border-bottom:1px solid var(--bdr2);}
+.ump-close{background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer;padding:4px 8px;border-radius:6px;transition:all .15s;}
+.ump-close:hover{color:var(--text);background:rgba(201,168,76,.1);}
+.ump-info{padding:16px 20px;}
+.ump-info-row{display:flex;justify-content:space-between;padding:6px 0;font-size:12px;border-bottom:1px solid var(--bdr2);}
+.ump-info-label{color:var(--muted);font-weight:600;}
+.ump-info-val{color:var(--text);font-weight:700;text-align:right;}
+.ump-actions{padding:8px 20px 20px;display:flex;flex-direction:column;gap:8px;}
+.ump-act-btn{display:flex;align-items:center;gap:8px;width:100%;padding:10px 14px;border-radius:9px;border:1px solid var(--bdr2);background:var(--card);color:var(--text);font-size:12px;font-family:var(--fm);font-weight:600;cursor:pointer;transition:all .18s;text-align:left;}
+.ump-act-btn:hover{border-color:rgba(201,168,76,.4);background:rgba(201,168,76,.04);}
+.ump-act-btn.danger{color:#e07080;border-color:rgba(155,35,53,.3);}
+.ump-act-btn.danger:hover{background:rgba(155,35,53,.06);}
+@media(max-width:500px){.user-manage-panel{width:100vw;}}
 /* Syllabus Builder */
 .sb-section{margin-bottom:16px;border:1px solid rgba(201,168,76,.15);border-radius:12px;overflow:hidden;}
 .sb-section-header{display:flex;align-items:center;gap:8px;padding:10px 14px;background:rgba(201,168,76,.05);border-bottom:1px solid rgba(201,168,76,.1);}
@@ -1569,10 +1593,24 @@ select.form-input{cursor:pointer;}
         <h3 style="font-family:var(--fd);font-size:18px;font-weight:700;color:var(--gold-l);margin:0;">👥 Registered Users</h3>
         <div style="display:flex;gap:8px;">
           <button class="btn-og" onclick="toggleRegistration()" id="regToggleBtn" style="font-size:11px;">Toggle Registration</button>
-          <button class="btn-og" onclick="loadAdminUsers()" style="font-size:11px;">↺ Refresh</button>
+          <button class="btn-og" onclick="document.getElementById('adminUserSearch').value='';loadAdminUsers()" style="font-size:11px;">↺ Refresh</button>
         </div>
       </div>
+      <div class="user-search-wrap">
+        <input type="text" id="adminUserSearch" class="user-search-input" placeholder="Search users by name or email…" oninput="onUserSearch(this.value)">
+      </div>
       <div id="adminUserList"><div style="font-size:12px;color:var(--muted);">Loading…</div></div>
+    </div>
+    <!-- USER MANAGE SLIDE PANEL -->
+    <div id="userManageBackdrop" class="user-manage-backdrop" onclick="closeUserManagePanel()"></div>
+    <div id="userManagePanel" class="user-manage-panel">
+      <div class="ump-header">
+        <div style="font-family:var(--fd);font-size:16px;font-weight:700;color:var(--gold-l);">👤 <span id="umpName"></span></div>
+        <button class="ump-close" onclick="closeUserManagePanel()">✕</button>
+      </div>
+      <div class="ump-info" id="umpInfo"></div>
+      <div style="padding:0 20px 8px;"><div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;">Actions</div></div>
+      <div class="ump-actions" id="umpActions"></div>
     </div>
 
     <!-- RESULTS DASHBOARD PANEL -->
@@ -6955,7 +6993,8 @@ async function adminResetPassword(userId, requestId, inputId) {
   const d = await r.json();
   if (d.success) {
     alert(`✅ Password updated. Tell the user their new password is: ${newPassword}`);
-    loadAdminUsers();
+    const searchVal = document.getElementById('adminUserSearch')?.value || '';
+    loadAdminUsers({ search: searchVal });
   } else {
     alert('Error: ' + (d.error || 'Unknown error'));
   }
@@ -6963,7 +7002,8 @@ async function adminResetPassword(userId, requestId, inputId) {
 
 async function dismissResetRequest(requestId) {
   await fetch(`/api/admin/reset-requests/${requestId}`, { method:'DELETE', headers:{'x-admin-key': window._adminKey || ''} });
-  loadAdminUsers();
+  const searchVal = document.getElementById('adminUserSearch')?.value || '';
+  loadAdminUsers({ search: searchVal });
 }
 
 // ══════════════════════════════════
@@ -7002,18 +7042,37 @@ async function saveMockBarResults(scores, sessionType = 'mock_bar') {
 // ══════════════════════════════════
 // ADMIN: USERS
 // ══════════════════════════════════
-async function loadAdminUsers() {
+let _adminUsersCache = [];
+let _userSearchTimeout;
+
+function onUserSearch(value) {
+  clearTimeout(_userSearchTimeout);
+  _userSearchTimeout = setTimeout(() => {
+    loadAdminUsers({ search: value });
+  }, 300);
+}
+
+function formatJoinDate(dateStr) {
+  if (!dateStr) return '—';
+  const d = new Date(dateStr);
+  return d.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric', timeZone:'Asia/Manila' });
+}
+
+async function loadAdminUsers({ search = '' } = {}) {
   const el = document.getElementById('adminUserList');
   if (!el) return;
   try {
+    const params = new URLSearchParams();
+    if (search) params.set('search', search);
     // Fetch users and reset requests in parallel
     const [rUsers, rReset] = await Promise.all([
-      fetch('/api/admin/users',         { headers:{'x-admin-key': window._adminKey||''} }),
-      fetch('/api/admin/reset-requests',{ headers:{'x-admin-key': window._adminKey||''} }),
+      fetch(`/api/admin/users?${params}`, { headers:{'x-admin-key': window._adminKey||''} }),
+      fetch('/api/admin/reset-requests',  { headers:{'x-admin-key': window._adminKey||''} }),
     ]);
     const users   = await rUsers.json();
     const resets  = await rReset.json();
     const pending = resets.filter(r => r.status === 'pending');
+    _adminUsersCache = users;
 
     // Password reset requests panel (only when there are pending ones)
     let resetHtml = '';
@@ -7033,40 +7092,79 @@ async function loadAdminUsers() {
         </div>`;
     }
 
-    if (!users.length) { el.innerHTML = resetHtml + '<div style="font-size:12px;color:var(--muted);">No registered users yet.</div>'; return; }
-
-    const STATUS_LABEL = { active:'Active', pending:'Pending', rejected:'Rejected', disabled:'Disabled' };
-    const STATUS_COLOR = { active:'#4caf50', pending:'#fb923c', rejected:'#f87171', disabled:'#888' };
-    const STATUS_BG    = { active:'rgba(76,175,80,0.12)', pending:'rgba(249,115,22,0.12)', rejected:'rgba(239,68,68,0.12)', disabled:'rgba(128,128,128,0.12)' };
+    if (!users.length) {
+      el.innerHTML = resetHtml + `<div style="font-size:12px;color:var(--muted);">${search ? 'No users matching "'+h(search)+'".' : 'No registered users yet.'}</div>`;
+      return;
+    }
 
     el.innerHTML = resetHtml + users.map(u => {
-      const avg = u.stats.totalAttempts ? (u.stats.totalScore / u.stats.totalAttempts).toFixed(2) : '—';
-      const restrictSummary = getUserAccessSummary(u);
-      const isSelf = u.id === currentUser?.id;
-      const adminBadge = u.isAdmin ? `<span class="badge-admin">👑 Admin</span>` : '';
-      const st = u.status || (u.active ? 'active' : 'disabled');
-      const statusBadge = `<span style="font-size:11px;padding:2px 8px;border-radius:5px;background:${STATUS_BG[st]||STATUS_BG.active};color:${STATUS_COLOR[st]||STATUS_COLOR.active};font-weight:600;">${STATUS_LABEL[st]||st}</span>`;
-      return `<div class="ur-row">
-        <div><div class="ur-name">${h(u.name)}${restrictSummary} ${adminBadge}</div><div class="ur-meta">${h(u.email)} &nbsp;·&nbsp; Joined ${(u.createdAt||'').slice(0,10)} &nbsp;·&nbsp; ${u.stats.totalAttempts} attempt(s), avg ${avg}/10</div>${u.school?`<div class="ur-meta" style="margin-top:2px;">🎓 ${h(u.school)}</div>`:''}</div>
-        ${statusBadge}
-        <button class="ur-act view"   onclick="viewUserResults('${u.id}','${h(u.name)}')">Results</button>
-        <button class="ur-act access" onclick="openUserAccessModal('${u.id}','${h(u.name)}')">⚙ Access</button>
-        <button class="${u.isAdmin?'ur-act-admin-revoke':'ur-act-admin-grant'}"
-          onclick="toggleUserAdmin('${u.id}',${!u.isAdmin})"
-          ${isSelf?'disabled title="Cannot change own role"':''}>
-          ${u.isAdmin?'Revoke Admin':'Grant Admin'}
-        </button>
-        <button onclick="toggleUserSR('${u.id}',${u.spacedRepEnabled !== false})" style="background:${u.spacedRepEnabled !== false ? 'rgba(0,200,150,0.15)' : 'rgba(255,50,50,0.15)'};border:1px solid ${u.spacedRepEnabled !== false ? 'rgba(0,200,150,0.4)' : 'rgba(255,50,50,0.4)'};color:${u.spacedRepEnabled !== false ? '#00c896' : '#ff6b6b'};border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer;font-family:var(--fd);">🧠 SR: ${u.spacedRepEnabled !== false ? 'ON' : 'OFF'}</button>
-        <button class="ur-act ${u.active?'disable':'enable'}" onclick="toggleUserAccess('${u.id}',${!u.active})">${u.active?'Disable':'Enable'}</button>
-        <button class="ur-act del" onclick="deleteUser('${u.id}','${h(u.name)}')" ${isSelf?'disabled':''}>Delete</button>
+      const adminBadge = u.isAdmin ? ` <span class="badge-admin">👑 Admin</span>` : '';
+      return `<div class="ur-row" onclick="openUserManagePanel('${u.id}')">
+        <div style="flex:1;min-width:0;">
+          <div class="ur-name">${h(u.name)}${adminBadge}</div>
+          <div class="ur-meta">${h(u.email)} · Joined ${formatJoinDate(u.createdAt)}</div>
+        </div>
+        <button class="ur-act view" onclick="event.stopPropagation();openUserManagePanel('${u.id}')" style="white-space:nowrap;">Manage →</button>
       </div>`;
-    }).join('');
+    }).join('') + (search ? '' : `<div style="font-size:11px;color:var(--muted);text-align:center;margin-top:10px;">Showing ${users.length} most recent user${users.length===1?'':'s'} · Search to find specific users</div>`);
   } catch(e) { el.innerHTML = '<div style="font-size:12px;color:#e07080;">Failed to load users.</div>'; }
 }
 
+function openUserManagePanel(userId) {
+  const u = _adminUsersCache.find(x => x.id === userId);
+  if (!u) return;
+  const panel = document.getElementById('userManagePanel');
+  const backdrop = document.getElementById('userManageBackdrop');
+  document.getElementById('umpName').textContent = u.name;
+  const STATUS_LABEL = { active:'Active', pending:'Pending', rejected:'Rejected', disabled:'Disabled' };
+  const st = u.status || (u.active ? 'active' : 'disabled');
+  const avg = u.stats.totalAttempts ? (u.stats.totalScore / u.stats.totalAttempts).toFixed(2) : '—';
+  const restrictSummary = getUserAccessSummary(u);
+  const restrictCount = restrictSummary ? restrictSummary.match(/(\d+)/)?.[1] + ' restricted' : 'None';
+  document.getElementById('umpInfo').innerHTML = `
+    <div style="font-size:12px;color:var(--muted);margin-bottom:10px;">${h(u.email)}</div>
+    <div class="ump-info-row"><span class="ump-info-label">Joined</span><span class="ump-info-val">${formatJoinDate(u.createdAt)}</span></div>
+    ${u.school ? `<div class="ump-info-row"><span class="ump-info-label">School</span><span class="ump-info-val">${h(u.school)}</span></div>` : ''}
+    <div class="ump-info-row"><span class="ump-info-label">Status</span><span class="ump-info-val">${STATUS_LABEL[st]||st}</span></div>
+    <div class="ump-info-row"><span class="ump-info-label">Role</span><span class="ump-info-val">${u.isAdmin ? '👑 Admin' : 'Student'}</span></div>
+    <div class="ump-info-row"><span class="ump-info-label">Attempts</span><span class="ump-info-val">${u.stats.totalAttempts}</span></div>
+    <div class="ump-info-row"><span class="ump-info-label">Avg Score</span><span class="ump-info-val">${avg}/10</span></div>
+    <div class="ump-info-row"><span class="ump-info-label">Level</span><span class="ump-info-val">${u.level || 1}</span></div>
+    <div class="ump-info-row"><span class="ump-info-label">XP</span><span class="ump-info-val">${(u.xp||0).toLocaleString()}</span></div>
+    <div class="ump-info-row"><span class="ump-info-label">SR Access</span><span class="ump-info-val">${u.spacedRepEnabled !== false ? '🟢 ON' : '🔴 OFF'}</span></div>
+    <div class="ump-info-row" style="border:none;"><span class="ump-info-label">Restrictions</span><span class="ump-info-val">${restrictCount}</span></div>`;
+  const isSelf = u.id === currentUser?.id;
+  document.getElementById('umpActions').innerHTML = `
+    <button class="ump-act-btn" onclick="viewUserResults('${u.id}','${h(u.name)}')">📊 View Results</button>
+    <button class="ump-act-btn" onclick="openUserAccessModal('${u.id}','${h(u.name)}')">🔒 Manage Access${restrictSummary ? ' ('+restrictCount+')' : ''}</button>
+    <button class="ump-act-btn" onclick="toggleUserAdmin('${u.id}',${!u.isAdmin})" ${isSelf?'disabled style="opacity:.4;cursor:not-allowed;"':''}>${u.isAdmin ? '👑 Revoke Admin' : '👑 Grant Admin'}</button>
+    <button class="ump-act-btn" onclick="toggleUserSR('${u.id}',${u.spacedRepEnabled !== false})">🧠 SR: ${u.spacedRepEnabled !== false ? 'ON → Turn OFF' : 'OFF → Turn ON'}</button>
+    <button class="ump-act-btn${u.active?' danger':''}" onclick="toggleUserAccess('${u.id}',${!u.active})">${u.active ? '⛔ Disable Account' : '✅ Enable Account'}</button>
+    <button class="ump-act-btn danger" onclick="deleteUser('${u.id}','${h(u.name)}')" ${isSelf?'disabled style="opacity:.4;cursor:not-allowed;"':''}>🗑️ Delete Account</button>`;
+  backdrop.classList.add('on');
+  panel.classList.add('on');
+  window._umpUserId = userId;
+}
+
+function closeUserManagePanel() {
+  document.getElementById('userManageBackdrop').classList.remove('on');
+  document.getElementById('userManagePanel').classList.remove('on');
+  window._umpUserId = null;
+}
+
+async function refreshUsersAndPanel() {
+  const searchVal = document.getElementById('adminUserSearch')?.value || '';
+  await loadAdminUsers({ search: searchVal });
+  if (window._umpUserId) openUserManagePanel(window._umpUserId);
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && window._umpUserId) closeUserManagePanel();
+});
+
 async function toggleUserAccess(userId, active) {
   await adminFetch(`/api/admin/users/${userId}`, { method:'PATCH', body: JSON.stringify({ active }) });
-  loadAdminUsers();
+  await refreshUsersAndPanel();
 }
 
 async function toggleUserAdmin(userId, grantAdmin) {
@@ -7075,7 +7173,7 @@ async function toggleUserAdmin(userId, grantAdmin) {
   try {
     const r = await adminFetch(`/api/admin/users/${userId}/role`, { method:'PATCH', body: JSON.stringify({ isAdmin: grantAdmin }) });
     const d = await r.json();
-    if (d.success) { loadAdminUsers(); }
+    if (d.success) { await refreshUsersAndPanel(); }
     else alert('Failed: ' + (d.error || 'Unknown error'));
   } catch(e) { alert('Error: ' + e.message); }
 }
@@ -7086,7 +7184,7 @@ async function toggleUserSR(userId, currentState) {
   try {
     const r = await adminFetch(`/api/admin/users/${userId}/spaced-repetition`, { method:'PATCH', body: JSON.stringify({ enabled: newState }) });
     const d = await r.json();
-    if (d.ok) { showToast(newState ? '🧠 SR enabled for user' : '🧠 SR disabled for user'); loadAdminUsers(); }
+    if (d.ok) { showToast(newState ? '🧠 SR enabled for user' : '🧠 SR disabled for user'); await refreshUsersAndPanel(); }
     else alert('Failed: ' + (d.error || 'Unknown error'));
   } catch(e) { alert('Error: ' + e.message); }
 }
@@ -7094,7 +7192,9 @@ async function toggleUserSR(userId, currentState) {
 async function deleteUser(userId, name) {
   if (!confirm(`Delete user "${name}"? This cannot be undone.`)) return;
   await adminFetch(`/api/admin/users/${userId}`, { method:'DELETE' });
-  loadAdminUsers();
+  closeUserManagePanel();
+  const searchVal = document.getElementById('adminUserSearch')?.value || '';
+  loadAdminUsers({ search: searchVal });
 }
 
 
@@ -7105,7 +7205,8 @@ async function toggleRegistration() {
   const newState = !s.registrationOpen;
   const btn = document.getElementById('regToggleBtn');
   if (btn) btn.textContent = newState ? 'Close Registration' : 'Open Registration';
-  loadAdminUsers();
+  const searchVal = document.getElementById('adminUserSearch')?.value || '';
+  loadAdminUsers({ search: searchVal });
 }
 
 // ══════════════════════════════════
@@ -7785,8 +7886,7 @@ async function saveUserAccess() {
     });
     if (!r.ok) throw new Error('Save failed');
     if (btn) { btn.textContent = '✅ Saved!'; setTimeout(() => { btn.disabled = false; btn.textContent = '💾 Save Access'; }, 2000); }
-    // Refresh user list in background to update restriction badge
-    loadAdminUsers();
+    refreshUsersAndPanel();
   } catch(e) {
     if (btn) { btn.textContent = '⚠️ Error'; btn.disabled = false; }
   }
@@ -7804,7 +7904,7 @@ async function resetUserAccess() {
     pendingUserTabSettings = getDefaultUserTabSettings();
     renderUserAccessGrid();
     if (btn) { btn.textContent = '✅ Reset!'; setTimeout(() => { btn.disabled = false; btn.textContent = '💾 Save Access'; }, 2000); }
-    loadAdminUsers();
+    refreshUsersAndPanel();
   } catch(e) {
     if (btn) { btn.disabled = false; }
   }

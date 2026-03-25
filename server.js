@@ -484,6 +484,8 @@ function mapUser(u) {
     avgScore:          u.avg_score || 0,
     school:            u.school || null,
     spacedRepEnabled:  u.spaced_repetition_enabled !== false,
+    level:             u.level || 1,
+    xp:                u.xp || 0,
     stats: { totalAttempts: u.mock_bar_count || 0, totalScore: 0, totalQuestions: 0 },
   };
 }
@@ -1409,15 +1411,24 @@ app.post('/api/admin/backfill-conceptual-cache', adminOnly, async (_req, res) =>
 });
 
 // ── Admin user-management routes ──────────────────────────────
-app.get('/api/admin/users', adminOnly, async (_req, res) => {
+app.get('/api/admin/users', adminOnly, async (req, res) => {
   try {
-    const { data } = await supabase.from('users').select('*').order('joined_at', { ascending: false });
+    const { search, limit = 5 } = req.query;
+    let query = supabase.from('users').select('*').order('joined_at', { ascending: false });
+    if (search && search.trim()) {
+      const s = search.trim().replace(/%/g, '');
+      query = query.or(`name.ilike.%${s}%,email.ilike.%${s}%`);
+      query = query.limit(20);
+    } else {
+      query = query.limit(parseInt(limit) || 5);
+    }
+    const { data } = await query;
     res.json((data || []).map(u => {
       const m = mapUser(u);
       return { id: m.id, name: m.name, email: m.email, role: m.role, isAdmin: m.isAdmin,
                active: m.active, status: m.status, createdAt: m.createdAt, registeredAt: m.registeredAt,
                school: m.school, stats: m.stats, tabSettings: m.tabSettings || null,
-               spacedRepEnabled: m.spacedRepEnabled };
+               spacedRepEnabled: m.spacedRepEnabled, level: m.level, xp: m.xp };
     }));
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
