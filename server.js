@@ -744,7 +744,22 @@ async function initializeApp() {
 app.use(compression());
 app.use(cors());
 app.use(express.json({ limit: '80mb' }));
-app.use(express.static(path.join(__dirname, 'public')));
+app.get('/barbuddyemblem.webp', (req, res, next) => {
+  res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+  next();
+});
+app.use(express.static(path.join(__dirname, 'public'), {
+  maxAge: '1y',
+  etag: true,
+  lastModified: true,
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('index.html')) {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    } else {
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    }
+  }
+}));
 
 async function requireAuth(req, res, next) {
   try {
@@ -4029,7 +4044,13 @@ app.get('/robots.txt', (_req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'robots.txt'));
 });
 
-app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+app.get('*', (req, res) => {
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
 
 async function migrateOldQuestionTypes() {
   const oldTypes = ['mcq', 'truefalse', 'true_false', 'enumeration', 'definition', 'identification'];
