@@ -2632,6 +2632,11 @@ function isSREnabled() {
   const userOk = currentUser?.spacedRepEnabled !== false;
   return globalOk && userOk;
 }
+function isCustomSubjectEnabled() {
+  const globalOk = window.TAB_SETTINGS?.subjects?.custom?.mockbar !== false;
+  const userOk = currentUser?.customSubjectEnabled !== false;
+  return globalOk && userOk;
+}
 const _SR_SUBJ_NAMES = {civil:'Civil Law',criminal:'Criminal Law',political:'Political Law',
   labor:'Labor Law',commercial:'Commercial Law',taxation:'Taxation Law',
   remedial:'Remedial Law',ethics:'Legal Ethics',custom:'Custom',mixed:'Mixed'};
@@ -3259,22 +3264,19 @@ const XP_CLIENT = {
 };
 
 function navToCustom() {
-  currentSubject = 'custom'; currentMode = 'mockbar';
-  clearSidebarActive();
-  document.getElementById('sb-subj-custom')?.classList.add('active');
-  updateBreadcrumb('custom', 'mockbar');
-  const hasCustom = (KB.customRefs > 0) || (KB.customPastBar > 0) || (KB.customQuestions > 0);
-  if (hasCustom) {
-    showPage('mockbar');
-    initMockBarSetup('custom');
-  } else {
-    showPage('custom');
-    document.getElementById('customEmptyState').style.display = 'block';
-    document.getElementById('customMockSetup').style.display = 'none';
+  // Block access if per-user custom subject is disabled (admins bypass)
+  if (!adminKey && !isCustomSubjectEnabled()) {
+    showPage('subject');
+    const content = document.getElementById('subject-tab-content');
+    if (content) content.innerHTML = `<div style="text-align:center;padding:48px 20px;color:var(--muted);">
+      <div style="font-size:36px;margin-bottom:12px;">🔒</div>
+      <div style="font-size:15px;font-weight:600;margin-bottom:6px;color:var(--text);">Custom Subject Locked</div>
+      <div style="font-size:13px;">Custom Subject access is restricted. Contact your administrator.</div>
+    </div>`;
+    return;
   }
-  sessionStorage.setItem('bb_last_view', 'custom');
-  sessionStorage.removeItem('bb_last_subject');
-  sessionStorage.removeItem('bb_last_tab');
+  // Route custom subject through the same subject page system as regular subjects
+  navToSubject('custom', 'mockbar');
 }
 
 function navToSubject(subj, mode) {
@@ -3286,7 +3288,7 @@ function navToSubject(subj, mode) {
     initMockBarSetup(null);
     return;
   }
-  if (subj === 'custom') { navToCustom(); return; }
+  // custom subject flows through the same path as regular subjects
 
   // Determine which mode to default to (pick first enabled)
   const ts = window.TAB_SETTINGS;
@@ -3310,7 +3312,7 @@ function navToSubject(subj, mode) {
 }
 
 function renderSubjectHeader(subj) {
-  const s = SUBJS.find(x => x.key === subj);
+  const s = ALL_SUBJS.find(x => x.key === subj);
   if (!s) return;
   const refs   = (KB.references||[]).filter(r=>r.subject===subj).length;
   const pbSets = (KB.pastBar||[]).filter(p=>p.subject===subj).length;
@@ -3487,7 +3489,7 @@ async function renderMockBarTab(subj, container) {
     container.innerHTML = `<div style="text-align:center;padding:32px;color:var(--muted)"><div style="font-size:24px;margin-bottom:10px;">⏳</div>Loading materials…</div>`;
     await refreshKBState();
   }
-  const s = SUBJS.find(x => x.key === subj);
+  const s = ALL_SUBJS.find(x => x.key === subj);
   const presets = [[5,'5'],[10,'10'],[20,'20']];
   const timeOpts = [[0,'No limit'],[30,'30 min'],[60,'1 hr'],[120,'2 hr'],[180,'3 hr'],[240,'4 hr']];
   const diffOpts = [['balanced','⚖️ Balanced'],['situational','📋 Situational'],['conceptual','💡 Conceptual']];
@@ -3543,7 +3545,9 @@ function stSetMbDiff(diff, btn) {
 }
 
 function updateMockPreview() {
-  const subjects = getMbSubjects();
+  // If we're on a subject tab, use currentSubject; otherwise use the old mock bar UI
+  const onSubjectTab = document.getElementById('mockbar-preview') !== null;
+  const subjects = onSubjectTab && currentSubject ? [currentSubject] : getMbSubjects();
   const isAll = subjects.includes('all');
   const avail = (KB.pastBar || [])
     .filter(pb => pb.enabled !== false && (isAll || subjects.includes(pb.subject)))
@@ -3577,7 +3581,7 @@ async function startSubjectMockBar(subj) {
     }
     startMockSession(d.questions, mbTimeMins, subj);
   } catch(e) {
-    const s = SUBJS.find(x=>x.key===subj)?.name || subj;
+    const s = ALL_SUBJS.find(x=>x.key===subj)?.name || subj;
     if (btn) { btn.disabled = false; btn.textContent = '⚡ Start ' + s + ' Mock Bar'; }
     alert('Error: ' + e.message);
   }
@@ -3585,7 +3589,7 @@ async function startSubjectMockBar(subj) {
 
 function renderSpeedDrillTab(subj, container) {
   if (!container) return;
-  const s = SUBJS.find(x => x.key === subj);
+  const s = ALL_SUBJS.find(x => x.key === subj);
   const subjName = h(s?.name || subj);
   const subjColor = s?.color || '#8b5cf6';
   container.innerHTML = `
@@ -5164,7 +5168,7 @@ async function startMockBar(){
       const wb = document.getElementById('mbWarnBanner');
       if (wb) { wb.textContent = data.warning; wb.style.display='block'; }
     }
-    console.log('Questions received:',data.questions?.length,'requested:',actualCount);
+    console.log('Questions received:',data.questions?.length,'requested:',count);
     startMockSession(data.questions, timeMin);
   }catch(err){
     const errEl=document.getElementById('mockStartError');
@@ -6046,12 +6050,14 @@ async function applyTabSettings() {
         partialEl.remove();
       }
     });
-    // Custom subject
+    // Custom subject — check both global tab setting AND per-user toggle
     const customEl = document.getElementById('sb-subj-custom');
     if (customEl) {
-      const cEnabled = settings.subjects?.custom?.mockbar !== false;
+      const cEnabled = isCustomSubjectEnabled();
       if (!isAdmin && !cEnabled) customEl.style.display = 'none';
       else { customEl.style.display = ''; customEl.style.opacity = cEnabled ? '' : '0.35'; }
+      const lockIcon = customEl.querySelector('.sb-lock-icon');
+      if (lockIcon) lockIcon.style.display = (!cEnabled) ? '' : 'none';
     }
     // If currently on subject page, refresh its tab bar to reflect new permissions
     if (currentSubject && document.querySelector('#page-subject.on')) {
@@ -7100,9 +7106,12 @@ async function loadAdminUsers({ search = '' } = {}) {
 
     el.innerHTML = resetHtml + users.map(u => {
       const adminBadge = u.isAdmin ? ` <span class="badge-admin">👑 Admin</span>` : '';
+      const srOff = u.spacedRepEnabled === false;
+      const csOff = u.customSubjectEnabled === false;
+      const restrictBadges = (srOff || csOff) ? ` <span style="color:#ff6b6b;font-size:10px;font-weight:500;">${srOff?'🧠SR off':''}${srOff&&csOff?' · ':''}${csOff?'📝CS off':''}</span>` : '';
       return `<div class="ur-row" onclick="openUserManagePanel('${u.id}')">
         <div style="flex:1;min-width:0;">
-          <div class="ur-name">${h(u.name)}${adminBadge}</div>
+          <div class="ur-name">${h(u.name)}${adminBadge}${restrictBadges}</div>
           <div class="ur-meta">${h(u.email)} · Joined ${formatJoinDate(u.createdAt)}</div>
         </div>
         <button class="ur-act view" onclick="event.stopPropagation();openUserManagePanel('${u.id}')" style="white-space:nowrap;">Manage →</button>
@@ -7133,6 +7142,7 @@ function openUserManagePanel(userId) {
     <div class="ump-info-row"><span class="ump-info-label">Level</span><span class="ump-info-val">${u.level || 1}</span></div>
     <div class="ump-info-row"><span class="ump-info-label">XP</span><span class="ump-info-val">${(u.xp||0).toLocaleString()}</span></div>
     <div class="ump-info-row"><span class="ump-info-label">SR Access</span><span class="ump-info-val">${u.spacedRepEnabled !== false ? '🟢 ON' : '🔴 OFF'}</span></div>
+    <div class="ump-info-row"><span class="ump-info-label">Custom Subject</span><span class="ump-info-val">${u.customSubjectEnabled !== false ? '🟢 ON' : '🔴 OFF'}</span></div>
     <div class="ump-info-row" style="border:none;"><span class="ump-info-label">Restrictions</span><span class="ump-info-val">${restrictCount}</span></div>`;
   const isSelf = u.id === currentUser?.id;
   document.getElementById('umpActions').innerHTML = `
@@ -7140,6 +7150,7 @@ function openUserManagePanel(userId) {
     <button class="ump-act-btn" onclick="openUserAccessModal('${u.id}','${h(u.name)}')">🔒 Manage Access${restrictSummary ? ' ('+restrictCount+')' : ''}</button>
     <button class="ump-act-btn" onclick="toggleUserAdmin('${u.id}',${!u.isAdmin})" ${isSelf?'disabled style="opacity:.4;cursor:not-allowed;"':''}>${u.isAdmin ? '👑 Revoke Admin' : '👑 Grant Admin'}</button>
     <button class="ump-act-btn" onclick="toggleUserSR('${u.id}',${u.spacedRepEnabled !== false})">🧠 SR: ${u.spacedRepEnabled !== false ? 'ON → Turn OFF' : 'OFF → Turn ON'}</button>
+    <button class="ump-act-btn" onclick="toggleUserCustomSubject('${u.id}',${u.customSubjectEnabled !== false})">📝 Custom Subject: ${u.customSubjectEnabled !== false ? 'ON → Turn OFF' : 'OFF → Turn ON'}</button>
     <button class="ump-act-btn${u.active?' danger':''}" onclick="toggleUserAccess('${u.id}',${!u.active})">${u.active ? '⛔ Disable Account' : '✅ Enable Account'}</button>
     <button class="ump-act-btn danger" onclick="deleteUser('${u.id}','${h(u.name)}')" ${isSelf?'disabled style="opacity:.4;cursor:not-allowed;"':''}>🗑️ Delete Account</button>`;
   backdrop.classList.add('on');
@@ -7186,6 +7197,17 @@ async function toggleUserSR(userId, currentState) {
     const r = await adminFetch(`/api/admin/users/${userId}/spaced-repetition`, { method:'PATCH', body: JSON.stringify({ enabled: newState }) });
     const d = await r.json();
     if (d.ok) { showToast(newState ? '🧠 SR enabled for user' : '🧠 SR disabled for user'); await refreshUsersAndPanel(); }
+    else alert('Failed: ' + (d.error || 'Unknown error'));
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+async function toggleUserCustomSubject(userId, currentState) {
+  const newState = !currentState;
+  if (!confirm(`${newState ? 'Enable' : 'Disable'} Custom Subject for this user?`)) return;
+  try {
+    const r = await adminFetch(`/api/admin/users/${userId}/custom-subject`, { method:'PATCH', body: JSON.stringify({ enabled: newState }) });
+    const d = await r.json();
+    if (d.ok) { showToast(newState ? '📝 Custom Subject enabled for user' : '📝 Custom Subject disabled for user'); await refreshUsersAndPanel(); }
     else alert('Failed: ' + (d.error || 'Unknown error'));
   } catch(e) { alert('Error: ' + e.message); }
 }

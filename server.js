@@ -259,7 +259,7 @@ const DEFAULT_TAB_SETTINGS = {
     taxation:   { learn: true, quiz: true, mockbar: true, speeddrill: true },
     remedial:   { learn: true, quiz: true, mockbar: true, speeddrill: true },
     ethics:     { learn: true, quiz: true, mockbar: true, speeddrill: true },
-    custom:     { mockbar: true },
+    custom:     { mockbar: true, speeddrill: true },
   },
 };
 function deepMerge(defaults, overrides) {
@@ -484,6 +484,7 @@ function mapUser(u) {
     avgScore:          u.avg_score || 0,
     school:            u.school || null,
     spacedRepEnabled:  u.spaced_repetition_enabled !== false,
+    customSubjectEnabled: u.custom_subject_enabled !== false,
     level:             u.level || 1,
     xp:                u.xp || 0,
     stats: { totalAttempts: u.mock_bar_count || 0, totalScore: 0, totalQuestions: 0 },
@@ -873,7 +874,7 @@ app.post('/api/auth/login', async (req, res) => {
       awardXP(user.id, 'DAILY_LOGIN', 'Daily login bonus').catch(() => {});
     }
     const u = mapUser(user);
-    res.json({ token, user: { id: u.id, name: u.name, email: u.email, role: u.role, isAdmin: u.isAdmin, spacedRepEnabled: u.spacedRepEnabled } });
+    res.json({ token, user: { id: u.id, name: u.name, email: u.email, role: u.role, isAdmin: u.isAdmin, spacedRepEnabled: u.spacedRepEnabled, customSubjectEnabled: u.customSubjectEnabled } });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -886,7 +887,7 @@ app.post('/api/auth/logout', requireAuth, async (req, res) => {
 
 app.get('/api/auth/me', requireAuth, (req, res) => {
   const u = req.user;
-  res.json({ id: u.id, name: u.name, email: u.email, role: u.role, isAdmin: u.isAdmin || false, spacedRepEnabled: u.spacedRepEnabled !== false });
+  res.json({ id: u.id, name: u.name, email: u.email, role: u.role, isAdmin: u.isAdmin || false, spacedRepEnabled: u.spacedRepEnabled !== false, customSubjectEnabled: u.customSubjectEnabled !== false });
 });
 
 // TEMPORARY EXPORT ROUTES
@@ -1443,7 +1444,7 @@ app.get('/api/admin/users', adminOnly, async (req, res) => {
       return { id: m.id, name: m.name, email: m.email, role: m.role, isAdmin: m.isAdmin,
                active: m.active, status: m.status, createdAt: m.createdAt, registeredAt: m.registeredAt,
                school: m.school, stats: m.stats, tabSettings: m.tabSettings || null,
-               spacedRepEnabled: m.spacedRepEnabled, level: m.level, xp: m.xp };
+               spacedRepEnabled: m.spacedRepEnabled, customSubjectEnabled: m.customSubjectEnabled, level: m.level, xp: m.xp };
     }));
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -1476,6 +1477,16 @@ app.patch('/api/admin/users/:userId/spaced-repetition', adminOnly, async (req, r
     const { enabled } = req.body;
     const { userId } = req.params;
     const { error } = await supabase.from('users').update({ spaced_repetition_enabled: !!enabled }).eq('id', userId);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ ok: true, userId, enabled: !!enabled });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.patch('/api/admin/users/:userId/custom-subject', adminOnly, async (req, res) => {
+  try {
+    const { enabled } = req.body;
+    const { userId } = req.params;
+    const { error } = await supabase.from('users').update({ custom_subject_enabled: !!enabled }).eq('id', userId);
     if (error) return res.status(500).json({ error: error.message });
     res.json({ ok: true, userId, enabled: !!enabled });
   } catch(e) { res.status(500).json({ error: e.message }); }
