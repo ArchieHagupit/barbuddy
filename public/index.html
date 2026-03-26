@@ -1457,6 +1457,8 @@ select.form-input{cursor:pointer;}
           <button class="tab-global-btn" onclick="setAllOfMode('mockbar',false)">⏱ All Mock ▼</button>
           <button class="tab-global-btn" onclick="setAllOfMode('speeddrill',true)">⚡ All Speed Drill ▲</button>
           <button class="tab-global-btn" onclick="setAllOfMode('speeddrill',false)">⚡ All Speed Drill ▼</button>
+          <button class="tab-global-btn" onclick="setCustomSubjectToggle(true)" style="background:rgba(0,180,180,.1);border-color:rgba(0,180,180,.3);color:#00b4b4;">📝 Custom Sub ON</button>
+          <button class="tab-global-btn" onclick="setCustomSubjectToggle(false)" style="background:rgba(0,180,180,.1);border-color:rgba(0,180,180,.3);color:#00b4b4;">📝 Custom Sub OFF</button>
           <button class="tab-global-btn" onclick="setSpacedRepToggle(true)">🧠 Spaced Rep ON</button>
           <button class="tab-global-btn" onclick="setSpacedRepToggle(false)">🧠 Spaced Rep OFF</button>
         </div>
@@ -3391,6 +3393,16 @@ function switchSubjectTab(subj, mode) {
   updateBreadcrumb(subj, mode);
   const content = document.getElementById('subject-tab-content');
   if (!content) return;
+  // Guard: block rendering if tab is restricted for this user (defense-in-depth)
+  const isAdm = !!adminKey && currentUser?.isAdmin;
+  if (!isAdm && window.TAB_SETTINGS?.subjects?.[subj]?.[mode] === false) {
+    content.innerHTML = `<div style="text-align:center;padding:48px 20px;color:var(--muted);">
+      <div style="font-size:36px;margin-bottom:12px;">🔒</div>
+      <div style="font-size:15px;font-weight:600;margin-bottom:6px;color:var(--text);">Access Restricted</div>
+      <div style="font-size:13px;">This feature is not available for your account. Contact your administrator.</div>
+    </div>`;
+    return;
+  }
   if (mode === 'learn')      renderLearnTab(subj, content);
   if (mode === 'quiz')       renderQuizTab(subj, content);
   if (mode === 'mockbar')    renderMockBarTab(subj, content);
@@ -3799,6 +3811,11 @@ function renderOverview() {
           const prog = getSubjectProgress(s.key);
           const pct  = prog.total > 0 ? Math.round((prog.done / prog.total) * 100) : 0;
           const pb   = pbCount(s.key);
+          const ts = window.TAB_SETTINGS?.subjects?.[s.key] || {};
+          const allOff = ['learn','quiz','mockbar'].every(m => ts[m] === false);
+          if (allOff && !adminKey) return ''; // Hide fully restricted subjects from overview
+          const learnOk = ts.learn !== false;
+          const mockOk  = ts.mockbar !== false;
           return `
             <div class="ov-subj-card" data-subj="${s.key}" style="--subj-color:${s.color}">
               <div class="ov-subj-top">
@@ -3813,8 +3830,8 @@ function renderOverview() {
                 ${pb > 0 ? `<span>${pb} past Qs</span>` : ''}
               </div>
               <div class="ov-subj-actions">
-                <button class="ov-btn-learn" onclick="navToSubject('${s.key}','learn')">📖 Learn</button>
-                ${pb > 0 ? `<button class="ov-btn-mock" onclick="navToSubject('${s.key}','mockbar')">⏱ Mock</button>` : ''}
+                ${learnOk ? `<button class="ov-btn-learn" onclick="navToSubject('${s.key}','learn')">📖 Learn</button>` : ''}
+                ${pb > 0 && mockOk ? `<button class="ov-btn-mock" onclick="navToSubject('${s.key}','mockbar')">⏱ Mock</button>` : ''}
               </div>
             </div>`;
         }).join('')}
@@ -6006,21 +6023,22 @@ function getDefaultTabSettings() {
       taxation:   { learn: true, quiz: true, mockbar: true, speeddrill: true },
       remedial:   { learn: true, quiz: true, mockbar: true, speeddrill: true },
       ethics:     { learn: true, quiz: true, mockbar: true, speeddrill: true },
-      custom:     { mockbar: true },
+      custom:     { mockbar: true, speeddrill: true },
     },
   };
 }
 
 async function applyTabSettings() {
   try {
-    // Admins use global settings; students use their personal-merged settings
-    const isAdm = !!adminKey;
+    // Students get merged (global + per-user) settings; admins get global only
+    // Use both adminKey AND isAdmin flag — a student should NEVER get global-only settings
+    const isAdm = !!adminKey && currentUser?.isAdmin;
     const url     = (!isAdm && sessionToken) ? '/api/user/tab-settings' : '/api/tab-settings';
     const headers = (!isAdm && sessionToken) ? {'x-session-token': sessionToken} : {};
     const r = await fetch(url, { headers });
     const settings = await r.json();
     window.TAB_SETTINGS = settings;
-    const isAdmin = !!adminKey;
+    const isAdmin = isAdm;
     // Update sidebar subject rows — dim if all modes disabled, show lock icon
     SUBJS.forEach(s => {
       const subjEl = document.getElementById(`sb-subj-${s.key}`);
@@ -6100,6 +6118,7 @@ function renderTabControls() {
     <button class="tab-global-btn" onclick="setAllOfMode('quiz',false)">Hide All Quiz</button>
     <button class="tab-global-btn" onclick="setAllOfMode('mockbar',false)">Hide All Mock Bar</button>
     <button class="tab-global-btn" onclick="setAllOfMode('speeddrill',false)">Hide All Speed Drill</button>
+    <button class="tab-global-btn" onclick="setCustomSubjectToggle(false)" style="background:rgba(0,180,180,.1);border-color:rgba(0,180,180,.3);color:#00b4b4;">Hide All Custom Sub</button>
     <button class="tab-global-btn" onclick="setSpacedRepToggle(true)">🧠 Spaced Rep ON</button>
     <button class="tab-global-btn" onclick="setSpacedRepToggle(false)">🧠 Spaced Rep OFF</button>
     <button class="tab-global-btn" style="margin-left:auto;color:var(--muted);" onclick="resetTabSettings()">↺ Reset Defaults</button>
@@ -6125,18 +6144,26 @@ function renderTabControls() {
     });
     html += `</div>`;
   });
-  // Custom Subject — mockbar only
-  const cOn = s.subjects?.custom?.mockbar !== false;
+  // Custom Subject — mockbar + speeddrill
+  const cMbOn = s.subjects?.custom?.mockbar !== false;
+  const cSdOn = s.subjects?.custom?.speeddrill !== false;
   html += `<div class="tab-ctrl-subject-header">
     <span class="tab-ctrl-subject-dot" style="background:#8899aa;"></span>
     <span style="font-size:13px;font-weight:600;">Custom Subject</span>
   </div>
   <div style="padding-left:16px;margin-bottom:12px;">
     <div class="tab-ctrl-row">
-      <span style="font-size:12px;min-width:90px;color:var(--muted);">⏱ Mock Bar</span>
+      <span style="font-size:12px;min-width:100px;color:var(--muted);">⏱ Mock Bar</span>
       <div class="tab-ctrl-btns">
-        <button class="tct-on${cOn?' tct-active':''}" onclick="setTabSetting('custom','mockbar',true)">ON</button>
-        <button class="tct-off${!cOn?' tct-active':''}" onclick="setTabSetting('custom','mockbar',false)">OFF</button>
+        <button class="tct-on${cMbOn?' tct-active':''}" onclick="setTabSetting('custom','mockbar',true)">ON</button>
+        <button class="tct-off${!cMbOn?' tct-active':''}" onclick="setTabSetting('custom','mockbar',false)">OFF</button>
+      </div>
+    </div>
+    <div class="tab-ctrl-row">
+      <span style="font-size:12px;min-width:100px;color:var(--muted);">⚡ Speed Drill</span>
+      <div class="tab-ctrl-btns">
+        <button class="tct-on${cSdOn?' tct-active':''}" onclick="setTabSetting('custom','speeddrill',true)">ON</button>
+        <button class="tct-off${!cSdOn?' tct-active':''}" onclick="setTabSetting('custom','speeddrill',false)">OFF</button>
       </div>
     </div>
   </div>`;
@@ -6165,6 +6192,15 @@ function setSpacedRepToggle(value) {
   renderTabControls();
 }
 
+function setCustomSubjectToggle(value) {
+  if (!pendingTabSettings) pendingTabSettings = getDefaultTabSettings();
+  if (!pendingTabSettings.subjects) pendingTabSettings.subjects = {};
+  if (!pendingTabSettings.subjects.custom) pendingTabSettings.subjects.custom = {};
+  pendingTabSettings.subjects.custom.mockbar = value;
+  if (value) pendingTabSettings.subjects.custom.speeddrill = value;
+  renderTabControls();
+}
+
 function setTabSetting(subject, mode, value) {
   if (!pendingTabSettings) pendingTabSettings = getDefaultTabSettings();
   if (!pendingTabSettings.subjects) pendingTabSettings.subjects = {};
@@ -6178,9 +6214,12 @@ function setAllTabs(value) {
   pendingTabSettings.spaced_repetition = value;
   SUBJS.forEach(s => {
     if (!pendingTabSettings.subjects[s.key]) pendingTabSettings.subjects[s.key] = {};
-    const modes = s.key === 'custom' ? ['mockbar'] : ['learn','quiz','mockbar','speeddrill'];
-    modes.forEach(m => { pendingTabSettings.subjects[s.key][m] = value; });
+    ['learn','quiz','mockbar','speeddrill'].forEach(m => { pendingTabSettings.subjects[s.key][m] = value; });
   });
+  // Custom subject
+  if (!pendingTabSettings.subjects.custom) pendingTabSettings.subjects.custom = {};
+  pendingTabSettings.subjects.custom.mockbar = value;
+  pendingTabSettings.subjects.custom.speeddrill = value;
   renderTabControls();
 }
 
@@ -6224,7 +6263,7 @@ function updateAccessControlBadge() {
   if (!s || !adminKey) { badge.style.display = 'none'; return; }
   const anyDisabled = SUBJS.some(subj =>
     ['learn','quiz','mockbar','speeddrill'].some(m => s.subjects?.[subj.key]?.[m] === false)
-  ) || s.subjects?.custom?.mockbar === false || s.spaced_repetition === false;
+  ) || s.subjects?.custom?.mockbar === false || s.subjects?.custom?.speeddrill === false || s.spaced_repetition === false;
   badge.style.display = anyDisabled ? '' : 'none';
 }
 
@@ -6917,10 +6956,14 @@ async function doLogout() {
   }
   sessionToken = null;
   currentUser  = null;
+  adminKey = '';
+  window._adminKey = '';
   localStorage.removeItem('bb_token');
   localStorage.removeItem('bb_user');
   localStorage.removeItem('bb_user_name');
+  localStorage.removeItem('bb_admin_key');
   sessionStorage.clear();
+  window.TAB_SETTINGS = null;
   const aw = document.getElementById('authWall');
   aw.style.display = 'flex';
   requestAnimationFrame(() => { aw.style.opacity = '1'; });
@@ -7795,7 +7838,7 @@ function getDefaultUserTabSettings() {
       taxation:   { learn: true, quiz: true, mockbar: true, speeddrill: true },
       remedial:   { learn: true, quiz: true, mockbar: true, speeddrill: true },
       ethics:     { learn: true, quiz: true, mockbar: true, speeddrill: true },
-      custom:     { mockbar: true },
+      custom:     { mockbar: true, speeddrill: true },
     },
   };
 }
@@ -7804,8 +7847,10 @@ function getUserAccessSummary(u) {
   if (!u.tabSettings) return '';
   const s = u.tabSettings;
   let restrictions = 0;
-  (SUBJS || []).forEach(subj => {
-    ['learn','quiz','mockbar','speeddrill'].forEach(mode => {
+  const allSubjs = [...(SUBJS || []), CUSTOM_SUBJ];
+  allSubjs.forEach(subj => {
+    const modes = subj.key === 'custom' ? ['mockbar','speeddrill'] : ['learn','quiz','mockbar','speeddrill'];
+    modes.forEach(mode => {
       if (s.subjects?.[subj.key]?.[mode] === false) restrictions++;
     });
   });
@@ -7847,8 +7892,9 @@ function renderUserAccessGrid() {
   const globalS = window.TAB_SETTINGS || {};
   const modeLabels = { learn: '📖 Learn', quiz: '✏️ Quiz', mockbar: '⏱ Mock Bar', speeddrill: '⚡ Speed Drill' };
   let html = '';
-  SUBJS.forEach(subj => {
-    const modes = subj.key === 'custom' ? ['mockbar'] : ['learn', 'quiz', 'mockbar', 'speeddrill'];
+  const allSubjs = [...SUBJS, CUSTOM_SUBJ];
+  allSubjs.forEach(subj => {
+    const modes = subj.key === 'custom' ? ['mockbar', 'speeddrill'] : ['learn', 'quiz', 'mockbar', 'speeddrill'];
     const pillsHtml = modes.map(mode => {
       const globalLocked = globalS.subjects?.[subj.key]?.[mode] === false;
       const personalEnabled = s.subjects?.[subj.key]?.[mode] !== false;
@@ -7878,8 +7924,9 @@ function toggleUserSubjTab(subj, mode, value) {
 function setAllUserTabs(val) {
   pendingUserTabSettings = getDefaultUserTabSettings();
   if (!val) {
-    SUBJS.forEach(subj => {
-      const modes = subj.key === 'custom' ? ['mockbar'] : ['learn', 'quiz', 'mockbar', 'speeddrill'];
+    const allSubjs = [...SUBJS, CUSTOM_SUBJ];
+    allSubjs.forEach(subj => {
+      const modes = subj.key === 'custom' ? ['mockbar', 'speeddrill'] : ['learn', 'quiz', 'mockbar', 'speeddrill'];
       modes.forEach(mode => { pendingUserTabSettings.subjects[subj.key][mode] = false; });
     });
     pendingUserTabSettings.overview = false;
@@ -7889,8 +7936,9 @@ function setAllUserTabs(val) {
 
 function setAllUserMode(mode, val) {
   if (!pendingUserTabSettings) pendingUserTabSettings = getDefaultUserTabSettings();
-  SUBJS.forEach(subj => {
-    if (subj.key === 'custom' && mode !== 'mockbar') return;
+  const allSubjs = [...SUBJS, CUSTOM_SUBJ];
+  allSubjs.forEach(subj => {
+    if (subj.key === 'custom' && !['mockbar','speeddrill'].includes(mode)) return;
     if (!pendingUserTabSettings.subjects[subj.key]) pendingUserTabSettings.subjects[subj.key] = {};
     pendingUserTabSettings.subjects[subj.key][mode] = val;
   });
