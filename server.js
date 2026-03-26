@@ -259,7 +259,7 @@ const DEFAULT_TAB_SETTINGS = {
     taxation:   { learn: true, quiz: true, mockbar: true, speeddrill: true },
     remedial:   { learn: true, quiz: true, mockbar: true, speeddrill: true },
     ethics:     { learn: true, quiz: true, mockbar: true, speeddrill: true },
-    custom:     { mockbar: true, speeddrill: true },
+    custom:     { learn: true, quiz: false, mockbar: true, speeddrill: true },
   },
 };
 function deepMerge(defaults, overrides) {
