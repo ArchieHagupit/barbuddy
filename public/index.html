@@ -716,8 +716,12 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .mc-subj-tag{font-size:10px;font-weight:700;padding:3px 8px;border-radius:5px;cursor:pointer;transition:all .2s;border:1px solid transparent;font-family:var(--fm);}
 .mc-subj-tag.on{background:rgba(255,140,66,.2);border-color:rgba(255,140,66,.4);color:#ff8c42;}
 .mc-subj-tag:not(.on){background:rgba(255,255,255,.04);border-color:var(--bdr2);color:var(--muted);}
+/* SESSION OVERLAY */
+#session-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.65);backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px);z-index:50;cursor:not-allowed;transition:opacity 0.2s ease;}
+.sidebar.session-locked{opacity:0.35;pointer-events:none;transition:opacity 0.2s ease;}
+.topbar.session-locked{opacity:0.35;pointer-events:none;transition:opacity 0.2s ease;}
 /* SESSION */
-.mock-session{display:none;} .mock-session.on{display:block;}
+.mock-session{display:none;position:relative;z-index:51;} .mock-session.on{display:block;}
 .ms-header{background:linear-gradient(135deg,#1a0a00,#2a1400);border:1px solid rgba(255,140,66,.2);border-radius:13px;padding:15px 20px;display:flex;align-items:center;gap:16px;margin-bottom:18px;position:sticky;top:58px;z-index:100;backdrop-filter:blur(10px);}
 .ms-q-num{font-family:var(--fd);font-size:22px;font-weight:700;color:#ff8c42;}
 .ms-of{font-size:12px;color:#a08060;font-family:var(--fm);}
@@ -1834,6 +1838,32 @@ let curSubj=null, curTopic=null, curPage=0;
 let quizPool=[];         // flat list of {type,subject,topic,data} loaded from CACHE for practice panel
 let activeQuiz=null, qIdx=0, qScore=0, qMode='essay';
 let mockQs=[], mockIdx=0, mockAnswers=[], mockTimer=null, mockLeft=0;
+let isSessionActive = false;
+
+function showSessionOverlay() {
+  isSessionActive = true;
+  const overlay = document.getElementById('session-overlay');
+  if (overlay) overlay.style.display = 'block';
+  document.getElementById('mainSidebar')?.classList.add('session-locked');
+  document.querySelector('.topbar')?.classList.add('session-locked');
+}
+function hideSessionOverlay() {
+  isSessionActive = false;
+  const overlay = document.getElementById('session-overlay');
+  if (overlay) overlay.style.display = 'none';
+  document.getElementById('mainSidebar')?.classList.remove('session-locked');
+  document.querySelector('.topbar')?.classList.remove('session-locked');
+}
+document.addEventListener('DOMContentLoaded', () => {
+  const ov = document.getElementById('session-overlay');
+  if (ov) ov.addEventListener('click', () => showToast('⚖️ Complete or exit your session first', 2000));
+});
+document.addEventListener('keydown', (e) => {
+  if (!isSessionActive) return;
+  if (e.key === 'Backspace' && e.target.tagName !== 'TEXTAREA' && e.target.tagName !== 'INPUT') {
+    e.preventDefault();
+  }
+});
 let mockScores=[], mockSubjectsUsed=[], mockSessionDate=null;
 let mockTimeLimitSecs=0; // original time limit in seconds (0 = no limit)
 let manualBatch=[], manualQNum=1;
@@ -2068,6 +2098,7 @@ async function resumeExamSession(sessionArg) {
   document.getElementById('mockConfig').style.display  = 'none';
   document.getElementById('mockResults').style.display = 'none';
   document.getElementById('mockSession').classList.add('on');
+  showSessionOverlay();
   document.getElementById('ms-of').textContent = `of ${mockQs.length}`;
   renderQMarkers();
   if (mockTimeLimitSecs > 0) { document.getElementById('ms-timer').style.display = 'flex'; runTimer(); }
@@ -2122,6 +2153,7 @@ function confirmAbandonExam() {
     window.isSpeedDrill = false;
     window.activeExamSession = null;
     document.getElementById('mockSession').classList.remove('on');
+    hideSessionOverlay();
     navToSubject(subj, 'speeddrill');
     return;
   }
@@ -2131,6 +2163,7 @@ function confirmAbandonExam() {
     ExamSession.saveServer(window.activeExamSession).catch(() => {});
   }
   ExamSession.stopAutoSave();
+  hideSessionOverlay();
   const subj = window.activeExamSession?.subject || 'civil';
   navToSubject(subj, 'mockbar');
   setTimeout(async () => {
@@ -5208,6 +5241,7 @@ function startMockSession(questions, timeMin, subjectKey) {
   document.getElementById('mockConfig').style.display = 'none';
   document.getElementById('mockResults').style.display = 'none';
   document.getElementById('mockSession').classList.add('on');
+  showSessionOverlay();
   document.getElementById('ms-of').textContent = `of ${mockQs.length}`;
   renderQMarkers();
   if (mockTimeLimitSecs > 0) { mockLeft = mockTimeLimitSecs; document.getElementById('ms-timer').style.display = 'flex'; runTimer(); }
@@ -5490,6 +5524,7 @@ async function endMockSession(){
   if (window.activeExamSession) { window.activeExamSession.status = 'completed'; }
   ExamSession.clearAll().catch(() => {});
   document.getElementById('mockSession').classList.remove('on');
+  hideSessionOverlay();
   const answered=mockAnswers.filter(a=>a?.trim()).length;
   const res=document.getElementById('mockResults');
   res.style.display='block';
@@ -8610,5 +8645,6 @@ function showLevelUpModal(xpResult, onContinue) {
   </div>
 </div>
 
+<div id="session-overlay"></div>
 </body>
 </html>

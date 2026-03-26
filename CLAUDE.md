@@ -289,6 +289,25 @@ Components: showSubmitConfirmModal({onConfirm})
 Flow: checkFlaggedBeforeSubmit() → flagged modal
 (if flagged) → submit confirm modal → endMockSession()
 
+## Session Lock Overlay
+During active Mock Bar or Speed Drill sessions,
+a full-screen overlay (#session-overlay) blocks
+interaction with sidebar and header navigation.
+Sidebar and topbar get .session-locked class
+(opacity:0.35, pointer-events:none).
+Session panel (.mock-session) has z-index:51,
+overlay has z-index:50.
+Clicking overlay shows toast: "Complete or exit
+your session first".
+Backspace key blocked during session (except in
+textarea/input fields).
+Components: showSessionOverlay(), hideSessionOverlay(),
+isSessionActive flag.
+Called in: startMockSession(), resumeExamSession(),
+endMockSession(), confirmAbandonExam().
+Timer auto-submit goes through endMockSession()
+which calls hideSessionOverlay().
+
 ## Tab Access Control — Spaced Repetition
 
 ### Global Toggle
