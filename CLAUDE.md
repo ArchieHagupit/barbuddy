@@ -278,6 +278,17 @@ Both Mock Bar and Speed Drill share .ms-header
 and runTimer() — sticky header and timer colors 
 work in both modes automatically.
 
+## Submit Confirmation
+Both Mock Bar and Speed Drill show a
+confirmation modal before submitting answers.
+Shows answered/total count and warns about
+unanswered questions that will score 0.
+Timer auto-submit bypasses confirmation.
+Custom modal matches navy/gold BarBuddy theme.
+Components: showSubmitConfirmModal({onConfirm})
+Flow: checkFlaggedBeforeSubmit() → flagged modal
+(if flagged) → submit confirm modal → endMockSession()
+
 ## Tab Access Control — Spaced Repetition
 
 ### Global Toggle
@@ -319,3 +330,59 @@ for all existing and new users.
 ### Handler Function
 setAllSpacedRep(enabled) — saves setting and 
 re-renders Tab Access panel with toast notification.
+
+## Evaluation Error — "Temporarily Unavailable" Fix
+
+### Root Cause
+callClaudeHaikuJSON() (batch evaluator) had its 
+own simpler JSON parser separate from the robust 
+5-strategy extractJSON() function. When Haiku 
+returned slightly malformed JSON, the simple 
+parser failed and returned null → line 3413 
+catch block returned "Evaluation temporarily 
+unavailable."
+
+### Fixes Applied
+1. callClaudeHaikuJSON() now uses extractJSON() 
+   for all JSON parsing — same 5-strategy defense 
+   as single-question evaluation
+   
+2. maxTokens increased from 400 → 2000 in 
+   callClaudeHaikuJSON() — positions 2700+ were 
+   failing due to response truncation at 400 tokens.
+   Full ALAC response needs 800-1500 tokens.
+
+3. Parse retry logic added to callClaudeHaikuJSON():
+   - 3 attempts before returning null
+   - 1s delay between parse retries
+   - Retries on both parse failure AND overload
+
+4. Better error logging in runEvalJob() catch block:
+   - Logs err.message and stack line
+   - Makes "temporarily unavailable" traceable 
+     in Railway logs
+
+### Common JSON Failure Char Codes
+- char code 34 = " (double quote in wrong position)
+- char code 44 = , (trailing comma)
+- char code NaN = unicode/special character
+- char code 123 = { (nested brace in string)
+
+All handled by extractJSON() 5-strategy system.
+
+### callClaudeHaikuJSON vs callClaudeJSON
+- callClaudeHaikuJSON — batch evaluation only
+  Uses Haiku model, temperature: 0, maxTokens: 2000
+  Has own 429/529 retry + now uses extractJSON()
+  
+- callClaudeJSON — single question + Sonnet fallback
+  Uses configurable model, temperature: 0
+  Has own retry schedule (Sonnet → Haiku)
+  Uses extractJSON()
+
+### Token Requirements
+- ALAC full response: 800-1500 tokens typical
+- Conceptual breakdown response: 600-1200 tokens
+- Always set maxTokens >= 2000 for eval calls
+- generateALACModelAnswer: 2000 tokens
+- generateConceptualModelAnswer: 2000 tokens

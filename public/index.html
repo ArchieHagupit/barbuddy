@@ -8384,9 +8384,35 @@ function updateFlagButton(idx) {
   }
 }
 
+function showSubmitConfirmModal(onConfirm) {
+  const answered = mockAnswers.filter(a => a?.trim()).length;
+  const total = mockQs.length;
+  const unanswered = total - answered;
+  const isSD = window.isSpeedDrill;
+  const title = isSD ? 'Submit Speed Drill?' : 'Submit for Evaluation?';
+  const overlay = document.createElement('div');
+  overlay.id = 'submit-confirm-modal';
+  overlay.innerHTML = `
+  <div style="position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:10001;display:flex;align-items:center;justify-content:center;padding:20px;">
+    <div style="background:#0f1923;border:1px solid rgba(201,168,76,0.3);border-radius:16px;padding:32px;max-width:400px;width:90%;text-align:center;">
+      <div style="font-size:32px;margin-bottom:16px;">⚖️</div>
+      <h3 style="color:#f0c040;margin:0 0 12px;font-size:18px;">${title}</h3>
+      <p style="color:#e0dcd4;margin:0 0 8px;font-size:14px;">✅ Answered: ${answered}/${total} question${total!==1?'s':''}</p>
+      ${unanswered > 0 ? `<p style="color:#ff9800;font-size:13px;margin:0 0 16px;">⚠️ ${unanswered} unanswered — will be scored 0</p>` : '<div style="margin-bottom:16px;"></div>'}
+      <p style="color:#888;font-size:12px;margin:0 0 24px;">This action cannot be undone.</p>
+      <div style="display:flex;gap:12px;justify-content:center;">
+        <button onclick="document.getElementById('submit-confirm-modal')?.remove();" style="flex:1;padding:12px 20px;border-radius:10px;border:1px solid rgba(255,255,255,0.2);background:transparent;color:#ccd;cursor:pointer;font-size:14px;">Cancel</button>
+        <button id="confirmSubmitYes" style="flex:1;padding:12px 20px;border-radius:10px;border:none;background:linear-gradient(135deg,#f0c040,#d4a017);color:#1a1200;cursor:pointer;font-size:14px;font-weight:bold;">Yes, Submit</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+  document.getElementById('confirmSubmitYes').onclick = () => { overlay.remove(); onConfirm(); };
+}
+
 function checkFlaggedBeforeSubmit() {
   const flagged = window.flaggedQuestions;
-  if (!flagged || flagged.size === 0) { endMockSession(); return; }
+  if (!flagged || flagged.size === 0) { showSubmitConfirmModal(() => endMockSession()); return; }
   const flaggedList = Array.from(flagged).sort((a,b) => a-b);
   const modal = document.createElement('div');
   modal.id = 'flagged-review-modal';
@@ -8411,7 +8437,7 @@ function checkFlaggedBeforeSubmit() {
         }).join('')}
       </div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;">
-        <button onclick="document.getElementById('flagged-review-modal')?.remove();endMockSession();" style="flex:1;padding:12px;background:linear-gradient(135deg,#f0c040,#d4a017);color:#1a1200;border:none;border-radius:10px;font-weight:700;cursor:pointer;font-size:0.9rem;">Submit Anyway</button>
+        <button onclick="document.getElementById('flagged-review-modal')?.remove();showSubmitConfirmModal(()=>endMockSession());" style="flex:1;padding:12px;background:linear-gradient(135deg,#f0c040,#d4a017);color:#1a1200;border:none;border-radius:10px;font-weight:700;cursor:pointer;font-size:0.9rem;">Submit Anyway</button>
         <button onclick="document.getElementById('flagged-review-modal')?.remove();" style="flex:1;padding:12px;background:#1a2235;color:#ccd;border:1px solid #2a3347;border-radius:10px;font-weight:600;cursor:pointer;font-size:0.9rem;">Continue Reviewing</button>
       </div>
     </div>
