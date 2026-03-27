@@ -868,7 +868,7 @@ select.form-input{cursor:pointer;}
 .auth-btn:hover{opacity:.88;}
 .auth-btn:disabled{opacity:.5;cursor:not-allowed;}
 /* Skeleton loading shimmer */
-#sbSubjectList{min-height:352px;}
+#sbSubjectList{min-height:352px;margin-bottom:4px;}
 .subject-skeleton{height:40px;background:linear-gradient(90deg,rgba(255,255,255,.04) 25%,rgba(255,255,255,.08) 50%,rgba(255,255,255,.04) 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:8px;margin-bottom:4px;}
 @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
 /* Topbar user display */
@@ -1094,13 +1094,20 @@ select.form-input{cursor:pointer;}
     min-height: 44px;
     min-width: 44px;
   }
-  /* Sidebar subject items */
+  /* Sidebar subject items — use padding for touch targets, not min-height (avoids overlap) */
   .sb-subject,
   .sb-overview-btn,
   .sb-sub-item {
-    min-height: 48px;
+    padding-top: 10px;
+    padding-bottom: 10px;
     display: flex;
     align-items: center;
+    position: relative;
+    z-index: 1;
+  }
+  /* Custom Subject sits below subject list — ensure it renders above */
+  #sb-subj-custom {
+    z-index: 2;
   }
   /* Small icon-style buttons: increase tap area via padding without changing visual size */
   .bm-item-rm,
