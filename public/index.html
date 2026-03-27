@@ -2915,16 +2915,14 @@ async function _renderProgressDashboardInto(container) {
   const strongest = subjStats[subjStats.length-1];
 
   // Streak (consecutive calendar days with at least 1 session, going back from today)
-  const daySet = new Set(results.map(r => {
-    const d = new Date(r.finished_at);
-    return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-  }));
+  const manilaDateStr = d => d.toLocaleDateString('en-CA',{timeZone:'Asia/Manila'});
+  const daySet = new Set(results.map(r => manilaDateStr(new Date(r.finished_at))));
   let streak = 0;
   const today = new Date();
   for (let i = 0; i < 365; i++) {
     const d = new Date(today);
     d.setDate(d.getDate() - i);
-    if (daySet.has(`${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`)) {
+    if (daySet.has(manilaDateStr(d))) {
       streak++;
     } else if (i > 0) { // allow today to be missing (haven't done one yet today)
       break;
@@ -2959,7 +2957,7 @@ async function _renderProgressDashboardInto(container) {
   // Score history for chart
   const chartLabels = results.map(r => {
     const d = new Date(r.finished_at);
-    return `${d.getMonth()+1}/${d.getDate()}`;
+    return d.toLocaleDateString('en-US',{timeZone:'Asia/Manila',month:'numeric',day:'numeric'});
   });
   const chartData = allPcts;
   const pointColors = chartData.map(p => p >= 70 ? '#2ec4a0' : '#e07080');
@@ -5278,7 +5276,7 @@ function fmt(n,decimals=1){
 function formatDate(iso){
   if(!iso)return'Unknown date';
   const d=new Date(iso);
-  return d.toLocaleDateString('en-PH',{timeZone:'Asia/Manila',year:'numeric',month:'long',day:'numeric',hour:'2-digit',minute:'2-digit'});
+  return d.toLocaleString('en-PH',{timeZone:'Asia/Manila',year:'numeric',month:'long',day:'numeric',hour:'2-digit',minute:'2-digit',hour12:true});
 }
 function runTimer(){
   if(mockTimer)clearInterval(mockTimer);
