@@ -5626,7 +5626,8 @@ async function resumePendingEvaluation() {
     if (!d.total) { sessionStorage.removeItem('bb_pending_eval'); return false; }
   } catch(e) { sessionStorage.removeItem('bb_pending_eval'); return false; }
 
-  // Show resume progress screen
+  // Show resume progress screen — lock UI while evaluating
+  showSessionOverlay();
   const res = document.getElementById('mockResults');
   if (!res) return false;
   res.style.display = 'block';
@@ -5647,6 +5648,7 @@ async function resumePendingEvaluation() {
     if (fillEl) fillEl.style.width = '100%';
     // mockQs/mockAnswers are gone after a refresh — show completion notice (with XP popup if available)
     const _showResumeComplete = () => {
+      hideSessionOverlay();
       res.innerHTML = `<div class="mock-results" style="text-align:center;padding:48px 24px;">
         <div style="font-size:48px;margin-bottom:12px;">✅</div>
         <div style="font-family:var(--fd);font-size:22px;font-weight:700;color:var(--gold-l);margin-bottom:10px;">Evaluation Complete!</div>
@@ -5660,6 +5662,7 @@ async function resumePendingEvaluation() {
       _showResumeComplete();
     }
   } catch(e) {
+    hideSessionOverlay();
     sessionStorage.removeItem('bb_pending_eval');
     res.innerHTML = `<div style="text-align:center;padding:40px 20px;color:var(--muted);">Could not resume evaluation. Please start a new session.</div>`;
   }
@@ -5674,7 +5677,7 @@ async function endMockSession(){
   if (window.activeExamSession) { window.activeExamSession.status = 'completed'; }
   ExamSession.clearAll().catch(() => {});
   document.getElementById('mockSession').classList.remove('on');
-  hideSessionOverlay();
+  // Keep overlay active during evaluation — hideSessionOverlay() called when results render
   const answered=mockAnswers.filter(a=>a?.trim()).length;
   const res=document.getElementById('mockResults');
   res.style.display='block';
@@ -5813,6 +5816,7 @@ async function endMockSession(){
   const _isDrill  = !!window.isSpeedDrill;
 
   function _renderResults() {
+    hideSessionOverlay();
     res.innerHTML=`<div class="mock-results">
     ${currentUser?`<div style="background:rgba(201,168,76,.07);border:1px solid rgba(201,168,76,.18);border-radius:9px;padding:8px 14px;margin-bottom:14px;text-align:left;"><div class="result-user">👤 ${h(currentUser.name)}</div><div style="font-size:11px;color:var(--muted);">${new Date().toLocaleDateString('en-PH',{timeZone:'Asia/Manila'})}</div></div>`:''}
     <div style="font-size:32px;margin-bottom:8px;">🏛</div>
