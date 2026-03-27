@@ -1070,6 +1070,100 @@ select.form-input{cursor:pointer;}
   filter: grayscale(20%);
   contain: layout paint;
 }
+
+/* ══ Accessibility: Touch Target Sizes (48px minimum) ══ */
+@media (pointer: coarse) {
+  button,
+  [role="button"],
+  a:not(.skip-link),
+  input[type="checkbox"],
+  input[type="radio"],
+  select,
+  .tab-btn,
+  .tct-on,
+  .tct-off,
+  .tab-global-btn,
+  .source-ctrl-btn,
+  .source-item,
+  .btn-gold,
+  .btn-og,
+  .btn-ghost,
+  .btn-mock,
+  .btn-mark-done,
+  .btn-bookmark {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  /* Sidebar subject items */
+  .sb-subject,
+  .sb-overview-btn,
+  .sb-sub-item {
+    min-height: 48px;
+    display: flex;
+    align-items: center;
+  }
+  /* Small icon-style buttons: increase tap area via padding without changing visual size */
+  .bm-item-rm,
+  .bm-item-nav,
+  .sw-header,
+  .tl-section-header,
+  .tl-group-header {
+    min-height: 44px;
+  }
+  /* Checkboxes in source picker */
+  .mb-source-check {
+    min-width: 24px;
+    min-height: 24px;
+    padding: 10px;
+    margin: -10px;
+  }
+}
+
+/* ══ Accessibility: Contrast Ratio Fixes ══ */
+/* Increase muted text variables for WCAG AA (4.5:1 on dark bg) */
+:root {
+  --text-muted: rgba(240,236,227,.7);
+  --muted: rgba(240,236,227,.65);
+}
+/* Low-contrast labels and counts */
+.tl-count-header,
+.sources-group-label {
+  color: rgba(248,246,241,.6);
+}
+.tl-section-name,
+.source-item-meta {
+  color: rgba(248,246,241,.6);
+}
+.tl-expand-arrow {
+  color: rgba(248,246,241,.45);
+}
+.source-ctrl-btn {
+  color: rgba(248,246,241,.6);
+}
+.tct-on,
+.tct-off {
+  color: rgba(248,246,241,.55);
+}
+.tab-ctrl-label {
+  color: rgba(248,246,241,.8);
+}
+.tb-bc-sep {
+  opacity: .6;
+}
+.subj-progress-text {
+  color: rgba(240,236,227,.7);
+}
+.bm-empty-icon {
+  opacity: .6;
+}
+.t-chk {
+  color: rgba(255,255,255,.35);
+}
+/* Placeholder text */
+::placeholder {
+  color: rgba(240,236,227,.55);
+  opacity: 1;
+}
 </style>
 </head>
 <body>
