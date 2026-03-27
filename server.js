@@ -2777,6 +2777,20 @@ function detectQuestionType(questionText, context, modelAnswer) {
 
   return 'conceptual'; // default — conceptual/theoretical questions
 }
+
+// ── Copy-paste detection — flags answers that just restate the given facts ──
+function isCopyPastedFacts(studentAnswer, facts) {
+  if (!facts || !studentAnswer) return false;
+  const normalize = (text) => text.toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
+  const normalizedAnswer = normalize(studentAnswer);
+  const normalizedFacts  = normalize(facts);
+  if (normalizedAnswer.length < 20) return false;
+  const answerWords  = normalizedAnswer.split(' ');
+  const matchingWords = answerWords.filter(w => w.length > 4 && normalizedFacts.includes(w)).length;
+  const similarity = matchingWords / answerWords.length;
+  return similarity > 0.70;
+}
+
 const GRADE_SCALE = `Assign grade based on numericScore (passing score is 7.0/10):
   Excellent:          8.5 and above
   Good:               7.0 to 8.4  ← passing starts here
@@ -2819,6 +2833,8 @@ app.post('/api/evaluate', async (req, res) => {
     : (modelAnswer ? `Reference Answer: ${modelAnswer}` : '');
 
   let prompt, maxTok;
+  const copyPasteDetected = isSituational && isCopyPastedFacts(answer, context);
+  if (copyPasteDetected) console.log(`[eval] Copy-paste detected q="${(question||'').slice(0,60)}"`);
 
   if (isSituational) {
     // ── ALAC evaluation (situational / essay) ─────────────────
@@ -2827,6 +2843,12 @@ app.post('/api/evaluate', async (req, res) => {
 Keep overallFeedback under 200 words. Keep each ALAC component feedback under 50 words. Be concise and direct.
 CRITICAL JSON OUTPUT RULES: Use single quotes inside all string values (never double quotes inside strings). No newlines inside string values. No trailing commas. Keep all feedback values on a single line.
 
+IMPORTANT CHECKS BEFORE SCORING:
+1. Does the student cite ANY law, article, doctrine, or case? If NO → Legal Basis = 0
+2. Does the student reach a clear legal conclusion? If NO → Conclusion = 0 to 0.5
+3. Is the answer primarily copied/restated facts with no legal analysis? If YES → Answer ≤ 0.5, Legal Basis = 0, Application ≤ 0.5, Conclusion = 0. An answer that merely restates the given facts without legal reasoning CANNOT score above 2/10 total.
+4. A passing answer MUST contain: a direct legal position, at least one cited law/doctrine/case, legal reasoning connecting law to facts, and a conclusion. Without ALL four, the answer cannot score above 5/10 total.
+${copyPasteDetected ? '\nWARNING: The student answer appears to be largely copied from the facts/context. Evaluate strictly — this should receive a very low score as it shows no legal analysis.\n' : ''}
 Question: ${question}
 ${maSection}
 ${(keyPoints||[]).length?`Key Points to Check: ${keyPoints.join(', ')}`:''}
@@ -3280,12 +3302,20 @@ async function runEvalJob(job) {
       : (modelAnswer ? `Reference Answer: ${modelAnswer}` : '');
 
     let prompt, maxTok;
+    const copyPasteDetected = isSit && isCopyPastedFacts(answer, context);
+    if (copyPasteDetected) console.log(`[eval-batch] Copy-paste detected Q${idx+1}`);
 
     if (isSit) {
       maxTok = 2500;
       prompt = `You are a Philippine Bar Exam examiner. Evaluate using ALAC (Answer 1.5pts, Legal Basis 3pts, Application 4pts, Conclusion 1.5pts). Keep overallFeedback under 200 words and each component feedback under 50 words.
 CRITICAL JSON OUTPUT RULES: Use single quotes inside all string values (never double quotes inside strings). No newlines inside string values. No trailing commas. Keep all feedback fields on a single line.
 IMPORTANT: Return pure JSON only. Never include { or } characters inside any string value. Write all feedback as plain text sentences only. No code examples, no nested structures, no special characters inside strings.
+IMPORTANT CHECKS BEFORE SCORING:
+1. Does the student cite ANY law, article, doctrine, or case? If NO → Legal Basis = 0
+2. Does the student reach a clear legal conclusion? If NO → Conclusion = 0 to 0.5
+3. Is the answer primarily copied/restated facts with no legal analysis? If YES → Answer ≤ 0.5, Legal Basis = 0, Application ≤ 0.5, Conclusion = 0. An answer that merely restates the given facts without legal reasoning CANNOT score above 2/10 total.
+4. A passing answer MUST contain: a direct legal position, at least one cited law/doctrine/case, legal reasoning connecting law to facts, and a conclusion. Without ALL four, the answer cannot score above 5/10 total.
+${copyPasteDetected ? 'WARNING: The student answer appears to be largely copied from the facts/context. Evaluate strictly — this should receive a very low score as it shows no legal analysis.' : ''}
 Question: ${question}
 ${maSection}
 ${(keyPoints || []).length ? `Key Points: ${keyPoints.join(', ')}` : ''}
