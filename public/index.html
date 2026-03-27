@@ -10,8 +10,33 @@
 <meta property="og:url" content="https://thebarbuddy.xyz">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400&family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<!-- Async-load Google Fonts: preload avoids render-blocking while still fetching early -->
+<link rel="preload" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400&family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" as="style" onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400&family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"></noscript>
+<style id="font-cls-fix">
+/* Reduce CLS from font swap by matching fallback metrics to web fonts */
+@font-face{font-family:'DM Sans Fallback';src:local('Arial');size-adjust:96.5%;ascent-override:92%;descent-override:25%;line-gap-override:0%;}
+@font-face{font-family:'Cormorant Garamond Fallback';src:local('Georgia');size-adjust:105%;ascent-override:88%;descent-override:25%;line-gap-override:0%;}
+@font-face{font-family:'DM Mono Fallback';src:local('Courier New');size-adjust:107%;ascent-override:90%;descent-override:25%;line-gap-override:0%;}
+</style>
+<script id="cls-debug">
+new PerformanceObserver((list) => {
+  for (const entry of list.getEntries()) {
+    if (!entry.hadRecentInput && entry.value > 0.01) {
+      const sources = entry.sources?.map(s => ({
+        el: s.node?.id || s.node?.className?.split(' ')[0] || s.node?.tagName || 'unknown',
+        prevTop: s.previousRect?.top,
+        currTop: s.currentRect?.top,
+        prevHeight: s.previousRect?.height,
+        currHeight: s.currentRect?.height
+      }));
+      console.warn('[CLS]', entry.value.toFixed(4), JSON.stringify(sources));
+    }
+  }
+}).observe({type: 'layout-shift', buffered: true});
+</script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" defer></script>
 <style>
 :root{
   /* backgrounds */
@@ -28,7 +53,7 @@
   /* borders */
   --bdr:rgba(240,236,227,.08);--bdr2:rgba(240,236,227,.12);--bdr-gold:rgba(212,168,67,.25);
   /* layout & fonts */
-  --sw:220px;--fd:'Cormorant Garamond',Georgia,serif;--fb:'DM Sans',sans-serif;--fm:'DM Mono',monospace;
+  --sw:220px;--fd:'Cormorant Garamond','Cormorant Garamond Fallback',Georgia,serif;--fb:'DM Sans','DM Sans Fallback',sans-serif;--fm:'DM Mono','DM Mono Fallback',monospace;
   /* subject colors (brighter) */
   --c-civil:#5ba8ff;--c-criminal:#ff6b7a;--c-political:#5dd89a;
   --c-labor:#ffaa50;--c-commercial:#b87fff;--c-taxation:#50d0c0;
@@ -347,6 +372,18 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .kb-ind.empty .kb-dot{background:var(--muted);}
 @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.3;}}
 .avatar{width:32px;height:32px;background:linear-gradient(135deg,var(--crim),var(--blue));border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;border:2px solid var(--bdr);}
+/* ── CLS prevention: reserve space for dynamically-shown elements ── */
+/* Topbar: contain layout so show/hide of children doesn't shift page content */
+.topbar{contain:layout style;overflow:hidden;}
+/* Overview: reserve height for countdown & quote that render dynamically */
+.ov-countdown-banner{min-height:40px;contain:layout inline-size;}
+.ov-quote-bar{min-height:44px;contain:layout inline-size;}
+/* Overview subject grid: reserve space to prevent reflow when cards render */
+.ov-subjects-grid{min-height:280px;}
+/* Progress page: reserve space for dynamically rendered content */
+#progressContainer{min-height:600px;}
+/* Subject page: reserve space for tab content */
+#subject-tab-content{min-height:400px;}
 /* MAIN */
 .main{margin-left:var(--sw);flex:1;display:flex;flex-direction:column;min-height:100vh;}
 .page{display:none;flex:1;} .page.on{display:block;animation:pageFadeIn 0.15s ease forwards;}
@@ -831,6 +868,7 @@ select.form-input{cursor:pointer;}
 .auth-btn:hover{opacity:.88;}
 .auth-btn:disabled{opacity:.5;cursor:not-allowed;}
 /* Skeleton loading shimmer */
+#sbSubjectList{min-height:352px;}
 .subject-skeleton{height:40px;background:linear-gradient(90deg,rgba(255,255,255,.04) 25%,rgba(255,255,255,.08) 50%,rgba(255,255,255,.04) 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:8px;margin-bottom:4px;}
 @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
 /* Topbar user display */
@@ -1843,11 +1881,13 @@ function showSessionOverlay() {
   isSessionActive = true;
   document.getElementById('mainSidebar')?.classList.add('session-locked');
   document.querySelector('.topbar')?.classList.add('session-locked');
+  if (typeof _attachBeforeUnload === 'function') _attachBeforeUnload();
 }
 function hideSessionOverlay() {
   isSessionActive = false;
   document.getElementById('mainSidebar')?.classList.remove('session-locked');
   document.querySelector('.topbar')?.classList.remove('session-locked');
+  if (typeof _detachBeforeUnload === 'function') _detachBeforeUnload();
 }
 document.addEventListener('keydown', (e) => {
   if (!isSessionActive) return;
@@ -2243,13 +2283,40 @@ document.addEventListener('visibilitychange', () => {
 });
 
 // ── Warn before leaving page mid-exam ──────────────────────
-window.addEventListener('beforeunload', (e) => {
+// Only attach beforeunload when exam is active (prevents BFCache block otherwise)
+function _attachBeforeUnload() {
+  window.addEventListener('beforeunload', _beforeUnloadHandler);
+}
+function _detachBeforeUnload() {
+  window.removeEventListener('beforeunload', _beforeUnloadHandler);
+}
+function _beforeUnloadHandler(e) {
   if (window.activeExamSession?.status === 'in_progress') {
     saveMock();
     ExamSession.saveLocal(window.activeExamSession);
     e.preventDefault();
     e.returnValue = 'Your exam is in progress. Your answers have been saved and you can resume when you return.';
     return e.returnValue;
+  }
+}
+
+// ── pagehide: save state + close connections (BFCache-safe) ──
+window.addEventListener('pagehide', () => {
+  // Save exam state if active
+  if (window.activeExamSession?.status === 'in_progress') {
+    saveMock();
+    ExamSession.saveLocal(window.activeExamSession);
+  }
+  // Close SSE connections so they don't block BFCache
+  if (sseSource) { sseSource.close(); sseSource = null; }
+});
+
+// ── pageshow: restore state when page comes from BFCache ──
+window.addEventListener('pageshow', (event) => {
+  if (event.persisted) {
+    console.log('[bfcache] Page restored from cache');
+    // Re-attach beforeunload if exam is active
+    if (window.activeExamSession?.status === 'in_progress') _attachBeforeUnload();
   }
 });
 
