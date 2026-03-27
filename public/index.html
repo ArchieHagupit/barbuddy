@@ -64,7 +64,7 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
   background-image:radial-gradient(ellipse 80% 50% at 50% -10%,rgba(212,168,67,.07) 0%,transparent 70%),radial-gradient(ellipse 60% 40% at 90% 90%,rgba(139,31,53,.06) 0%,transparent 60%),radial-gradient(ellipse 40% 30% at 10% 80%,rgba(91,168,255,.04) 0%,transparent 50%);
   background-attachment:fixed;}
 /* SIDEBAR — subject-first navigation */
-.sidebar{width:var(--sw);background:rgba(15,20,35,.95);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-right:1px solid rgba(212,168,67,.12);display:flex;flex-direction:column;align-items:stretch;padding:0 0 16px;position:fixed;inset:0 auto 0 0;z-index:300;overflow-y:auto;overflow-x:hidden;}
+.sidebar{width:var(--sw);background:rgba(15,20,35,.95);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-right:1px solid rgba(212,168,67,.12);display:flex;flex-direction:column;align-items:stretch;padding:0 0 16px;position:fixed;inset:0 auto 0 0;z-index:300;overflow-x:hidden;overflow-y:auto;height:100vh;height:100dvh;max-height:100vh;max-height:100dvh;}
 .sidebar::-webkit-scrollbar{width:4px;}.sidebar::-webkit-scrollbar-track{background:transparent;}.sidebar::-webkit-scrollbar-thumb{background:rgba(201,168,76,.2);border-radius:2px;}.sidebar::-webkit-scrollbar-thumb:hover{background:rgba(201,168,76,.35);}
 .sb-logo-section{display:flex;align-items:center;gap:10px;padding:16px 16px 12px;border-bottom:1px solid rgba(212,168,67,.1);flex-shrink:0;background:linear-gradient(180deg,rgba(212,168,67,.08) 0%,transparent 100%);}
 .s-logo{width:36px;height:36px;background:linear-gradient(145deg,var(--gold),var(--gold-d));border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;box-shadow:0 3px 12px rgba(201,168,76,.3);}
@@ -76,12 +76,12 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .sb-overview-btn:hover{background:rgba(255,255,255,.06);color:rgba(248,246,241,1);transform:translateX(2px);}
 .sb-overview-btn.active{background:rgba(212,168,67,.12);color:var(--gold);border-left:3px solid var(--gold);padding-left:13px;box-shadow:inset 3px 0 0 var(--gold);}
 /* Sidebar subject items — single-click, no expand/collapse */
-.sb-subject{display:flex;align-items:center;gap:8px;padding:10px 14px;margin:2px 8px;border-radius:8px;cursor:pointer;font-family:var(--fd);font-size:13.5px;font-weight:600;color:rgba(248,246,241,.72);border:none;border-left:3px solid transparent;background:transparent;text-align:left;transition:border-left-color .2s ease,background .2s ease,color .2s ease;width:calc(100% - 16px);}
+.sb-subject{display:flex;align-items:center;gap:8px;padding:10px 14px;margin:2px 8px;border-radius:8px;cursor:pointer;font-family:var(--fd);font-size:13.5px;font-weight:600;color:rgba(248,246,241,.72);border:none;border-left:3px solid transparent;background:transparent;text-align:left;transition:border-left-color .2s ease,background .2s ease,color .2s ease;width:calc(100% - 16px);min-height:54px;box-sizing:border-box;}
 .sb-subject:hover{border-left-color:var(--subject-color,rgba(212,168,67,.6));background:color-mix(in srgb,var(--subject-color,#d4a843) 7%,transparent);color:rgba(248,246,241,1);}
 .sb-subject.active{border-left-color:var(--subject-color,var(--gold))!important;background:color-mix(in srgb,var(--subject-color,#d4a843) 12%,transparent)!important;color:rgba(248,246,241,1);}
 /* Material dot + question count */
 .sb-subj-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;opacity:.85;transition:opacity .2s;}
-.sb-subj-name{font-family:var(--fb);flex:1;}
+.sb-subj-name{font-family:var(--fb);flex:1;line-height:1.3;}
 .sb-subj-qcount{font-size:10px;font-family:var(--fm);font-weight:500;color:rgba(248,246,241,.38);background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);border-radius:20px;padding:1px 7px;flex-shrink:0;}
 .sb-lock-icon{font-size:10px;margin-left:4px;opacity:.5;flex-shrink:0;}
 
@@ -345,6 +345,7 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .subj-ov-btn:hover{background:rgba(255,255,255,.1);color:rgba(248,246,241,.9);}
 /* TOPBAR */
 .topbar{position:sticky;top:0;z-index:200;background:rgba(15,20,35,.92);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-bottom:1px solid rgba(212,168,67,.1);height:58px;display:flex;align-items:center;padding:0 22px;}
+.tb-brand{height:56px;min-height:56px;display:flex;align-items:center;}
 .tb-brand h1{font-family:var(--fd);font-size:24px;font-weight:700;color:var(--gold);line-height:1;}
 .tb-brand h1 em{font-style:italic;color:var(--gold-l);}
 .tb-sub{font-size:10px;color:var(--muted);letter-spacing:.04em;}
@@ -1273,7 +1274,7 @@ select.form-input{cursor:pointer;}
   </div>
 
   <!-- Sidebar XP mini-bar -->
-  <div id="sbXpSection" style="display:none;margin:8px 12px 12px;">
+  <div id="sbXpSection" style="display:none;margin:8px 12px 12px;min-height:106px;">
     <div class="dash-xp-bar" onclick="navToProgress('xp')" style="cursor:pointer;">
       <div class="dash-xp-row">
         <div>
