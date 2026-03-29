@@ -2846,8 +2846,8 @@ CRITICAL JSON OUTPUT RULES: Use single quotes inside all string values (never do
 IMPORTANT CHECKS BEFORE SCORING:
 1. Does the student cite ANY law, article, doctrine, or case? If NO → Legal Basis = 0
 2. Does the student reach a clear legal conclusion? If NO → Conclusion = 0 to 0.5
-3. Is the answer primarily copied/restated facts with no legal analysis? If YES → Answer ≤ 0.5, Legal Basis = 0, Application ≤ 0.5, Conclusion = 0. An answer that merely restates the given facts without legal reasoning CANNOT score above 2/10 total.
-4. A passing answer MUST contain: a direct legal position, at least one cited law/doctrine/case, legal reasoning connecting law to facts, and a conclusion. Without ALL four, the answer cannot score above 5/10 total.
+3. Is the answer primarily copied/restated facts with no legal analysis? If YES → Legal Basis = 0, Application ≤ 0.5, Conclusion = 0. NOTE: Do NOT reduce Answer (A) score for this — Answer is graded on responsiveness only.
+4. The Answer (A) component is NEVER affected by checks 1, 2, or 3. Answer (A) is scored ONLY on whether the student was responsive to the question. A direct YES/NO or clear legal position ALWAYS scores 1.5/1.5 regardless of whether law was cited.
 ${copyPasteDetected ? '\nWARNING: The student answer appears to be largely copied from the facts/context. Evaluate strictly — this should receive a very low score as it shows no legal analysis.\n' : ''}
 Question: ${question}
 ${maSection}
@@ -3171,7 +3171,7 @@ IMPORTANT: Return pure JSON only. No { } inside string values. Plain text senten
 }
 
 // ── callClaudeHaikuJSON — haiku-only, semaphore-guarded, for fast batch eval ─
-async function callClaudeHaikuJSON(prompt, maxTokens = 2000) {
+async function callClaudeHaikuJSON(prompt, maxTokens = 3000) {
   await aiSemaphore.acquire();
   const JSON_SYSTEM = 'You are a JSON API endpoint. Output ONLY valid JSON. STRICT RULES: (1) Use single quotes inside string values — NEVER double quotes inside strings. (2) No literal newlines inside string values — use \\n if needed. (3) No trailing commas anywhere. (4) Response must start with { and end with }. (5) No markdown, no code fences, no backticks, no explanations. (6) If feedback contains quotes, use single quotes instead.';
   const JSON_SUFFIX = '\n\nCRITICAL: Return ONLY raw JSON. No markdown. No backticks. No fences. Start with { and end with }. Use single quotes inside string values (never double quotes inside strings). No trailing commas. No line breaks inside string values.';
@@ -3313,8 +3313,8 @@ IMPORTANT: Return pure JSON only. Never include { or } characters inside any str
 IMPORTANT CHECKS BEFORE SCORING:
 1. Does the student cite ANY law, article, doctrine, or case? If NO → Legal Basis = 0
 2. Does the student reach a clear legal conclusion? If NO → Conclusion = 0 to 0.5
-3. Is the answer primarily copied/restated facts with no legal analysis? If YES → Answer ≤ 0.5, Legal Basis = 0, Application ≤ 0.5, Conclusion = 0. An answer that merely restates the given facts without legal reasoning CANNOT score above 2/10 total.
-4. A passing answer MUST contain: a direct legal position, at least one cited law/doctrine/case, legal reasoning connecting law to facts, and a conclusion. Without ALL four, the answer cannot score above 5/10 total.
+3. Is the answer primarily copied/restated facts with no legal analysis? If YES → Legal Basis = 0, Application ≤ 0.5, Conclusion = 0. Do NOT reduce Answer (A) for this reason.
+4. The Answer (A) component scores ONLY on responsiveness — did the student answer the question? A direct YES/NO or clear position = 1.5/1.5 always.
 ${copyPasteDetected ? 'WARNING: The student answer appears to be largely copied from the facts/context. Evaluate strictly — this should receive a very low score as it shows no legal analysis.' : ''}
 Question: ${question}
 ${maSection}
