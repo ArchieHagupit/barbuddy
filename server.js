@@ -3171,7 +3171,7 @@ IMPORTANT: Return pure JSON only. No { } inside string values. Plain text senten
 }
 
 // ── callClaudeHaikuJSON — haiku-only, semaphore-guarded, for fast batch eval ─
-async function callClaudeHaikuJSON(prompt, maxTokens = 3000, _truncRetry = 0) {
+async function callClaudeHaikuJSON(prompt, maxTokens = 2000) {
   await aiSemaphore.acquire();
   const JSON_SYSTEM = 'You are a JSON API endpoint. Output ONLY valid JSON. STRICT RULES: (1) Use single quotes inside string values — NEVER double quotes inside strings. (2) No literal newlines inside string values — use \\n if needed. (3) No trailing commas anywhere. (4) Response must start with { and end with }. (5) No markdown, no code fences, no backticks, no explanations. (6) If feedback contains quotes, use single quotes instead.';
   const JSON_SUFFIX = '\n\nCRITICAL: Return ONLY raw JSON. No markdown. No backticks. No fences. Start with { and end with }. Use single quotes inside string values (never double quotes inside strings). No trailing commas. No line breaks inside string values.';
@@ -3200,14 +3200,7 @@ async function callClaudeHaikuJSON(prompt, maxTokens = 3000, _truncRetry = 0) {
         const _tot = d.usage.input_tokens + d.usage.output_tokens;
         console.log(`[tokens] haiku | in:${d.usage.input_tokens} out:${d.usage.output_tokens} total:${_tot}`);
       }
-      // Detect truncation — retry once with more tokens
-      if (d.stop_reason === 'max_tokens') {
-        console.warn('[callClaudeHaikuJSON] Truncated!', 'Used:', d.usage?.output_tokens, '/', maxTokens, 'tokens.', 'Retrying with', maxTokens + 1000);
-        if (_truncRetry < 1) {
-          return callClaudeHaikuJSON(prompt, maxTokens + 1000, _truncRetry + 1);
-        }
-        console.warn('[callClaudeHaikuJSON] Still truncated after retry — proceeding with partial response.');
-      }
+      if (d.stop_reason === 'max_tokens') console.warn('[callClaudeHaikuJSON] Response truncated! Used:', d.usage?.output_tokens, 'tokens. Increase maxTokens.');
       const raw = sanitizeAIResponse(d.content.map(c => c.text || '').join(''));
       const parsed = extractJSON(raw);
       if (parsed !== null) return parsed;
