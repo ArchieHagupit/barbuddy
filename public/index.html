@@ -5002,8 +5002,9 @@ function renderConceptualSections(cm){
 function renderModelAnswer(evaluation, questionType){
   if(typeof evaluation==='string') evaluation={modelAnswer:evaluation};
 
-  // Alternative answer indicator
-  const altBanner = evaluation.usedAlternative
+  // Alternative answer indicator — only show badge for multi-alt match
+  const showBadge = evaluation.showMatchedBadge && evaluation.matchedAlternativeNumber > 0;
+  const altBanner = showBadge
     ? `<div style="display:flex;align-items:center;gap:8px;background:#e8f5e9;border:1px solid #81c784;border-radius:6px;padding:8px 12px;margin-bottom:10px;font-size:13px;color:#2e7d32;">
         <span style="font-size:15px;">✅</span>
         <span>Matched to <strong>Alternative Answer ${evaluation.matchedAlternativeNumber}</strong> — scored against this version</span>
@@ -5011,23 +5012,23 @@ function renderModelAnswer(evaluation, questionType){
     : '';
 
   // Determine ALAC header label
-  const alacLabel = (evaluation.usedAlternative && evaluation.matchedAlternativeNumber > 0)
+  const alacLabel = showBadge
     ? `📘 Alternative Answer ${evaluation.matchedAlternativeNumber} (ALAC Format)`
     : '📘 Model Answer (ALAC Format)';
 
-  // 1. Matched alternative ALAC from server
+  // 1. Conceptual — always show conceptual model answer, never alternatives
+  if(evaluation.conceptualModelAnswer){
+    const rendered=renderConceptualSections(evaluation.conceptualModelAnswer);
+    if(rendered) return rendered;
+  }
+  // 2. Matched alternative ALAC from server
   if(evaluation.matchedAlternativeAlac){
     const rendered=renderALACSections(evaluation.matchedAlternativeAlac, alacLabel);
     if(rendered) return altBanner + rendered;
   }
-  // 2. Structured ALAC components from server
+  // 3. Structured ALAC components from server
   if(evaluation.alacModelAnswer){
     const rendered=renderALACSections(evaluation.alacModelAnswer, alacLabel);
-    if(rendered) return altBanner + rendered;
-  }
-  // 3. Structured conceptual components from server
-  if(evaluation.conceptualModelAnswer){
-    const rendered=renderConceptualSections(evaluation.conceptualModelAnswer);
     if(rendered) return altBanner + rendered;
   }
   // 4. Formatted ALAC string or plain modelAnswer
@@ -6099,8 +6100,9 @@ function buildResultsHtml(){
 
       // Model answer — render with ALAC sections if structured
       card+=`<div style="font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:.08em;color:#7a6128;margin:12px 0 5px;">MODEL ANSWER</div>`;
-      if(s.usedAlternative) card+=`<div style="background:#e8f5e9;border:1px solid #81c784;border-radius:4px;padding:6px 10px;margin-bottom:8px;font-size:12px;color:#2e7d32;">✅ Matched to Alternative Answer ${s.matchedAlternativeNumber} — scored against this version</div>`;
-      const _printAlacHeader=(s.usedAlternative&&s.matchedAlternativeNumber>0)?`Alternative Answer ${s.matchedAlternativeNumber} (ALAC Format)`:'Model Answer (ALAC Format)';
+      const _showBadge=s.showMatchedBadge&&s.matchedAlternativeNumber>0;
+      if(_showBadge) card+=`<div style="background:#e8f5e9;border:1px solid #81c784;border-radius:4px;padding:6px 10px;margin-bottom:8px;font-size:12px;color:#2e7d32;">✅ Matched to Alternative Answer ${s.matchedAlternativeNumber} — scored against this version</div>`;
+      const _printAlacHeader=_showBadge?`Alternative Answer ${s.matchedAlternativeNumber} (ALAC Format)`:'Model Answer (ALAC Format)';
       (()=>{
         // 0. Prefer matchedAlternativeAlac if present
         const altAc=s.matchedAlternativeAlac;

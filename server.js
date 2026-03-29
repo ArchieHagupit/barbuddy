@@ -2907,33 +2907,46 @@ app.post('/api/evaluate', async (req, res) => {
   const isSituational = qtype === 'situational' || qtype === 'essay' || qtype === 'alac';
   console.log(`[evaluate] type=${qtype} q="${(question||'').slice(0,60)}"`);
 
-  // ── Cache lookup (alternatives + ALAC + conceptual) ──────
-  let _cachedAlternatives    = null;
+  // ── Cache lookup (ALAC + conceptual + alternative columns) ──────
   let _cachedAlac            = null;
   let _cachedConceptual      = null;
-  let _needsAltCache         = false;
   let _needsAlacCache        = false;
   let _needsConceptualCache  = false;
   let _qCache                = null;
   if (questionId) {
     const { data: qCache } = await supabase
       .from('questions')
-      .select('alternative_answers, model_answer_alac, model_answer_conceptual, alternative_answer_1, alternative_answer_2, alternative_answer_3, alternative_answer_4, alternative_answer_5, alternative_alac_1, alternative_alac_2, alternative_alac_3, alternative_alac_4, alternative_alac_5')
+      .select('model_answer_alac, model_answer_conceptual, alternative_answer_1, alternative_answer_2, alternative_answer_3, alternative_answer_4, alternative_answer_5, alternative_alac_1, alternative_alac_2, alternative_alac_3, alternative_alac_4, alternative_alac_5')
       .eq('id', questionId)
       .single();
     _qCache             = qCache || null;
-    _cachedAlternatives = qCache?.alternative_answers      || null;
     _cachedAlac         = qCache?.model_answer_alac        || null;
     _cachedConceptual   = qCache?.model_answer_conceptual  || null;
   }
 
-  // ── Alternative answer detection (prefer individual columns) ──
-  const colAlts = getAlternatives({ alternative_answer_1: _qCache?.alternative_answer_1, alternative_answer_2: _qCache?.alternative_answer_2, alternative_answer_3: _qCache?.alternative_answer_3, alternative_answer_4: _qCache?.alternative_answer_4, alternative_answer_5: _qCache?.alternative_answer_5, _cachedAlternatives });
-  const alternatives    = colAlts.length > 0 ? colAlts : ((_needsAltCache = true), extractAlternativeAnswers(modelAnswer));
-  const hasAlternatives = alternatives.length > 1;
-  const maSection = hasAlternatives
-    ? `SUGGESTED ANSWER HAS ${alternatives.length} VALID ALTERNATIVES — evaluate the student against whichever they most closely answered. Return "matchedAlternative" as the number (1, 2, …) of the best-matching alternative. A student who correctly answers any valid alternative deserves full credit for that approach.\n\n${alternatives.map((a, i) => `ALTERNATIVE ${i + 1}:\n${a}`).join('\n\n')}`
-    : (modelAnswer ? `Reference Answer: ${modelAnswer}` : '');
+  // ── Alternative answer detection ──────────────────────────
+  // getAlternatives returns [{index, text, alac}] — only alts with cached ALAC
+  const alternatives = isSituational ? getAlternatives(_qCache || {}) : [];
+  const altCount       = alternatives.length;
+  const isSingleAlt    = altCount === 1;
+  const isMultiAlt     = altCount >= 2;
+  const hasAlternatives = altCount > 0;
+
+  // Build reference answer section for prompt
+  let maSection = '';
+  if (isSituational) {
+    if (isMultiAlt) {
+      maSection = `SUGGESTED ANSWER HAS ${altCount} VALID ALTERNATIVES — evaluate the student against whichever they most closely answered. Return "matchedAlternative" as the number of the best-matching alternative. A student who correctly answers any valid alternative deserves full credit.\n\n` +
+        alternatives.map(a => `ALTERNATIVE ${a.index}:\n${a.text}`).join('\n\n');
+    } else if (isSingleAlt) {
+      maSection = alternatives[0].text ? `Reference Answer:\n${alternatives[0].text}` : '';
+    } else {
+      maSection = modelAnswer ? `Reference Answer: ${modelAnswer}` : '';
+    }
+  } else {
+    // Conceptual — always use model answer only, never alternatives
+    maSection = modelAnswer ? `Reference Answer: ${modelAnswer}` : '';
+  }
 
   let prompt, maxTok;
   const copyPasteDetected = isSituational && isCopyPastedFacts(answer, context);
@@ -3059,67 +3072,71 @@ Respond ONLY with valid JSON (no markdown):
     result.questionType = qtype;
     if (!result.keyPoints?.length && keyPoints?.length) result.keyPoints = keyPoints;
 
-    // ── Apply matched alternative ──────────────────────────────
-    if (hasAlternatives) {
-      const idx = Math.max(0, Math.min((result.matchedAlternative || 1) - 1, alternatives.length - 1));
-      result.modelAnswer              = alternatives[idx];
+    // ── Apply matched alternative (situational only) ─────────────
+    if (isSituational && isMultiAlt) {
+      // Multi-alt: AI returned matchedAlternative index
+      const matched = result.matchedAlternative || alternatives[0].index;
+      const matchedAlt = alternatives.find(a => a.index === matched) || alternatives[0];
+      result.modelAnswer              = matchedAlt.text;
       result.modelAnswerOriginal      = modelAnswer;
       result.usedAlternative          = true;
-      result.matchedAlternativeNumber = idx + 1;
-      console.log(`[evaluate] alt ${idx + 1}/${alternatives.length} selected for scoring`);
-    } else {
-      if (!result.modelAnswer && modelAnswer) result.modelAnswer = modelAnswer;
-      result.usedAlternative = false;
-    }
+      result.matchedAlternativeNumber = matchedAlt.index;
+      result.showMatchedBadge         = true;
+      result.matchedAlternativeAlac   = matchedAlt.alac;
+      result.alacModelAnswer          = matchedAlt.alac;
+      const ac = matchedAlt.alac;
+      result.modelAnswerFormatted = [
+        `ANSWER: ${ac.answer}`, `LEGAL BASIS: ${ac.legalBasis}`,
+        `APPLICATION: ${ac.application}`, `CONCLUSION: ${ac.conclusion}`,
+      ].filter(s => !s.match(/:\s*$/)).join('\n\n');
+      result.modelAnswer = result.modelAnswerFormatted;
+      console.log(`[evaluate] multi-alt: matched Alt ${matchedAlt.index}/${altCount}`);
 
-    // Generate structured ALAC model answer for situational questions
-    let _needsAltAlacCache = false;
-    let _altAlacCacheNum   = 0;
-    if (isSituational && result.modelAnswer) {
-      if (hasAlternatives && result.matchedAlternativeNumber > 0) {
-        // ── Alternative ALAC: check cache first ──
-        const altNum = result.matchedAlternativeNumber;
-        const cachedAltAlac = _qCache?.[`alternative_alac_${altNum}`] || null;
-        if (cachedAltAlac) {
-          result.alacModelAnswer = cachedAltAlac;
-          result.modelAnswerFormatted = [
-            `ANSWER: ${cachedAltAlac.answer}`,
-            `LEGAL BASIS: ${cachedAltAlac.legalBasis}`,
-            `APPLICATION: ${cachedAltAlac.application}`,
-            `CONCLUSION: ${cachedAltAlac.conclusion}`,
-          ].filter(s => !s.match(/:\s*$/)).join('\n\n');
-          result.modelAnswer = result.modelAnswerFormatted;
-          console.log(`[evaluate] alt-alac cache hit for Alt ${altNum}`);
-        } else {
-          const alacResult = await generateALACModelAnswer(question, context, result.modelAnswer, subject);
-          if (alacResult) {
-            result.alacModelAnswer      = alacResult.components;
-            result.modelAnswerFormatted = alacResult.formatted;
-            result.modelAnswer          = alacResult.formatted;
-            _needsAltAlacCache = true;
-            _altAlacCacheNum   = altNum;
-          }
-        }
-        result.matchedAlternativeAlac = result.alacModelAnswer || null;
-      } else if (_cachedAlac && !hasAlternatives) {
-        // Use cached ALAC for single-answer questions
-        result.alacModelAnswer      = _cachedAlac;
+    } else if (isSituational && isSingleAlt) {
+      // Single alt IS the answer — no badge
+      const alt = alternatives[0];
+      result.modelAnswer              = alt.text;
+      result.modelAnswerOriginal      = modelAnswer;
+      result.usedAlternative          = false;
+      result.matchedAlternativeNumber = alt.index;
+      result.showMatchedBadge         = false;
+      result.matchedAlternativeAlac   = alt.alac;
+      result.alacModelAnswer          = alt.alac;
+      const ac = alt.alac;
+      result.modelAnswerFormatted = [
+        `ANSWER: ${ac.answer}`, `LEGAL BASIS: ${ac.legalBasis}`,
+        `APPLICATION: ${ac.application}`, `CONCLUSION: ${ac.conclusion}`,
+      ].filter(s => !s.match(/:\s*$/)).join('\n\n');
+      result.modelAnswer = result.modelAnswerFormatted;
+      console.log(`[evaluate] single-alt: using Alt ${alt.index} as model answer`);
+
+    } else if (isSituational) {
+      // No alt ALACs — fall back to model_answer_alac
+      if (!result.modelAnswer && modelAnswer) result.modelAnswer = modelAnswer;
+      result.usedAlternative  = false;
+      result.showMatchedBadge = false;
+
+      if (_cachedAlac) {
+        result.alacModelAnswer = _cachedAlac;
         result.modelAnswerFormatted = [
-          `ANSWER: ${_cachedAlac.answer}`,
-          `LEGAL BASIS: ${_cachedAlac.legalBasis}`,
-          `APPLICATION: ${_cachedAlac.application}`,
-          `CONCLUSION: ${_cachedAlac.conclusion}`,
+          `ANSWER: ${_cachedAlac.answer}`, `LEGAL BASIS: ${_cachedAlac.legalBasis}`,
+          `APPLICATION: ${_cachedAlac.application}`, `CONCLUSION: ${_cachedAlac.conclusion}`,
         ].filter(s => !s.match(/:\s*$/)).join('\n\n');
         result.modelAnswer = result.modelAnswerFormatted;
-      } else {
+      } else if (result.modelAnswer) {
         const alacResult = await generateALACModelAnswer(question, context, result.modelAnswer, subject);
         if (alacResult) {
           result.alacModelAnswer      = alacResult.components;
           result.modelAnswerFormatted = alacResult.formatted;
           result.modelAnswer          = alacResult.formatted;
-          if (!hasAlternatives) _needsAlacCache = true;
+          _needsAlacCache = true;
         }
       }
+    } else {
+      // Conceptual — never use alternatives
+      if (!result.modelAnswer && modelAnswer) result.modelAnswer = modelAnswer;
+      result.usedAlternative  = false;
+      result.showMatchedBadge = false;
     }
 
     // Generate structured conceptual model answer for conceptual questions
@@ -3136,17 +3153,10 @@ Respond ONLY with valid JSON (no markdown):
     }
 
     // ── Write cache to Supabase (fire-and-forget) ─────────────
-    if (questionId && (_needsAltCache || _needsAlacCache || _needsConceptualCache || _needsAltAlacCache)) {
+    if (questionId && (_needsAlacCache || _needsConceptualCache)) {
       const cacheUpdate = {};
-      if (_needsAltCache) {
-        cacheUpdate.alternative_answers = alternatives;
-        alternatives.forEach((alt, i) => { if (i < 5) cacheUpdate[`alternative_answer_${i + 1}`] = alt; });
-      }
       if (_needsAlacCache)       cacheUpdate.model_answer_alac        = result.alacModelAnswer;
       if (_needsConceptualCache) cacheUpdate.model_answer_conceptual  = result.conceptualModelAnswer;
-      if (_needsAltAlacCache && _altAlacCacheNum > 0) {
-        cacheUpdate[`alternative_alac_${_altAlacCacheNum}`] = result.alacModelAnswer;
-      }
       supabase.from('questions').update(cacheUpdate).eq('id', questionId)
         .then(({ error: ce }) => { if (ce) console.warn('[cache-write] /api/evaluate failed:', ce.message); });
     }
@@ -3189,19 +3199,18 @@ function extractAlternativeAnswers(modelAnswer) {
   return [modelAnswer];
 }
 
-// ── Get alternatives from individual columns (new) or JSONB fallback ──────────
+// ── Get alternatives from individual columns — returns [{index, text, alac}] ──
+// Only includes alternatives that have a cached ALAC (alternative_alac_N not null).
 function getAlternatives(item) {
   const alts = [];
   for (let i = 1; i <= 5; i++) {
-    const alt = item[`alternativeAnswer${i}`] || item[`alternative_answer_${i}`];
-    if (alt && alt.trim().length > 0) alts.push(alt.trim());
+    const altText = item[`alternativeAnswer${i}`] || item[`alternative_answer_${i}`];
+    const altAlac = item[`alternativeAlac${i}`]   || item[`alternative_alac_${i}`];
+    if (altAlac) {
+      alts.push({ index: i, text: (altText || '').trim(), alac: altAlac });
+    }
   }
-  if (alts.length > 0) return alts;
-  // Fallback to old JSONB cache
-  if (item._cachedAlternatives && Array.isArray(item._cachedAlternatives) && item._cachedAlternatives.length > 0) {
-    return item._cachedAlternatives;
-  }
-  return [];
+  return alts;
 }
 
 // ── ALAC model answer generator ────────────────────────────────────────────────
@@ -3436,7 +3445,6 @@ async function runEvalJob(job) {
   const questionId             = item.id || null;
   let   _cachedAlac            = item._cachedAlac            || null;
   let   _cachedConceptual      = item._cachedConceptual      || null;
-  let   _needsAltCache         = false;
   let   _needsAlacCache        = false;
   let   _needsConceptualCache  = false;
 
@@ -3453,12 +3461,25 @@ async function runEvalJob(job) {
     qtype = detectQuestionType(question, context, modelAnswer);
     const isSit = qtype === 'situational' || qtype === 'essay' || qtype === 'alac';
 
-    const colAlts = getAlternatives(item);
-    const alternatives    = colAlts.length > 0 ? colAlts : ((_needsAltCache = true), extractAlternativeAnswers(modelAnswer));
-    const hasAlternatives = alternatives.length > 1;
-    const maSection = hasAlternatives
-      ? `SUGGESTED ANSWER HAS ${alternatives.length} VALID ALTERNATIVES — evaluate the student against whichever they most closely answered. Return "matchedAlternative" as the number (1, 2, …) of the best-matching alternative.\n\n${alternatives.map((a, i) => `ALTERNATIVE ${i + 1}:\n${a}`).join('\n\n')}`
-      : (modelAnswer ? `Reference Answer: ${modelAnswer}` : '');
+    // getAlternatives returns [{index, text, alac}] — only alts with cached ALAC
+    const alternatives = isSit ? getAlternatives(item) : [];
+    const altCount       = alternatives.length;
+    const isSingleAlt    = altCount === 1;
+    const isMultiAlt     = altCount >= 2;
+
+    let maSection = '';
+    if (isSit) {
+      if (isMultiAlt) {
+        maSection = `SUGGESTED ANSWER HAS ${altCount} VALID ALTERNATIVES — evaluate the student against whichever they most closely answered. Return "matchedAlternative" as the number of the best-matching alternative.\n\n` +
+          alternatives.map(a => `ALTERNATIVE ${a.index}:\n${a.text}`).join('\n\n');
+      } else if (isSingleAlt) {
+        maSection = alternatives[0].text ? `Reference Answer:\n${alternatives[0].text}` : '';
+      } else {
+        maSection = modelAnswer ? `Reference Answer: ${modelAnswer}` : '';
+      }
+    } else {
+      maSection = modelAnswer ? `Reference Answer: ${modelAnswer}` : '';
+    }
 
     let prompt, maxTok;
     const copyPasteDetected = isSit && isCopyPastedFacts(answer, context);
@@ -3503,64 +3524,66 @@ Respond ONLY with valid JSON: {"score":"X/10","numericScore":0,"grade":"...","br
       result.questionType = qtype;
       if (!result.keyPoints?.length && keyPoints?.length) result.keyPoints = keyPoints;
 
-      if (hasAlternatives) {
-        const altIdx = Math.max(0, Math.min((result.matchedAlternative || 1) - 1, alternatives.length - 1));
-        result.modelAnswer              = alternatives[altIdx];
+      // ── Apply matched alternative (situational only) ─────────────
+      if (isSit && isMultiAlt) {
+        const matched = result.matchedAlternative || alternatives[0].index;
+        const matchedAlt = alternatives.find(a => a.index === matched) || alternatives[0];
+        result.modelAnswer              = matchedAlt.text;
         result.modelAnswerOriginal      = modelAnswer;
         result.usedAlternative          = true;
-        result.matchedAlternativeNumber = altIdx + 1;
-      } else {
-        if (!result.modelAnswer && modelAnswer) result.modelAnswer = modelAnswer;
-        result.usedAlternative = false;
-      }
+        result.matchedAlternativeNumber = matchedAlt.index;
+        result.showMatchedBadge         = true;
+        result.matchedAlternativeAlac   = matchedAlt.alac;
+        result.alacModelAnswer          = matchedAlt.alac;
+        const ac = matchedAlt.alac;
+        result.modelAnswerFormatted = [
+          `ANSWER: ${ac.answer}`, `LEGAL BASIS: ${ac.legalBasis}`,
+          `APPLICATION: ${ac.application}`, `CONCLUSION: ${ac.conclusion}`,
+        ].filter(s => !s.match(/:\s*$/)).join('\n\n');
+        result.modelAnswer = result.modelAnswerFormatted;
+        console.log(`[eval-batch] multi-alt: matched Alt ${matchedAlt.index}/${altCount} Q${idx+1}`);
 
-      let _needsAltAlacCache = false;
-      let _altAlacCacheNum   = 0;
-      if (isSit && result.modelAnswer) {
-        if (hasAlternatives && result.matchedAlternativeNumber > 0) {
-          // ── Alternative ALAC: check cache first ──
-          const altNum = result.matchedAlternativeNumber;
-          const cachedAltAlac = item[`alternativeAlac${altNum}`] || item[`alternative_alac_${altNum}`] || null;
-          if (cachedAltAlac) {
-            result.alacModelAnswer = cachedAltAlac;
-            result.modelAnswerFormatted = [
-              `ANSWER: ${cachedAltAlac.answer}`,
-              `LEGAL BASIS: ${cachedAltAlac.legalBasis}`,
-              `APPLICATION: ${cachedAltAlac.application}`,
-              `CONCLUSION: ${cachedAltAlac.conclusion}`,
-            ].filter(s => !s.match(/:\s*$/)).join('\n\n');
-            result.modelAnswer = result.modelAnswerFormatted;
-            console.log(`[eval-batch] alt-alac cache hit for Alt ${altNum} Q${idx+1}`);
-          } else {
-            const alacResult = await generateALACModelAnswer(question, context, result.modelAnswer, subject);
-            if (alacResult) {
-              result.alacModelAnswer      = alacResult.components;
-              result.modelAnswerFormatted = alacResult.formatted;
-              result.modelAnswer          = alacResult.formatted;
-              _needsAltAlacCache = true;
-              _altAlacCacheNum   = altNum;
-            }
-          }
-          result.matchedAlternativeAlac = result.alacModelAnswer || null;
-        } else if (_cachedAlac && !hasAlternatives) {
-          // Use cached ALAC for single-answer questions
-          result.alacModelAnswer      = _cachedAlac;
+      } else if (isSit && isSingleAlt) {
+        const alt = alternatives[0];
+        result.modelAnswer              = alt.text;
+        result.modelAnswerOriginal      = modelAnswer;
+        result.usedAlternative          = false;
+        result.matchedAlternativeNumber = alt.index;
+        result.showMatchedBadge         = false;
+        result.matchedAlternativeAlac   = alt.alac;
+        result.alacModelAnswer          = alt.alac;
+        const ac = alt.alac;
+        result.modelAnswerFormatted = [
+          `ANSWER: ${ac.answer}`, `LEGAL BASIS: ${ac.legalBasis}`,
+          `APPLICATION: ${ac.application}`, `CONCLUSION: ${ac.conclusion}`,
+        ].filter(s => !s.match(/:\s*$/)).join('\n\n');
+        result.modelAnswer = result.modelAnswerFormatted;
+
+      } else if (isSit) {
+        if (!result.modelAnswer && modelAnswer) result.modelAnswer = modelAnswer;
+        result.usedAlternative  = false;
+        result.showMatchedBadge = false;
+        if (_cachedAlac) {
+          result.alacModelAnswer = _cachedAlac;
           result.modelAnswerFormatted = [
-            `ANSWER: ${_cachedAlac.answer}`,
-            `LEGAL BASIS: ${_cachedAlac.legalBasis}`,
-            `APPLICATION: ${_cachedAlac.application}`,
-            `CONCLUSION: ${_cachedAlac.conclusion}`,
+            `ANSWER: ${_cachedAlac.answer}`, `LEGAL BASIS: ${_cachedAlac.legalBasis}`,
+            `APPLICATION: ${_cachedAlac.application}`, `CONCLUSION: ${_cachedAlac.conclusion}`,
           ].filter(s => !s.match(/:\s*$/)).join('\n\n');
           result.modelAnswer = result.modelAnswerFormatted;
-        } else {
+        } else if (result.modelAnswer) {
           const alacResult = await generateALACModelAnswer(question, context, result.modelAnswer, subject);
           if (alacResult) {
             result.alacModelAnswer      = alacResult.components;
             result.modelAnswerFormatted = alacResult.formatted;
             result.modelAnswer          = alacResult.formatted;
-            if (!hasAlternatives) _needsAlacCache = true;
+            _needsAlacCache = true;
           }
         }
+      } else {
+        // Conceptual — never use alternatives
+        if (!result.modelAnswer && modelAnswer) result.modelAnswer = modelAnswer;
+        result.usedAlternative  = false;
+        result.showMatchedBadge = false;
       }
 
       // Generate structured conceptual model answer for conceptual questions
@@ -3577,17 +3600,10 @@ Respond ONLY with valid JSON: {"score":"X/10","numericScore":0,"grade":"...","br
       }
 
       // ── Write cache to Supabase (fire-and-forget) ───────────
-      if (questionId && (_needsAltCache || _needsAlacCache || _needsConceptualCache || _needsAltAlacCache)) {
+      if (questionId && (_needsAlacCache || _needsConceptualCache)) {
         const cacheUpdate = {};
-        if (_needsAltCache) {
-          cacheUpdate.alternative_answers = alternatives;
-          alternatives.forEach((alt, i) => { if (i < 5) cacheUpdate[`alternative_answer_${i + 1}`] = alt; });
-        }
         if (_needsAlacCache)       cacheUpdate.model_answer_alac        = result.alacModelAnswer;
         if (_needsConceptualCache) cacheUpdate.model_answer_conceptual  = result.conceptualModelAnswer;
-        if (_needsAltAlacCache && _altAlacCacheNum > 0) {
-          cacheUpdate[`alternative_alac_${_altAlacCacheNum}`] = result.alacModelAnswer;
-        }
         supabase.from('questions').update(cacheUpdate).eq('id', questionId)
           .then(({ error: ce }) => { if (ce) console.warn(`[cache-write] Q${idx + 1} failed:`, ce.message); });
       }
