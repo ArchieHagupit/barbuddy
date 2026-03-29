@@ -1890,6 +1890,16 @@ select.form-input{cursor:pointer;}
     <div style="font-size:11px;color:var(--muted);margin-bottom:4px;">Model Answer</div>
     <textarea id="editQAnswer" class="essay-box" rows="4" style="width:100%;box-sizing:border-box;"></textarea>
   </div>
+  <div id="editAltAnswersWrap" style="margin-bottom:10px;">
+    <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">Alternative Answers <span style="opacity:0.6;">(leave blank if none)</span></div>
+    <div style="display:flex;flex-direction:column;gap:6px;">
+      <div><div style="font-size:10px;color:var(--muted);margin-bottom:2px;">Alt 1</div><textarea id="editQAlt1" class="essay-box" rows="2" style="width:100%;box-sizing:border-box;font-size:12px;"></textarea></div>
+      <div><div style="font-size:10px;color:var(--muted);margin-bottom:2px;">Alt 2</div><textarea id="editQAlt2" class="essay-box" rows="2" style="width:100%;box-sizing:border-box;font-size:12px;"></textarea></div>
+      <div><div style="font-size:10px;color:var(--muted);margin-bottom:2px;">Alt 3</div><textarea id="editQAlt3" class="essay-box" rows="2" style="width:100%;box-sizing:border-box;font-size:12px;"></textarea></div>
+      <div><div style="font-size:10px;color:var(--muted);margin-bottom:2px;">Alt 4</div><textarea id="editQAlt4" class="essay-box" rows="2" style="width:100%;box-sizing:border-box;font-size:12px;"></textarea></div>
+      <div><div style="font-size:10px;color:var(--muted);margin-bottom:2px;">Alt 5</div><textarea id="editQAlt5" class="essay-box" rows="2" style="width:100%;box-sizing:border-box;font-size:12px;"></textarea></div>
+    </div>
+  </div>
   <div style="display:flex;gap:12px;margin-bottom:14px;">
     <div style="flex:1;">
       <div style="font-size:11px;color:var(--muted);margin-bottom:4px;">Type</div>
@@ -5701,7 +5711,7 @@ async function endMockSession(){
   </div>`;
 
   // Build batch payload
-  const batchPayload=mockQs.map((q,i)=>({id:q.id||null,question:q.prompt||q.q,answer:mockAnswers[i]||'',context:q.context||'',modelAnswer:q.modelAnswer,keyPoints:q.keyPoints,subject:q.subject,_cachedAlternatives:q._cachedAlternatives||null,_cachedAlac:q._cachedAlac||null}));
+  const batchPayload=mockQs.map((q,i)=>({id:q.id||null,question:q.prompt||q.q,answer:mockAnswers[i]||'',context:q.context||'',modelAnswer:q.modelAnswer,keyPoints:q.keyPoints,subject:q.subject,_cachedAlternatives:q._cachedAlternatives||null,_cachedAlac:q._cachedAlac||null,alternativeAnswer1:q.alternativeAnswer1||null,alternativeAnswer2:q.alternativeAnswer2||null,alternativeAnswer3:q.alternativeAnswer3||null,alternativeAnswer4:q.alternativeAnswer4||null,alternativeAnswer5:q.alternativeAnswer5||null}));
   let scores=[];
   const authHdr=sessionToken||'';
   const submissionId='sub_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);
@@ -7682,6 +7692,10 @@ function openEditQuestion(q) {
   document.getElementById('editQAnswer').value  = q.model_answer || '';
   document.getElementById('editQType').value    = q.type || 'essay';
   document.getElementById('editQMax').value     = q.max_score || 10;
+  for (let i = 1; i <= 5; i++) {
+    const el = document.getElementById('editQAlt' + i);
+    if (el) el.value = q['alternative_answer_' + i] || '';
+  }
   document.getElementById('editQuestionModal').style.display = 'flex';
 }
 
@@ -7694,6 +7708,11 @@ async function saveEditQuestion() {
     model_answer:  document.getElementById('editQAnswer').value || null,
     type:          document.getElementById('editQType').value,
     max_score:     parseInt(document.getElementById('editQMax').value) || 10,
+    alternative_answer_1: document.getElementById('editQAlt1').value || null,
+    alternative_answer_2: document.getElementById('editQAlt2').value || null,
+    alternative_answer_3: document.getElementById('editQAlt3').value || null,
+    alternative_answer_4: document.getElementById('editQAlt4').value || null,
+    alternative_answer_5: document.getElementById('editQAlt5').value || null,
   };
   try {
     const r = await fetch(`/api/admin/questions/${encodeURIComponent(id)}`, {

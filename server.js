@@ -219,6 +219,12 @@ function mapQRow(q) {
     _cachedAlternatives: q.alternative_answers || null,
     _cachedAlac: q.model_answer_alac || null,
     _cachedConceptual: q.model_answer_conceptual || null,
+    // Individual alternative answer columns
+    alternativeAnswer1: q.alternative_answer_1 || null,
+    alternativeAnswer2: q.alternative_answer_2 || null,
+    alternativeAnswer3: q.alternative_answer_3 || null,
+    alternativeAnswer4: q.alternative_answer_4 || null,
+    alternativeAnswer5: q.alternative_answer_5 || null,
   };
 }
 
@@ -1134,7 +1140,7 @@ app.get('/api/spaced-repetition/due', requireAuth, async (req, res) => {
     const questionIds = dueRecords.map(r => r.question_id).filter(Boolean);
     const { data: questions, error: qError } = await supabase
       .from('questions')
-      .select('id, question_text, context, model_answer, key_points, subject, source, year, type, max_score, alternative_answers, model_answer_alac, model_answer_conceptual')
+      .select('id, question_text, context, model_answer, key_points, subject, source, year, type, max_score, alternative_answers, model_answer_alac, model_answer_conceptual, alternative_answer_1, alternative_answer_2, alternative_answer_3, alternative_answer_4, alternative_answer_5')
       .in('id', questionIds);
     if (qError) console.error('[spaced-rep/due] Questions query error:', qError.message);
     const qMap = {};
@@ -1158,6 +1164,11 @@ app.get('/api/spaced-repetition/due', requireAuth, async (req, res) => {
           _cachedAlternatives: q.alternative_answers || null,
           _cachedAlac: q.model_answer_alac || null,
           _cachedConceptual: q.model_answer_conceptual || null, isReal: true,
+          alternativeAnswer1: q.alternative_answer_1 || null,
+          alternativeAnswer2: q.alternative_answer_2 || null,
+          alternativeAnswer3: q.alternative_answer_3 || null,
+          alternativeAnswer4: q.alternative_answer_4 || null,
+          alternativeAnswer5: q.alternative_answer_5 || null,
         },
       };
     });
@@ -1303,7 +1314,7 @@ app.delete('/api/admin/questions/:id', adminOnly, async (req, res) => {
 
 app.patch('/api/admin/questions/:id', adminOnly, async (req, res) => {
   try {
-    const allowed = ['question_text','context','model_answer','key_points','type','subject','year','source','max_score'];
+    const allowed = ['question_text','context','model_answer','key_points','type','subject','year','source','max_score','alternative_answer_1','alternative_answer_2','alternative_answer_3','alternative_answer_4','alternative_answer_5'];
     const updates = {};
     for (const k of allowed) { if (req.body[k] !== undefined) updates[k] = req.body[k]; }
     // Cache bust — model_answer was edited by admin; force full regeneration on next evaluation
@@ -1311,6 +1322,11 @@ app.patch('/api/admin/questions/:id', adminOnly, async (req, res) => {
       updates.model_answer_alac        = null;
       updates.alternative_answers      = null;
       updates.model_answer_conceptual  = null;
+      updates.alternative_answer_1     = null;
+      updates.alternative_answer_2     = null;
+      updates.alternative_answer_3     = null;
+      updates.alternative_answer_4     = null;
+      updates.alternative_answer_5     = null;
     }
     const { data, error } = await supabase
       .from('questions').update(updates).eq('id', req.params.id).select().single();
@@ -1334,8 +1350,8 @@ app.post('/api/admin/backfill-alac-cache', adminOnly, async (_req, res) => {
   // Fetch all questions missing at least one cache column
   const { data, error } = await supabase
     .from('questions')
-    .select('id, question_text, context, model_answer, subject, alternative_answers, model_answer_alac')
-    .or('alternative_answers.is.null,model_answer_alac.is.null');
+    .select('id, question_text, context, model_answer, subject, alternative_answers, model_answer_alac, alternative_answer_1, alternative_answer_2, alternative_answer_3, alternative_answer_4, alternative_answer_5')
+    .or('alternative_answer_1.is.null,model_answer_alac.is.null');
   if (error) return res.status(500).json({ error: error.message });
   if (!data || data.length === 0) return res.json({ started: false, message: 'All questions already cached' });
 
@@ -1348,9 +1364,11 @@ app.post('/api/admin/backfill-alac-cache', adminOnly, async (_req, res) => {
       try {
         const cacheUpdate = {};
 
-        // Alternatives
-        if (!q.alternative_answers) {
-          cacheUpdate.alternative_answers = extractAlternativeAnswers(q.model_answer);
+        // Alternatives — write to both JSONB and individual columns
+        if (!q.alternative_answer_1) {
+          const parsedAlts = extractAlternativeAnswers(q.model_answer);
+          cacheUpdate.alternative_answers = parsedAlts;
+          parsedAlts.forEach((alt, i) => { if (i < 5) cacheUpdate[`alternative_answer_${i + 1}`] = alt; });
         }
 
         // ALAC — only for questions without existing alternatives (single-answer questions)
@@ -2814,19 +2832,22 @@ app.post('/api/evaluate', async (req, res) => {
   let _needsAltCache         = false;
   let _needsAlacCache        = false;
   let _needsConceptualCache  = false;
+  let _qCache                = null;
   if (questionId) {
     const { data: qCache } = await supabase
       .from('questions')
-      .select('alternative_answers, model_answer_alac, model_answer_conceptual')
+      .select('alternative_answers, model_answer_alac, model_answer_conceptual, alternative_answer_1, alternative_answer_2, alternative_answer_3, alternative_answer_4, alternative_answer_5')
       .eq('id', questionId)
       .single();
+    _qCache             = qCache || null;
     _cachedAlternatives = qCache?.alternative_answers      || null;
     _cachedAlac         = qCache?.model_answer_alac        || null;
     _cachedConceptual   = qCache?.model_answer_conceptual  || null;
   }
 
-  // ── Alternative answer detection ──────────────────────────
-  const alternatives    = _cachedAlternatives || ((_needsAltCache = true), extractAlternativeAnswers(modelAnswer));
+  // ── Alternative answer detection (prefer individual columns) ──
+  const colAlts = getAlternatives({ alternative_answer_1: _qCache?.alternative_answer_1, alternative_answer_2: _qCache?.alternative_answer_2, alternative_answer_3: _qCache?.alternative_answer_3, alternative_answer_4: _qCache?.alternative_answer_4, alternative_answer_5: _qCache?.alternative_answer_5, _cachedAlternatives });
+  const alternatives    = colAlts.length > 0 ? colAlts : ((_needsAltCache = true), extractAlternativeAnswers(modelAnswer));
   const hasAlternatives = alternatives.length > 1;
   const maSection = hasAlternatives
     ? `SUGGESTED ANSWER HAS ${alternatives.length} VALID ALTERNATIVES — evaluate the student against whichever they most closely answered. Return "matchedAlternative" as the number (1, 2, …) of the best-matching alternative. A student who correctly answers any valid alternative deserves full credit for that approach.\n\n${alternatives.map((a, i) => `ALTERNATIVE ${i + 1}:\n${a}`).join('\n\n')}`
@@ -3008,7 +3029,10 @@ Respond ONLY with valid JSON (no markdown):
     // ── Write cache to Supabase (fire-and-forget) ─────────────
     if (questionId && (_needsAltCache || _needsAlacCache || _needsConceptualCache)) {
       const cacheUpdate = {};
-      if (_needsAltCache)        cacheUpdate.alternative_answers      = alternatives;
+      if (_needsAltCache) {
+        cacheUpdate.alternative_answers = alternatives;
+        alternatives.forEach((alt, i) => { if (i < 5) cacheUpdate[`alternative_answer_${i + 1}`] = alt; });
+      }
       if (_needsAlacCache)       cacheUpdate.model_answer_alac        = result.alacModelAnswer;
       if (_needsConceptualCache) cacheUpdate.model_answer_conceptual  = result.conceptualModelAnswer;
       supabase.from('questions').update(cacheUpdate).eq('id', questionId)
@@ -3051,6 +3075,21 @@ function extractAlternativeAnswers(modelAnswer) {
   }
 
   return [modelAnswer];
+}
+
+// ── Get alternatives from individual columns (new) or JSONB fallback ──────────
+function getAlternatives(item) {
+  const alts = [];
+  for (let i = 1; i <= 5; i++) {
+    const alt = item[`alternativeAnswer${i}`] || item[`alternative_answer_${i}`];
+    if (alt && alt.trim().length > 0) alts.push(alt.trim());
+  }
+  if (alts.length > 0) return alts;
+  // Fallback to old JSONB cache
+  if (item._cachedAlternatives && Array.isArray(item._cachedAlternatives) && item._cachedAlternatives.length > 0) {
+    return item._cachedAlternatives;
+  }
+  return [];
 }
 
 // ── ALAC model answer generator ────────────────────────────────────────────────
@@ -3302,7 +3341,8 @@ async function runEvalJob(job) {
     qtype = detectQuestionType(question, context, modelAnswer);
     const isSit = qtype === 'situational' || qtype === 'essay' || qtype === 'alac';
 
-    const alternatives    = item._cachedAlternatives || ((_needsAltCache = true), extractAlternativeAnswers(modelAnswer));
+    const colAlts = getAlternatives(item);
+    const alternatives    = colAlts.length > 0 ? colAlts : ((_needsAltCache = true), extractAlternativeAnswers(modelAnswer));
     const hasAlternatives = alternatives.length > 1;
     const maSection = hasAlternatives
       ? `SUGGESTED ANSWER HAS ${alternatives.length} VALID ALTERNATIVES — evaluate the student against whichever they most closely answered. Return "matchedAlternative" as the number (1, 2, …) of the best-matching alternative.\n\n${alternatives.map((a, i) => `ALTERNATIVE ${i + 1}:\n${a}`).join('\n\n')}`
@@ -3400,7 +3440,10 @@ Respond ONLY with valid JSON: {"score":"X/10","numericScore":0,"grade":"...","br
       // ── Write cache to Supabase (fire-and-forget) ───────────
       if (questionId && (_needsAltCache || _needsAlacCache || _needsConceptualCache)) {
         const cacheUpdate = {};
-        if (_needsAltCache)        cacheUpdate.alternative_answers      = alternatives;
+        if (_needsAltCache) {
+          cacheUpdate.alternative_answers = alternatives;
+          alternatives.forEach((alt, i) => { if (i < 5) cacheUpdate[`alternative_answer_${i + 1}`] = alt; });
+        }
         if (_needsAlacCache)       cacheUpdate.model_answer_alac        = result.alacModelAnswer;
         if (_needsConceptualCache) cacheUpdate.model_answer_conceptual  = result.conceptualModelAnswer;
         supabase.from('questions').update(cacheUpdate).eq('id', questionId)
