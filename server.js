@@ -2829,8 +2829,8 @@ app.post('/api/evaluate', async (req, res) => {
   const alternatives    = _cachedAlternatives || ((_needsAltCache = true), extractAlternativeAnswers(modelAnswer));
   const hasAlternatives = alternatives.length > 1;
   const maSection = hasAlternatives
-    ? `SUGGESTED ANSWER HAS ${alternatives.length} VALID ALTERNATIVES — evaluate the student against whichever they most closely answered. Return "matchedAlternative" as the number (1, 2, …) of the best-matching alternative. A student who correctly answers any valid alternative deserves full credit for that approach.\n\n${alternatives.map((a, i) => `ALTERNATIVE ${i + 1}:\n${a}`).join('\n\n')}`
-    : (modelAnswer ? `Reference Answer: ${modelAnswer}` : '');
+    ? `SUGGESTED ANSWER HAS ${alternatives.length} VALID ALTERNATIVES — evaluate the student against whichever they most closely answered. Return "matchedAlternative" as the number (1, 2, …) of the best-matching alternative. A student who correctly answers any valid alternative deserves full credit for that approach.\n\n${alternatives.map((a, i) => `ALTERNATIVE ${i + 1}:\n${a}`).join('\n\n')}\n\nALTERNATIVE ANSWER MATCH — ISOLATION RULE:\nOnce you determine which Alternative Answer the student most closely matches, that Alternative Answer becomes the SOLE AND EXCLUSIVE benchmark for ALL scoring.\nOnce matched to Alternative Answer N:\n- Use ONLY Alternative Answer N for Legal Basis, Application, and Conclusion benchmarks\n- keyMissed and improvements must reference ONLY concepts from Alternative Answer N\nSTRICTLY FORBIDDEN after a match:\n- Do NOT reference the Model Answer or other Alternative Answers for scoring\n- Do NOT penalize for missing concepts from other alternatives\n- Do NOT say "model answer references X" when matched to an alternative\n- Do NOT say "Alternative 1 presents Y" when matched to Alternative 2\nThe match is EXCLUSIVE — treat the matched alternative as if it were the only answer.`
+    : (modelAnswer ? `Reference Answer: ${modelAnswer}\n\nScore this answer against the Reference Answer ONLY. Do NOT penalize for concepts, cases, or doctrines absent from the Reference Answer. Do NOT use outside legal knowledge to add requirements beyond the Reference Answer.` : '');
 
   let prompt, maxTok;
   const copyPasteDetected = isSituational && isCopyPastedFacts(answer, context);
@@ -2846,8 +2846,29 @@ CRITICAL JSON OUTPUT RULES: Use single quotes inside all string values (never do
 IMPORTANT CHECKS BEFORE SCORING:
 1. Does the student cite ANY law, article, doctrine, or case? If NO → Legal Basis = 0
 2. Does the student reach a clear legal conclusion? If NO → Conclusion = 0 to 0.5
-3. Is the answer primarily copied/restated facts with no legal analysis? If YES → Answer ≤ 0.5, Legal Basis = 0, Application ≤ 0.5, Conclusion = 0. An answer that merely restates the given facts without legal reasoning CANNOT score above 2/10 total.
-4. A passing answer MUST contain: a direct legal position, at least one cited law/doctrine/case, legal reasoning connecting law to facts, and a conclusion. Without ALL four, the answer cannot score above 5/10 total.
+3. Is the answer primarily copied/restated facts with no legal analysis? If YES → Legal Basis = 0, Application ≤ 0.5, Conclusion = 0. NOTE: Do NOT reduce Answer (A) score for this — Answer is graded on responsiveness only.
+4. The Answer (A) component is NEVER affected by checks 1, 2, or 3. Answer (A) is scored ONLY on whether the student was responsive to the question. The Answer (A) component scores ONLY on responsiveness — did the student answer the question? A correct direct YES/NO = 1.5/1.5 always. Only 1.0 if the direct answer is contradicting to suggested or alternative answer. 
+
+MODEL ANSWER BOUNDARY RULE — STRICTLY ENFORCED:
+The Reference Answer and Alternative Answers provided are your ONLY benchmark for scoring.
+You MUST NOT penalize students for failing to discuss any law, doctrine, case, or concept that does NOT appear in the model answer or alternative answers.
+
+FORBIDDEN evaluator behaviors:
+- Importing legal doctrines not in model answer
+- Citing cases not mentioned in model answer
+- Requiring discussion of concepts not in model answer
+- Using your own legal knowledge to add requirements beyond the model answer
+- Saying "student should have discussed X" when X is not in the model answer
+
+CORRECT evaluator behavior:
+- Compare student answer ONLY against what is in the model answer
+- Award full Legal Basis credit if student cited the same law/doctrine as model answer
+- Award full Application credit if student applied law to facts the same way as model answer
+- Improve items and keyMissed must ONLY reference concepts present in the model answer
+
+BEFORE writing any improve/keyMissed item ask: "Is this concept present in the model answer?" If NO → do not include it.
+BEFORE deducting from Legal Basis ask: "Did the model answer cite this law/doctrine?" If NO → do not deduct for missing it.
+BEFORE deducting from Application ask: "Did the model answer apply this analysis?" If NO → do not deduct for missing it.
 ${copyPasteDetected ? '\nWARNING: The student answer appears to be largely copied from the facts/context. Evaluate strictly — this should receive a very low score as it shows no legal analysis.\n' : ''}
 Question: ${question}
 ${maSection}
@@ -2858,7 +2879,37 @@ Student Answer: ${answer}
 
 Score each ALAC component using these weights which reflect actual Philippine Bar Exam priorities (total = 10 points):
 
-A — Answer (1.5 pts): Direct answer to the question upfront.
+A — ANSWER (Max 1.5 points) — SEQUENTIAL DECISION TREE:
+Follow these steps IN ORDER. Stop at first match.
+
+STEP 1: Did student answer the question at all?
+If NO → score: 0/1.5. STOP.
+
+STEP 2: Check student position vs references.
+State explicitly:
+"Model answer position: [YES/NO/conclusion]"
+"Student position: [YES/NO/conclusion]"
+"Match with model or any alternative: YES/NO"
+
+STEP 3 — Assign score:
+- Match found (student position agrees with model OR any alternative) → 1.5/1.5
+- No match (student position CONTRADICTS all references and all alternatives) → 1.0/1.5. Feedback must say: "Responsive but contradicts correct legal position. -0.5 penalty applied."
+- Partially responsive (hedged/unclear) → 0.5/1.5
+- Not responsive (blank/irrelevant) → 0/1.5
+
+CRITICAL: Responsive alone does NOT equal 1.5/1.5. Student must be BOTH responsive AND correct. Wrong legal position = 1.0/1.5 maximum.
+
+EXAMPLES:
+1.5/1.5 — Model: "No, Juan cannot insist..." Student: "No, he cannot insist..." → Responsive + matches model. Full credit.
+1.0/1.5 — Model: "No, Juan cannot insist..." Student: "Yes, Juan can insist..." → Responsive but wrong position. -0.5 penalty.
+1.5/1.5 — Model says YES but Alternative 2 says NO. Student says NO. → Matches Alternative 2. Full credit.
+
+FORBIDDEN DEDUCTION REASONS:
+- "lacks legal reasoning" → belongs in L
+- "lacks legal basis" → belongs in L
+- "lacks factual analysis" → belongs in A
+- "lacks depth or detail" → belongs in L/A
+The ONLY valid deduction from Answer (A) is: -0.5 for contradicting the correct legal position (when no alternative supports it).
 
 L — Legal Basis (3.0 pts): The purpose of this component is to check whether the student knows WHAT law or doctrine governs the issue — not to test their ability to memorize article numbers or G.R. citation numbers.
 
@@ -2904,8 +2955,8 @@ Respond ONLY with valid JSON (no markdown):
   },
   "overallFeedback": "2-3 sentence overall assessment under 200 words",
   "strengths": ["..."],
-  "improvements": ["..."],
-  "keyMissed": ["specific law or case they should have cited"],
+  "improvements": ["ONLY improvements based on what the model answer contains — NEVER suggest concepts absent from model answer"],
+  "keyMissed": ["ONLY concepts FROM the model answer that the student missed — NEVER include concepts not in model answer"],
   "format": "essay"
 }`;
   } else {
@@ -3171,7 +3222,7 @@ IMPORTANT: Return pure JSON only. No { } inside string values. Plain text senten
 }
 
 // ── callClaudeHaikuJSON — haiku-only, semaphore-guarded, for fast batch eval ─
-async function callClaudeHaikuJSON(prompt, maxTokens = 3000, _truncRetry = 0) {
+async function callClaudeHaikuJSON(prompt, maxTokens = 3000) {
   await aiSemaphore.acquire();
   const JSON_SYSTEM = 'You are a JSON API endpoint. Output ONLY valid JSON. STRICT RULES: (1) Use single quotes inside string values — NEVER double quotes inside strings. (2) No literal newlines inside string values — use \\n if needed. (3) No trailing commas anywhere. (4) Response must start with { and end with }. (5) No markdown, no code fences, no backticks, no explanations. (6) If feedback contains quotes, use single quotes instead.';
   const JSON_SUFFIX = '\n\nCRITICAL: Return ONLY raw JSON. No markdown. No backticks. No fences. Start with { and end with }. Use single quotes inside string values (never double quotes inside strings). No trailing commas. No line breaks inside string values.';
@@ -3200,14 +3251,7 @@ async function callClaudeHaikuJSON(prompt, maxTokens = 3000, _truncRetry = 0) {
         const _tot = d.usage.input_tokens + d.usage.output_tokens;
         console.log(`[tokens] haiku | in:${d.usage.input_tokens} out:${d.usage.output_tokens} total:${_tot}`);
       }
-      // Detect truncation — retry once with more tokens
-      if (d.stop_reason === 'max_tokens') {
-        console.warn('[callClaudeHaikuJSON] Truncated!', 'Used:', d.usage?.output_tokens, '/', maxTokens, 'tokens.', 'Retrying with', maxTokens + 1000);
-        if (_truncRetry < 1) {
-          return callClaudeHaikuJSON(prompt, maxTokens + 1000, _truncRetry + 1);
-        }
-        console.warn('[callClaudeHaikuJSON] Still truncated after retry — proceeding with partial response.');
-      }
+      if (d.stop_reason === 'max_tokens') console.warn('[callClaudeHaikuJSON] Response truncated! Used:', d.usage?.output_tokens, 'tokens. Increase maxTokens.');
       const raw = sanitizeAIResponse(d.content.map(c => c.text || '').join(''));
       const parsed = extractJSON(raw);
       if (parsed !== null) return parsed;
@@ -3305,8 +3349,8 @@ async function runEvalJob(job) {
     const alternatives    = item._cachedAlternatives || ((_needsAltCache = true), extractAlternativeAnswers(modelAnswer));
     const hasAlternatives = alternatives.length > 1;
     const maSection = hasAlternatives
-      ? `SUGGESTED ANSWER HAS ${alternatives.length} VALID ALTERNATIVES — evaluate the student against whichever they most closely answered. Return "matchedAlternative" as the number (1, 2, …) of the best-matching alternative.\n\n${alternatives.map((a, i) => `ALTERNATIVE ${i + 1}:\n${a}`).join('\n\n')}`
-      : (modelAnswer ? `Reference Answer: ${modelAnswer}` : '');
+      ? `SUGGESTED ANSWER HAS ${alternatives.length} VALID ALTERNATIVES — evaluate the student against whichever they most closely answered. Return "matchedAlternative" as the number (1, 2, …) of the best-matching alternative.\n\n${alternatives.map((a, i) => `ALTERNATIVE ${i + 1}:\n${a}`).join('\n\n')}\n\nALTERNATIVE MATCH ISOLATION: Once matched to Alternative N, score EXCLUSIVELY against that alternative. Do NOT reference model answer or other alternatives. keyMissed and improvements ONLY from the matched alternative.`
+      : (modelAnswer ? `Reference Answer: ${modelAnswer}\n\nScore ONLY against this Reference Answer. Do NOT penalize for concepts absent from it.` : '');
 
     let prompt, maxTok;
     const copyPasteDetected = isSit && isCopyPastedFacts(answer, context);
@@ -3320,16 +3364,31 @@ IMPORTANT: Return pure JSON only. Never include { or } characters inside any str
 IMPORTANT CHECKS BEFORE SCORING:
 1. Does the student cite ANY law, article, doctrine, or case? If NO → Legal Basis = 0
 2. Does the student reach a clear legal conclusion? If NO → Conclusion = 0 to 0.5
-3. Is the answer primarily copied/restated facts with no legal analysis? If YES → Answer ≤ 0.5, Legal Basis = 0, Application ≤ 0.5, Conclusion = 0. An answer that merely restates the given facts without legal reasoning CANNOT score above 2/10 total.
-4. A passing answer MUST contain: a direct legal position, at least one cited law/doctrine/case, legal reasoning connecting law to facts, and a conclusion. Without ALL four, the answer cannot score above 5/10 total.
+3. Is the answer primarily copied/restated facts with no legal analysis? If YES → Legal Basis = 0, Application ≤ 0.5, Conclusion = 0. Do NOT reduce Answer (A) for this reason.
+4. Answer (A) scoring: 1.5/1.5 if responsive AND correct (matches model or any alternative). 1.0/1.5 if responsive but CONTRADICTS model AND no alternative supports it (-0.5 penalty). 0.5/1.5 if partially responsive. 0/1.5 if not responsive. The ONLY valid deduction is -0.5 for wrong legal position. NEVER deduct for lacking legal reasoning, basis, or analysis — those belong in L and A.
+
+MODEL ANSWER BOUNDARY RULE:
+The Reference Answer and Alternative Answers are your ONLY benchmark. Do NOT penalize students for failing to discuss any law, doctrine, case, or concept NOT in the model answer or alternatives. Do NOT import your own legal knowledge to add requirements. keyMissed and improvements must ONLY reference concepts present in the model answer. Before deducting from Legal Basis or Application, ask: "Did the model answer cite/apply this?" If NO → do not deduct.
 ${copyPasteDetected ? 'WARNING: The student answer appears to be largely copied from the facts/context. Evaluate strictly — this should receive a very low score as it shows no legal analysis.' : ''}
 Question: ${question}
 ${maSection}
 ${(keyPoints || []).length ? `Key Points: ${keyPoints.join(', ')}` : ''}
 ${refCtx ? `Legal Context: ${refCtx.slice(0, 400)}` : ''}
 Student Answer: ${answer}
+
+ANSWER (A) SCORING — SEQUENTIAL DECISION TREE:
+Follow these steps IN ORDER. Stop at first match.
+STEP 1: Did student answer the question at all? If NO → score: 0/1.5. STOP.
+STEP 2: Check student position vs references. State explicitly: "Model answer position: [YES/NO/conclusion]" "Student position: [YES/NO/conclusion]" "Match with model or any alternative: YES/NO"
+STEP 3 — Assign score:
+- Match found (student position agrees with model OR any alternative) → 1.5/1.5
+- No match (student position CONTRADICTS all references and all alternatives) → 1.0/1.5. Feedback must say: "Responsive but contradicts correct legal position. -0.5 penalty applied."
+- Partially responsive (hedged/unclear) → 0.5/1.5
+- Not responsive (blank/irrelevant) → 0/1.5
+CRITICAL: Responsive alone does NOT equal 1.5/1.5. Student must be BOTH responsive AND correct. Wrong legal position = 1.0/1.5 maximum.
+
 ${GRADE_SCALE}
-Respond ONLY with valid JSON: {"score":"X/10","numericScore":0,"grade":"...","alac":{"answer":{"score":0,"max":1.5,"feedback":"under 50 words","studentDid":""},"legalBasis":{"score":0,"max":3,"feedback":"under 50 words","studentDid":""},"application":{"score":0,"max":4,"feedback":"under 50 words","studentDid":""},"conclusion":{"score":0,"max":1.5,"feedback":"under 50 words","studentDid":""}},"overallFeedback":"under 200 words","strengths":[],"improvements":[],"keyMissed":[],"matchedAlternative":1,"format":"essay"}`;
+Respond ONLY with valid JSON: {"score":"X/10","numericScore":0,"grade":"...","alac":{"answer":{"score":0,"max":1.5,"feedback":"under 50 words","studentDid":""},"legalBasis":{"score":0,"max":3,"feedback":"under 50 words","studentDid":""},"application":{"score":0,"max":4,"feedback":"under 50 words","studentDid":""},"conclusion":{"score":0,"max":1.5,"feedback":"under 50 words","studentDid":""}},"overallFeedback":"under 200 words","strengths":[],"improvements":["ONLY from model answer"],"keyMissed":["ONLY from model answer"],"matchedAlternative":1,"format":"essay"}`;
     } else {
       maxTok = 2500;
       prompt = `You are a Philippine Bar Exam examiner. Evaluate this conceptual/theoretical answer. Keep overallFeedback under 100 words and each component feedback under 50 words.
