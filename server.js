@@ -3005,6 +3005,38 @@ A — Application (4.0 pts): HIGHEST WEIGHT. How well the student applies the la
 
 C — Conclusion (1.5 pts): Clear restatement of the answer with finality. Shows the student can synthesize their analysis.
 
+MODEL ANSWER BOUNDARY — ABSOLUTE RULE:
+Your ONLY source of truth is the Reference Answer or matched Alternative Answer provided above. Nothing else.
+
+BEFORE scoring Legal Basis (L), run this check:
+- List every law, article, doctrine, and case in the Reference/Alternative Answer.
+- ONLY penalize if student missed something on THAT list.
+- If it is NOT on that list → IGNORE IT. Do not deduct. Do not mention it.
+
+BEFORE scoring Application (A), run this check:
+- List every factual connection and legal analysis point in the Reference/Alternative Answer.
+- ONLY penalize if student missed something on THAT list.
+- If it is NOT on that list → IGNORE IT. Do not deduct. Do not mention it.
+
+BEFORE writing keyMissed[] or improvements[]:
+- Every item MUST exist in the Reference/Alternative Answer.
+- If a concept is NOT in the Reference/Alternative Answer → DO NOT include it.
+- Delete any item you cannot point to in the Reference/Alternative Answer.
+
+ABSOLUTELY FORBIDDEN:
+- Citing cases not in the Reference Answer
+- Requiring doctrines not in the Reference Answer
+- Saying 'student should have cited X' when X is not in the Reference Answer
+- Using your own Philippine law knowledge to add requirements
+- Importing estoppel, piercing, business judgment, or ANY doctrine not in the Reference Answer
+- Requiring section numbers if Reference Answer only cites doctrine names
+- Requiring case names if Reference Answer only cites statutory provisions
+
+SELF-CHECK BEFORE FINALIZING SCORES:
+Ask for EACH deduction: 'Can I point to the exact sentence in the Reference/Alternative Answer that requires this?'
+If NO → remove the deduction and increase score.
+If YES → deduction is valid.
+
 ${GRADE_SCALE}
 
 In your JSON response, all string values must use single quotes for any internal quotation. Example: use 'the court held' not "the court held". Keep each feedback field to one line.
@@ -3020,8 +3052,8 @@ Respond ONLY with valid JSON (no markdown):
   },
   "overallFeedback": "2-3 sentence overall assessment under 200 words",
   "strengths": ["..."],
-  "improvements": ["..."],
-  "keyMissed": ["specific law or case they should have cited"],
+  "improvements": ["ONLY based on Reference/Alternative Answer — never suggest concepts absent from it"],
+  "keyMissed": ["ONLY items from Reference/Alternative Answer that student missed — never add outside concepts"],
   "format": "essay"
 }`;
   } else {
@@ -3496,13 +3528,20 @@ IMPORTANT CHECKS BEFORE SCORING:
 3. Is the answer primarily copied/restated facts with no legal analysis? If YES → Answer ≤ 0.5, Legal Basis = 0, Application ≤ 0.5, Conclusion = 0. An answer that merely restates the given facts without legal reasoning CANNOT score above 2/10 total.
 4. A passing answer MUST contain: a direct legal position, at least one cited law/doctrine/case, legal reasoning connecting law to facts, and a conclusion. Without ALL four, the answer cannot score above 5/10 total.
 ${copyPasteDetected ? 'WARNING: The student answer appears to be largely copied from the facts/context. Evaluate strictly — this should receive a very low score as it shows no legal analysis.' : ''}
+MODEL ANSWER BOUNDARY — ABSOLUTE RULE:
+Your ONLY source of truth is the Reference Answer or matched Alternative Answer provided above. Nothing else.
+BEFORE scoring Legal Basis: List every law/doctrine/case in the Reference/Alternative Answer. ONLY penalize if student missed something on THAT list. If NOT on that list → do not deduct.
+BEFORE scoring Application: List every factual connection in the Reference/Alternative Answer. ONLY penalize if student missed something on THAT list. If NOT on that list → do not deduct.
+BEFORE writing keyMissed/improvements: Every item MUST exist in the Reference/Alternative Answer. If a concept is NOT in it → do not include it.
+FORBIDDEN: Citing cases not in Reference Answer. Requiring doctrines not in Reference Answer. Using your own law knowledge to add requirements. Importing ANY doctrine not in Reference Answer. Requiring section/case numbers the Reference Answer does not cite.
+SELF-CHECK: For each deduction ask 'Can I point to the exact sentence in the Reference/Alternative Answer that requires this?' If NO → remove deduction and increase score.
 Question: ${question}
 ${maSection}
 ${(keyPoints || []).length ? `Key Points: ${keyPoints.join(', ')}` : ''}
 ${refCtx ? `Legal Context: ${refCtx.slice(0, 400)}` : ''}
 Student Answer: ${answer}
 ${GRADE_SCALE}
-Respond ONLY with valid JSON: {"score":"X/10","numericScore":0,"grade":"...","alac":{"answer":{"score":0,"max":1.5,"feedback":"under 50 words","studentDid":""},"legalBasis":{"score":0,"max":3,"feedback":"under 50 words","studentDid":""},"application":{"score":0,"max":4,"feedback":"under 50 words","studentDid":""},"conclusion":{"score":0,"max":1.5,"feedback":"under 50 words","studentDid":""}},"overallFeedback":"under 200 words","strengths":[],"improvements":[],"keyMissed":[],"matchedAlternative":1,"format":"essay"}`;
+Respond ONLY with valid JSON: {"score":"X/10","numericScore":0,"grade":"...","alac":{"answer":{"score":0,"max":1.5,"feedback":"under 50 words","studentDid":""},"legalBasis":{"score":0,"max":3,"feedback":"under 50 words","studentDid":""},"application":{"score":0,"max":4,"feedback":"under 50 words","studentDid":""},"conclusion":{"score":0,"max":1.5,"feedback":"under 50 words","studentDid":""}},"overallFeedback":"under 200 words","strengths":[],"improvements":["ONLY based on Reference/Alternative Answer"],"keyMissed":["ONLY items from Reference/Alternative Answer that student missed"],"matchedAlternative":1,"format":"essay"}`;
     } else {
       maxTok = 2500;
       prompt = `You are a Philippine Bar Exam examiner. Evaluate this conceptual/theoretical answer. Keep overallFeedback under 100 words and each component feedback under 50 words.
