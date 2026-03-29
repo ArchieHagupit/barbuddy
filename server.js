@@ -2829,8 +2829,8 @@ app.post('/api/evaluate', async (req, res) => {
   const alternatives    = _cachedAlternatives || ((_needsAltCache = true), extractAlternativeAnswers(modelAnswer));
   const hasAlternatives = alternatives.length > 1;
   const maSection = hasAlternatives
-    ? `SUGGESTED ANSWER HAS ${alternatives.length} VALID ALTERNATIVES — evaluate the student against whichever they most closely answered. Return "matchedAlternative" as the number (1, 2, …) of the best-matching alternative. A student who correctly answers any valid alternative deserves full credit for that approach.\n\n${alternatives.map((a, i) => `ALTERNATIVE ${i + 1}:\n${a}`).join('\n\n')}`
-    : (modelAnswer ? `Reference Answer: ${modelAnswer}` : '');
+    ? `SUGGESTED ANSWER HAS ${alternatives.length} VALID ALTERNATIVES — evaluate the student against whichever they most closely answered. Return "matchedAlternative" as the number (1, 2, …) of the best-matching alternative. A student who correctly answers any valid alternative deserves full credit for that approach.\n\n${alternatives.map((a, i) => `ALTERNATIVE ${i + 1}:\n${a}`).join('\n\n')}\n\nALTERNATIVE ANSWER MATCH — ISOLATION RULE:\nOnce you determine which Alternative Answer the student most closely matches, that Alternative Answer becomes the SOLE AND EXCLUSIVE benchmark for ALL scoring.\nOnce matched to Alternative Answer N:\n- Use ONLY Alternative Answer N for Legal Basis, Application, and Conclusion benchmarks\n- keyMissed and improvements must reference ONLY concepts from Alternative Answer N\nSTRICTLY FORBIDDEN after a match:\n- Do NOT reference the Model Answer or other Alternative Answers for scoring\n- Do NOT penalize for missing concepts from other alternatives\n- Do NOT say "model answer references X" when matched to an alternative\n- Do NOT say "Alternative 1 presents Y" when matched to Alternative 2\nThe match is EXCLUSIVE — treat the matched alternative as if it were the only answer.`
+    : (modelAnswer ? `Reference Answer: ${modelAnswer}\n\nScore this answer against the Reference Answer ONLY. Do NOT penalize for concepts, cases, or doctrines absent from the Reference Answer. Do NOT use outside legal knowledge to add requirements beyond the Reference Answer.` : '');
 
   let prompt, maxTok;
   const copyPasteDetected = isSituational && isCopyPastedFacts(answer, context);
@@ -3319,8 +3319,8 @@ async function runEvalJob(job) {
     const alternatives    = item._cachedAlternatives || ((_needsAltCache = true), extractAlternativeAnswers(modelAnswer));
     const hasAlternatives = alternatives.length > 1;
     const maSection = hasAlternatives
-      ? `SUGGESTED ANSWER HAS ${alternatives.length} VALID ALTERNATIVES — evaluate the student against whichever they most closely answered. Return "matchedAlternative" as the number (1, 2, …) of the best-matching alternative.\n\n${alternatives.map((a, i) => `ALTERNATIVE ${i + 1}:\n${a}`).join('\n\n')}`
-      : (modelAnswer ? `Reference Answer: ${modelAnswer}` : '');
+      ? `SUGGESTED ANSWER HAS ${alternatives.length} VALID ALTERNATIVES — evaluate the student against whichever they most closely answered. Return "matchedAlternative" as the number (1, 2, …) of the best-matching alternative.\n\n${alternatives.map((a, i) => `ALTERNATIVE ${i + 1}:\n${a}`).join('\n\n')}\n\nALTERNATIVE MATCH ISOLATION: Once matched to Alternative N, score EXCLUSIVELY against that alternative. Do NOT reference model answer or other alternatives. keyMissed and improvements ONLY from the matched alternative.`
+      : (modelAnswer ? `Reference Answer: ${modelAnswer}\n\nScore ONLY against this Reference Answer. Do NOT penalize for concepts absent from it.` : '');
 
     let prompt, maxTok;
     const copyPasteDetected = isSit && isCopyPastedFacts(answer, context);
