@@ -68,6 +68,14 @@ civil, criminal, political, labor, commercial, taxation, remedial, ethics
 - Situational questions use ALAC scoring
 - Conceptual questions use breakdown scoring (accuracy/completeness/clarity)
 
+## Answer (A) Scoring Rule
+- Responsive + correct position: 1.5/1.5
+- Responsive + contradicts model/alternatives: 1.0/1.5
+- Partially responsive: 0.5/1.5
+- Not responsive: 0/1.5
+- Only valid deduction: -0.5 for wrong legal position
+- All other deductions belong in L or A components
+
 ## Recent Changes
 - jsonrepair added as Strategy 5 in extractJSON
 - XP awarded after evaluation completes (not before)
@@ -401,4 +409,3 @@ All handled by extractJSON() 5-strategy system.
 - Always set maxTokens >= 2000 for eval calls
 - generateALACModelAnswer: 2000 tokens
 - generateConceptualModelAnswer: 2000 tokens
-

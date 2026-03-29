@@ -2879,7 +2879,37 @@ Student Answer: ${answer}
 
 Score each ALAC component using these weights which reflect actual Philippine Bar Exam priorities (total = 10 points):
 
-A — Answer (1.5 pts): Direct answer to the question upfront.
+A — ANSWER (Max 1.5 points)
+
+TWO CRITERIA (in order):
+1. Is the answer RESPONSIVE to the question?
+2. Is the answer CORRECT (matches model/alternative)?
+
+SCORING:
+1.5/1.5 — Responsive AND correct. Student directly answered the question AND the position matches the model answer or any alternative answer.
+1.0/1.5 — Responsive but CONTRADICTS correct answer. Student directly answered the question BUT the position is OPPOSITE to the model answer AND does not match any alternative answer. Deduct 0.5 for wrong legal position.
+0.5/1.5 — Partially responsive. Student touched on the topic but did not clearly answer the specific question asked.
+0/1.5 — Not responsive. Student did not answer the question at all, left blank, or answered a different question.
+
+CONTRADICTION CHECK:
+Before finalizing Answer score, check: "Does the student's YES/NO position match the model answer or ANY alternative answer?"
+If YES → no deduction → 1.5/1.5
+If NO → deduct 0.5 → 1.0/1.5
+If PARTIALLY → 0.5/1.5
+If NOT ANSWERED → 0/1.5
+
+EXAMPLES:
+1.5/1.5 — Model: "No, Juan cannot insist..." Student: "No, he cannot insist..." → Responsive + matches model. Full credit.
+1.0/1.5 — Model: "No, Juan cannot insist..." Student: "Yes, Juan can insist..." → Responsive but wrong position. -0.5 penalty.
+1.5/1.5 — Model says YES but Alternative 2 says NO. Student says NO. → Matches Alternative 2. Full credit.
+
+FORBIDDEN DEDUCTION REASONS (still apply):
+- "lacks legal reasoning" → belongs in L
+- "lacks legal basis" → belongs in L
+- "lacks factual analysis" → belongs in A
+- "lacks depth or detail" → belongs in L/A
+- "lacks substantive content" → belongs in L/A
+The ONLY valid deduction from Answer (A) is: -0.5 for contradicting the correct legal position (when no alternative supports it).
 
 L — Legal Basis (3.0 pts): The purpose of this component is to check whether the student knows WHAT law or doctrine governs the issue — not to test their ability to memorize article numbers or G.R. citation numbers.
 
@@ -3335,7 +3365,7 @@ IMPORTANT CHECKS BEFORE SCORING:
 1. Does the student cite ANY law, article, doctrine, or case? If NO → Legal Basis = 0
 2. Does the student reach a clear legal conclusion? If NO → Conclusion = 0 to 0.5
 3. Is the answer primarily copied/restated facts with no legal analysis? If YES → Legal Basis = 0, Application ≤ 0.5, Conclusion = 0. Do NOT reduce Answer (A) for this reason.
-4. The Answer (A) component scores ONLY on responsiveness — did the student answer the question? A direct YES/NO = 1.5/1.5 always. Only 1.0 if the direct answer is contradicting to suggested or alternative answer. 
+4. Answer (A) scoring: 1.5/1.5 if responsive AND correct (matches model or any alternative). 1.0/1.5 if responsive but CONTRADICTS model AND no alternative supports it (-0.5 penalty). 0.5/1.5 if partially responsive. 0/1.5 if not responsive. The ONLY valid deduction is -0.5 for wrong legal position. NEVER deduct for lacking legal reasoning, basis, or analysis — those belong in L and A.
 
 MODEL ANSWER BOUNDARY RULE:
 The Reference Answer and Alternative Answers are your ONLY benchmark. Do NOT penalize students for failing to discuss any law, doctrine, case, or concept NOT in the model answer or alternatives. Do NOT import your own legal knowledge to add requirements. keyMissed and improvements must ONLY reference concepts present in the model answer. Before deducting from Legal Basis or Application, ask: "Did the model answer cite/apply this?" If NO → do not deduct.
