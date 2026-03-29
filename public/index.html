@@ -7043,13 +7043,13 @@ async function startAltAlacBackfill() {
         const pct = ps.total > 0 ? Math.round((ps.done / ps.total) * 100) : 0;
         bar.style.width = pct + '%';
         if (ps.complete) {
-          label.textContent = `✅ All ${ps.done} questions cached${ps.errors ? ` (${ps.errors} errors)` : ''}.`;
+          label.textContent = `✅ All ${ps.total} alternative ALAC pairs generated${ps.errors ? ` (${ps.errors} errors)` : ''}.`;
           status.textContent = '';
           clearInterval(_altAlacBackfillPollInterval);
           btn.disabled = false;
           btn.textContent = '⚡ Re-run Backfill';
         } else {
-          label.textContent = `Caching ${ps.done} / ${ps.total} alternative ALACs…`;
+          label.textContent = `Generating alternative ALAC… ${ps.done} / ${ps.total} pairs complete`;
         }
       } catch(e) { /* ignore poll errors */ }
     }, 1500);

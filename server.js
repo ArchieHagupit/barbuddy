@@ -1476,53 +1476,63 @@ app.get('/api/admin/backfill-alternative-alac/status', adminOnly, (_req, res) =>
 app.post('/api/admin/backfill-alternative-alac', adminOnly, async (_req, res) => {
   if (altAlacBackfillState.running) return res.json({ started: false, message: 'Backfill already in progress' });
 
-  // Fetch questions that have alternative answers but missing their ALAC
+  // Fetch questions where any alternative_answer_N exists but its ALAC is null
   const { data, error } = await supabase
     .from('questions')
-    .select('id, question_text, context, subject, alternative_answer_1, alternative_answer_2, alternative_answer_3, alternative_answer_4, alternative_answer_5, alternative_alac_1, alternative_alac_2, alternative_alac_3, alternative_alac_4, alternative_alac_5')
-    .or('alternative_answer_1.not.is.null,alternative_answer_2.not.is.null,alternative_answer_3.not.is.null,alternative_answer_4.not.is.null,alternative_answer_5.not.is.null');
+    .select('id, question_text, context, subject, alternative_answer_1, alternative_alac_1, alternative_answer_2, alternative_alac_2, alternative_answer_3, alternative_alac_3, alternative_answer_4, alternative_alac_4, alternative_answer_5, alternative_alac_5')
+    .or([
+      'and(alternative_answer_1.not.is.null,alternative_alac_1.is.null)',
+      'and(alternative_answer_2.not.is.null,alternative_alac_2.is.null)',
+      'and(alternative_answer_3.not.is.null,alternative_alac_3.is.null)',
+      'and(alternative_answer_4.not.is.null,alternative_alac_4.is.null)',
+      'and(alternative_answer_5.not.is.null,alternative_alac_5.is.null)',
+    ].join(','));
   if (error) return res.status(500).json({ error: error.message });
+  if (!data || data.length === 0) return res.json({ started: false, message: 'All alternative ALACs already cached' });
 
-  // Filter to only those with at least one missing alt ALAC
-  const needsWork = (data || []).filter(q => {
+  // Count total pairs needing generation
+  let totalPairs = 0;
+  for (const q of data) {
     for (let i = 1; i <= 5; i++) {
-      if (q[`alternative_answer_${i}`] && !q[`alternative_alac_${i}`]) return true;
+      const altText = q[`alternative_answer_${i}`];
+      if (altText && altText.trim().length >= 20 && !q[`alternative_alac_${i}`]) totalPairs++;
     }
-    return false;
-  });
-  if (needsWork.length === 0) return res.json({ started: false, message: 'All alternative ALACs already cached' });
+  }
+  if (totalPairs === 0) return res.json({ started: false, message: 'All alternative ALACs already cached' });
 
-  Object.assign(altAlacBackfillState, { running: true, done: 0, total: needsWork.length, errors: 0, complete: false });
-  res.json({ started: true, total: needsWork.length });
+  Object.assign(altAlacBackfillState, { running: true, done: 0, total: totalPairs, errors: 0, complete: false });
+  res.json({ started: true, total: totalPairs });
 
   (async () => {
-    for (const q of needsWork) {
-      try {
-        const cacheUpdate = {};
-        for (let i = 1; i <= 5; i++) {
-          const altText = q[`alternative_answer_${i}`];
-          if (altText && !q[`alternative_alac_${i}`]) {
-            console.log(`[alt-alac-backfill] Generating ALAC for Q ${q.id} Alt ${i}...`);
-            const alacResult = await generateALACModelAnswer(q.question_text, q.context, altText, q.subject);
-            if (alacResult) {
-              cacheUpdate[`alternative_alac_${i}`] = alacResult.components || alacResult;
-            }
-            await new Promise(r => setTimeout(r, 1500));
+    for (const q of data) {
+      const cacheUpdate = {};
+      for (let i = 1; i <= 5; i++) {
+        const altText = q[`alternative_answer_${i}`];
+        if (!altText || altText.trim().length < 20 || q[`alternative_alac_${i}`]) continue;
+        try {
+          console.log(`[alt-alac-backfill] Generating ALAC for Q ${q.id} Alt ${i}... (${altAlacBackfillState.done + 1}/${totalPairs})`);
+          const alacResult = await generateALACModelAnswer(q.question_text, q.context || '', altText, q.subject);
+          if (alacResult) {
+            cacheUpdate[`alternative_alac_${i}`] = alacResult.components || alacResult;
+          } else {
+            console.warn(`[alt-alac-backfill] Alt ${i} generation returned null for Q ${q.id}`);
+            altAlacBackfillState.errors++;
           }
+        } catch (e) {
+          console.warn(`[alt-alac-backfill] Alt ${i} error on Q ${q.id}:`, e.message);
+          altAlacBackfillState.errors++;
         }
-        if (Object.keys(cacheUpdate).length > 0) {
-          const { error: ue } = await supabase.from('questions').update(cacheUpdate).eq('id', q.id);
-          if (ue) { console.warn(`[alt-alac-backfill] update failed for ${q.id}:`, ue.message); altAlacBackfillState.errors++; }
-        }
-      } catch (e) {
-        console.warn(`[alt-alac-backfill] error on ${q.id}:`, e.message);
-        altAlacBackfillState.errors++;
+        altAlacBackfillState.done++;
+        await new Promise(r => setTimeout(r, 1500));
       }
-      altAlacBackfillState.done++;
+      if (Object.keys(cacheUpdate).length > 0) {
+        const { error: ue } = await supabase.from('questions').update(cacheUpdate).eq('id', q.id);
+        if (ue) { console.warn(`[alt-alac-backfill] DB write failed for ${q.id}:`, ue.message); altAlacBackfillState.errors++; }
+      }
     }
     altAlacBackfillState.running  = false;
     altAlacBackfillState.complete = true;
-    console.log(`[alt-alac-backfill] complete — ${altAlacBackfillState.done} processed, ${altAlacBackfillState.errors} errors`);
+    console.log(`[alt-alac-backfill] complete — ${altAlacBackfillState.done}/${totalPairs} pairs processed, ${altAlacBackfillState.errors} errors`);
   })();
 });
 
