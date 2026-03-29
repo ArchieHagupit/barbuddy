@@ -2959,12 +2959,6 @@ app.post('/api/evaluate', async (req, res) => {
 Keep overallFeedback under 200 words. Keep each ALAC component feedback under 50 words. Be concise and direct.
 CRITICAL JSON OUTPUT RULES: Use single quotes inside all string values (never double quotes inside strings). No newlines inside string values. No trailing commas. Keep all feedback values on a single line.
 
-IMPORTANT CHECKS BEFORE SCORING:
-1. Does the student cite ANY law, article, doctrine, or case? If NO → Legal Basis = 0
-2. Does the student reach a clear legal conclusion? If NO → Conclusion = 0 to 0.5
-3. Is the answer primarily copied/restated facts with no legal analysis? If YES → Answer ≤ 0.5, Legal Basis = 0, Application ≤ 0.5, Conclusion = 0. An answer that merely restates the given facts without legal reasoning CANNOT score above 2/10 total.
-4. A passing answer MUST contain: a direct legal position, at least one cited law/doctrine/case, legal reasoning connecting law to facts, and a conclusion. Without ALL four, the answer cannot score above 5/10 total.
-${copyPasteDetected ? '\nWARNING: The student answer appears to be largely copied from the facts/context. Evaluate strictly — this should receive a very low score as it shows no legal analysis.\n' : ''}
 Question: ${question}
 ${maSection}
 ${(keyPoints||[]).length?`Key Points to Check: ${keyPoints.join(', ')}`:''}
@@ -2972,70 +2966,81 @@ ${refCtx?`\nLegal Reference Context:\n${refCtx}`:''}
 
 Student Answer: ${answer}
 
-Score each ALAC component using these weights which reflect actual Philippine Bar Exam priorities (total = 10 points):
+════════════════════════════════════════
+MODEL ANSWER BOUNDARY — READ THIS FIRST
+════════════════════════════════════════
+Your ONLY benchmark is the Reference/Alternative Answer shown above. Nothing else.
 
-A — Answer (1.5 pts): Direct answer to the question upfront.
-
-L — Legal Basis (3.0 pts): The purpose of this component is to check whether the student knows WHAT law or doctrine governs the issue — not to test their ability to memorize article numbers or G.R. citation numbers.
-
-Award points using this scale:
-
-  3.0/3.0 — FULL CREDIT. Award full 3 points if ANY of these is true:
-  • Student correctly named a recognized legal doctrine or principle that actually exists in Philippine law and is applicable to the question (e.g. 'the four-fold test', 'doctrine of strained relations', 'the economic reality test', 'principle of non-diminution of benefits', 'the totality of conduct doctrine', 'the business judgment rule', 'doctrine of piercing the corporate veil', etc.)
-  • Student correctly stated the substance of the governing rule even without naming it — meaning they described what the law says accurately and it is clearly applicable to the facts
-  • Student cited a specific article, statute, or G.R. number correctly (this is a bonus demonstration of knowledge but is NOT required for full credit)
-
-  2.0/3.0 — GOOD CREDIT. Award 2 points if:
-  • Student identified the correct general area of law and stated a rule or principle that is mostly correct but incomplete or slightly imprecise in its statement
-  • Student named the right doctrine but applied it to the wrong element or framed it slightly incorrectly
-  • Student said something like 'under the Labor Code' or 'under the Civil Code' and then stated a rule that is substantially correct even without naming the doctrine
-
-  1.0/3.0 — PARTIAL CREDIT. Award 1 point if:
-  • Student mentioned the general subject area of law (e.g. 'labor law', 'civil law') but did not state any specific rule, doctrine, or legal principle
-  • Student attempted a legal basis but the rule they stated is only tangentially related to the issue
-
-  0/3.0 — NO CREDIT. Award 0 only if:
-  • Student provided NO legal basis whatsoever
-  • Student cited a doctrine or law that is completely wrong and inapplicable to the facts
-  • Student invented a non-existent doctrine or rule
-
-CRITICAL INSTRUCTION: Do NOT deduct points for failure to cite article numbers, G.R. numbers, or specific codal provisions. A student who correctly states 'under the four-fold test, the elements are...' has demonstrated legal knowledge and deserves full Legal Basis credit. Specific citations are impressive but optional — the substance of the legal rule matters, not the memorization of numbers.
-
-A — Application (4.0 pts): HIGHEST WEIGHT. How well the student applies the law to the specific facts. Only award full points if the student explicitly connects the legal rule to the specific parties and facts in the question. Partial credit for general application. Zero for restating the law without applying it to the facts. This demonstrates actual legal reasoning ability which is the primary skill tested in the bar exam.
-
-C — Conclusion (1.5 pts): Clear restatement of the answer with finality. Shows the student can synthesize their analysis.
-
-MODEL ANSWER BOUNDARY — ABSOLUTE RULE:
-Your ONLY source of truth is the Reference Answer or matched Alternative Answer provided above. Nothing else.
-
-BEFORE scoring Legal Basis (L), run this check:
-- List every law, article, doctrine, and case in the Reference/Alternative Answer.
-- ONLY penalize if student missed something on THAT list.
-- If it is NOT on that list → IGNORE IT. Do not deduct. Do not mention it.
-
-BEFORE scoring Application (A), run this check:
-- List every factual connection and legal analysis point in the Reference/Alternative Answer.
-- ONLY penalize if student missed something on THAT list.
-- If it is NOT on that list → IGNORE IT. Do not deduct. Do not mention it.
-
-BEFORE writing keyMissed[] or improvements[]:
-- Every item MUST exist in the Reference/Alternative Answer.
-- If a concept is NOT in the Reference/Alternative Answer → DO NOT include it.
-- Delete any item you cannot point to in the Reference/Alternative Answer.
+BEFORE scoring ANY component:
+Step 1 — Read the Reference/Alternative Answer above.
+Step 2 — List what it contains:
+  - What laws/doctrines does it cite?
+  - What factual analysis does it make?
+  - What conclusion does it reach?
+Step 3 — Compare student answer ONLY against that list.
+Step 4 — Do NOT penalize for anything outside that list.
 
 ABSOLUTELY FORBIDDEN:
-- Citing cases not in the Reference Answer
-- Requiring doctrines not in the Reference Answer
-- Saying 'student should have cited X' when X is not in the Reference Answer
-- Using your own Philippine law knowledge to add requirements
-- Importing estoppel, piercing, business judgment, or ANY doctrine not in the Reference Answer
-- Requiring section numbers if Reference Answer only cites doctrine names
-- Requiring case names if Reference Answer only cites statutory provisions
+- Citing cases not in the Reference/Alternative Answer
+- Requiring doctrines not in the Reference/Alternative Answer
+- Adding requirements from your own legal knowledge
+- Importing ANY concept not in the Reference/Alternative Answer
+- Saying 'student should have discussed X' when X is absent from the Reference Answer
 
-SELF-CHECK BEFORE FINALIZING SCORES:
-Ask for EACH deduction: 'Can I point to the exact sentence in the Reference/Alternative Answer that requires this?'
-If NO → remove the deduction and increase score.
+SELF-CHECK — Before finalizing each score ask:
+'Can I point to the exact part of the Reference/Alternative Answer that requires this?'
+If NO → remove the deduction. Increase the score.
 If YES → deduction is valid.
+
+${copyPasteDetected ? 'COPY-PASTE WARNING: Answer appears copied from facts. Score strictly.\n' : ''}
+Score each ALAC component (total = 10 points):
+
+A — ANSWER (Max 1.5 pts) — DECISION TREE:
+Step 1: Did student answer the question? NO → 0/1.5. STOP.
+Step 2: Does student position match Reference Answer OR any Alternative Answer?
+  YES → 1.5/1.5. STOP.
+  PARTIAL/UNCLEAR → 0.5/1.5. STOP.
+  NO (contradicts all) → 1.0/1.5. STOP.
+
+L — LEGAL BASIS (Max 3.0 pts):
+Award based ONLY on what the Reference/Alternative Answer requires.
+
+  3.0/3.0 — FULL CREDIT. Award if ANY is true:
+  • Student correctly named the doctrine/principle from the Reference Answer
+  • Student correctly stated the substance of the governing rule even without naming it
+  • Student cited the specific article or statute from the Reference Answer
+
+  2.0/3.0 — GOOD CREDIT. Award if:
+  • Student identified the correct general area of law, substance mostly correct but imprecise
+  • Student named the right doctrine but framed it slightly incorrectly
+
+  1.0/3.0 — PARTIAL CREDIT. Award if:
+  • Student mentioned the general subject area without specific rule or doctrine
+  • Student attempted a legal basis but only tangentially related
+
+  0/3.0 — NO CREDIT. Award only if:
+  • Student provided NO legal basis whatsoever
+  • Student cited a completely wrong and inapplicable law
+  • Student invented a non-existent doctrine
+
+CRITICAL: Do NOT require section numbers, G.R. numbers, case names, or doctrines absent from the Reference Answer. The substance of the legal rule matters, not memorization of numbers.
+
+A — APPLICATION (Max 4.0 pts) — HIGHEST WEIGHT:
+4.0 — Student application mirrors the Reference/Alternative Answer application. Same facts analyzed, same legal connection, same conclusion reached.
+3.0-3.5 — Covers key application points from Reference Answer, minor gaps
+2.0-2.5 — Partial application, misses significant elements present in Reference Answer
+1.0-1.5 — Superficial attempt compared to Reference Answer
+0 — No application. Only restates law without connecting to facts.
+
+BOUNDARY: Only deduct for missing analysis that is PRESENT in the Reference Answer. Do NOT deduct for missing analysis ABSENT from the Reference Answer.
+SIMILARITY CHECK: If student application covers the same key points as Reference Answer application → minimum 3.5/4. Do NOT reduce for not discussing concepts absent from Reference Answer.
+
+C — CONCLUSION (Max 1.5 pts):
+1.5 — Clear closing statement present
+1.0 — Brief conclusion present
+0.5 — Implied conclusion only
+0 — No conclusion at all
+NEVER deduct for lacking legal foundation — that belongs in L and A components.
 
 ${GRADE_SCALE}
 
@@ -3052,8 +3057,8 @@ Respond ONLY with valid JSON (no markdown):
   },
   "overallFeedback": "2-3 sentence overall assessment under 200 words",
   "strengths": ["..."],
-  "improvements": ["ONLY based on Reference/Alternative Answer — never suggest concepts absent from it"],
-  "keyMissed": ["ONLY items from Reference/Alternative Answer that student missed — never add outside concepts"],
+  "improvements": ["ONLY from Reference Answer — never suggest concepts absent from it"],
+  "keyMissed": ["ONLY from Reference Answer — never add outside concepts"],
   "format": "essay"
 }`;
   } else {
@@ -3520,28 +3525,63 @@ async function runEvalJob(job) {
     if (isSit) {
       maxTok = 2500;
       prompt = `You are a Philippine Bar Exam examiner. Evaluate using ALAC (Answer 1.5pts, Legal Basis 3pts, Application 4pts, Conclusion 1.5pts). Keep overallFeedback under 200 words and each component feedback under 50 words.
-CRITICAL JSON OUTPUT RULES: Use single quotes inside all string values (never double quotes inside strings). No newlines inside string values. No trailing commas. Keep all feedback fields on a single line.
-IMPORTANT: Return pure JSON only. Never include { or } characters inside any string value. Write all feedback as plain text sentences only. No code examples, no nested structures, no special characters inside strings.
-IMPORTANT CHECKS BEFORE SCORING:
-1. Does the student cite ANY law, article, doctrine, or case? If NO → Legal Basis = 0
-2. Does the student reach a clear legal conclusion? If NO → Conclusion = 0 to 0.5
-3. Is the answer primarily copied/restated facts with no legal analysis? If YES → Answer ≤ 0.5, Legal Basis = 0, Application ≤ 0.5, Conclusion = 0. An answer that merely restates the given facts without legal reasoning CANNOT score above 2/10 total.
-4. A passing answer MUST contain: a direct legal position, at least one cited law/doctrine/case, legal reasoning connecting law to facts, and a conclusion. Without ALL four, the answer cannot score above 5/10 total.
-${copyPasteDetected ? 'WARNING: The student answer appears to be largely copied from the facts/context. Evaluate strictly — this should receive a very low score as it shows no legal analysis.' : ''}
-MODEL ANSWER BOUNDARY — ABSOLUTE RULE:
-Your ONLY source of truth is the Reference Answer or matched Alternative Answer provided above. Nothing else.
-BEFORE scoring Legal Basis: List every law/doctrine/case in the Reference/Alternative Answer. ONLY penalize if student missed something on THAT list. If NOT on that list → do not deduct.
-BEFORE scoring Application: List every factual connection in the Reference/Alternative Answer. ONLY penalize if student missed something on THAT list. If NOT on that list → do not deduct.
-BEFORE writing keyMissed/improvements: Every item MUST exist in the Reference/Alternative Answer. If a concept is NOT in it → do not include it.
-FORBIDDEN: Citing cases not in Reference Answer. Requiring doctrines not in Reference Answer. Using your own law knowledge to add requirements. Importing ANY doctrine not in Reference Answer. Requiring section/case numbers the Reference Answer does not cite.
-SELF-CHECK: For each deduction ask 'Can I point to the exact sentence in the Reference/Alternative Answer that requires this?' If NO → remove deduction and increase score.
+CRITICAL JSON OUTPUT RULES: Use single quotes inside all string values. No newlines inside string values. No trailing commas. Keep all feedback on one line.
+
 Question: ${question}
 ${maSection}
 ${(keyPoints || []).length ? `Key Points: ${keyPoints.join(', ')}` : ''}
 ${refCtx ? `Legal Context: ${refCtx.slice(0, 400)}` : ''}
+
 Student Answer: ${answer}
+
+MODEL ANSWER BOUNDARY — READ THIS FIRST:
+Your ONLY benchmark is the Reference/Alternative Answer shown above. Nothing else.
+BEFORE scoring ANY component:
+Step 1 — Read the Reference/Alternative Answer above.
+Step 2 — List what it contains: What laws/doctrines does it cite? What factual analysis does it make? What conclusion does it reach?
+Step 3 — Compare student answer ONLY against that list.
+Step 4 — Do NOT penalize for anything outside that list.
+
+ABSOLUTELY FORBIDDEN:
+- Citing cases not in the Reference/Alternative Answer
+- Requiring doctrines not in the Reference/Alternative Answer
+- Adding requirements from your own legal knowledge
+- Importing ANY concept not in the Reference/Alternative Answer
+- Saying 'student should have discussed X' when X is absent from the Reference Answer
+
+SELF-CHECK — Before finalizing each score ask: 'Can I point to the exact part of the Reference/Alternative Answer that requires this?' If NO → remove the deduction. Increase the score. If YES → deduction is valid.
+
+${copyPasteDetected ? 'COPY-PASTE WARNING: Answer appears copied from facts. Score strictly.' : ''}
+
+A — ANSWER (Max 1.5 pts) — DECISION TREE:
+Step 1: Did student answer the question? NO → 0/1.5. STOP.
+Step 2: Does student position match Reference Answer OR any Alternative Answer? YES → 1.5/1.5. STOP. PARTIAL/UNCLEAR → 0.5/1.5. STOP. NO (contradicts all) → 1.0/1.5. STOP.
+
+L — LEGAL BASIS (Max 3.0 pts):
+3.0 — Student cited the correct law/doctrine present in the Reference Answer
+2.0 — Student cited correct general area of law, substance is right but imprecise
+1.0 — Student mentioned legal area without specific rule or doctrine
+0 — No legal basis, or completely wrong law
+CRITICAL: Award based ONLY on what the Reference/Alternative Answer requires. Do NOT require section numbers, case names, or doctrines absent from the Reference Answer.
+
+A — APPLICATION (Max 4.0 pts):
+4.0 — Student application mirrors the Reference/Alternative Answer application
+3.0-3.5 — Covers key points, minor gaps
+2.0-2.5 — Partial application
+1.0-1.5 — Superficial attempt
+0 — No application
+BOUNDARY: Only deduct for missing analysis that is PRESENT in the Reference Answer. Do NOT deduct for missing analysis ABSENT from the Reference Answer.
+SIMILARITY CHECK: If student application covers the same key points as Reference Answer application → minimum 3.5/4.
+
+C — CONCLUSION (Max 1.5 pts):
+1.5 — Clear closing statement present
+1.0 — Brief conclusion present
+0.5 — Implied conclusion only
+0 — No conclusion at all
+NEVER deduct for lacking legal foundation — that belongs in L and A components.
+
 ${GRADE_SCALE}
-Respond ONLY with valid JSON: {"score":"X/10","numericScore":0,"grade":"...","alac":{"answer":{"score":0,"max":1.5,"feedback":"under 50 words","studentDid":""},"legalBasis":{"score":0,"max":3,"feedback":"under 50 words","studentDid":""},"application":{"score":0,"max":4,"feedback":"under 50 words","studentDid":""},"conclusion":{"score":0,"max":1.5,"feedback":"under 50 words","studentDid":""}},"overallFeedback":"under 200 words","strengths":[],"improvements":["ONLY based on Reference/Alternative Answer"],"keyMissed":["ONLY items from Reference/Alternative Answer that student missed"],"matchedAlternative":1,"format":"essay"}`;
+Respond ONLY with valid JSON: {"score":"X/10","numericScore":0,"grade":"...","alac":{"answer":{"score":0,"max":1.5,"feedback":"under 50 words","studentDid":""},"legalBasis":{"score":0,"max":3,"feedback":"under 50 words","studentDid":""},"application":{"score":0,"max":4,"feedback":"under 50 words","studentDid":""},"conclusion":{"score":0,"max":1.5,"feedback":"under 50 words","studentDid":""}},"overallFeedback":"under 200 words","strengths":[],"improvements":["ONLY from Reference Answer"],"keyMissed":["ONLY from Reference Answer"],"matchedAlternative":1,"format":"essay"}`;
     } else {
       maxTok = 2500;
       prompt = `You are a Philippine Bar Exam examiner. Evaluate this conceptual/theoretical answer. Keep overallFeedback under 100 words and each component feedback under 50 words.
