@@ -2858,44 +2858,51 @@ Student Answer: ${answer}
 
 Score each ALAC component using these weights which reflect actual Philippine Bar Exam priorities (total = 10 points):
 
-A — Answer (1.5 pts) — NON-NEGOTIABLE RULE:
+A — Answer (Max 1.5 points)
 
-  The Answer component has ONE job: Did the student directly answer the question?
+  THE ONLY CRITERION: Is the answer responsive to the question asked?
+  A responsive answer directly addresses what was asked — nothing more is required.
 
-  ALWAYS give 1.5/1.5 when student:
-  - States YES or NO clearly
-  - States a clear legal conclusion
-  - Directly addresses what was asked
+  SCORING:
+  - 1.5/1.5: Answer is responsive to the question. The student addressed what was asked, whether briefly or in detail.
+  - 1.0/1.5: Answer is partially responsive. Student addressed the question but only in part, or the response is ambiguous.
+  - 0.5/1.5: Answer is minimally responsive. Student touched on the topic but did not clearly address the specific question asked.
+  - 0/1.5: Answer is not responsive. Student did not address the question at all, answered a different question, or left blank.
 
-  NEVER deduct from Answer (A) because:
-  - "lacks legal basis" — belongs in L component
-  - "lacks reasoning" — belongs in A component
-  - "lacks explanation" — belongs in A component
-  - "too brief" — brevity is not a deficiency here
-  - "incomplete analysis" — analysis is in L and A
-  - "lacks substantive discussion" — not required here
+  WHAT RESPONSIVENESS MEANS:
+  A response is RESPONSIVE if it addresses the specific question asked — regardless of:
+  - Length (one word or one paragraph)
+  - Whether law is cited (law belongs in L)
+  - Whether facts are applied (belongs in A)
+  - Whether conclusion is stated (belongs in C)
+  - Whether reasoning is shown (belongs in L/A)
 
-  EXAMPLES — ALL must receive 1.5/1.5:
-  - "Yes there is a valid insurance contract."
-  - "No, he is not correct."
-  - "The petition will prosper."
-  - "Yes, the contract is valid and binding."
-  - "No. The argument is untenable."
-  - "LTO is not liable."
+  WHAT RESPONSIVENESS DOES NOT REQUIRE:
+  - Legal citations — that is Legal Basis (L)
+  - Factual analysis — that is Application (A)
+  - Conclusory statement — that is Conclusion (C)
+  - Explanation or elaboration
+  - Specific format or length
 
-  The Answer (A) component is a THRESHOLD check:
-  Did they answer? YES → 1.5
-  Did they not answer? NO → 0 to 0.5
+  EXAMPLES:
 
-  It is NOT a quality check — quality is measured in L and A components.
+  Question: "Is there a valid insurance contract?"
 
-  1.0/1.5: Answer is present but indirect or hedged (e.g. "It depends on...")
+  1.5/1.5 — Responsive: "Yes, there is a valid and binding insurance contract." — Directly addresses the question asked.
+  1.5/1.5 — Responsive: "Yes there is a valid and binding insurance contract." — Same — directly responsive. Full credit.
+  1.5/1.5 — Responsive: "No, Sisa's contention is not tenable." — Directly answers whether contention is correct.
+  1.5/1.5 — Responsive: "The petition will prosper." — Directly answers whether petition prospers.
+  1.0/1.5 — Partially Responsive: "It depends on whether consent was given." — Hedged — partially addresses the question.
+  0/1.5 — Not Responsive: "The law provides that consent is required." — States a legal rule but does not answer the specific question asked.
+  0/1.5 — Not Responsive: [blank or irrelevant answer] — Did not address the question.
 
-  0.5/1.5: Answer is implied but not clearly stated
-
-  0.5/1.5: Answer is contradictory to suggested or alternative answer
-
-  0/1.5: No answer given at all
+  ABSOLUTE RULE:
+  NEVER deduct from Answer (A) for reasons that belong to other ALAC components.
+  The Answer component has ONE job: Was the student RESPONSIVE to the question?
+  If YES → 1.5/1.5
+  If PARTIALLY → 1.0/1.5
+  If BARELY → 0.5/1.5
+  If NO → 0/1.5
 
 L — Legal Basis (3.0 pts): The purpose of this component is to check whether the student knows WHAT law or doctrine governs the issue — not to test their ability to memorize article numbers or G.R. citation numbers.
 
@@ -2973,9 +2980,9 @@ CALIBRATION EXAMPLES:
 
 ANSWER COMPONENT:
 
-  Perfect Answer (1.5/1.5): "Yes, there is a valid insurance contract." — Direct, clear, answers the question. FULL CREDIT.
-  Perfect Answer (1.5/1.5): "No, Sisa's contention is not tenable." — Direct, clear, answers the question. FULL CREDIT.
-  Wrong evaluation: Giving Answer 0.5/1.5 because "lacks legal reasoning" — FORBIDDEN. Legal reasoning belongs in L and A.
+  Responsive (1.5/1.5): "Yes, there is a valid insurance contract." — Responsive to the question. FULL CREDIT.
+  Responsive (1.5/1.5): "No, Sisa's contention is not tenable." — Responsive to the question. FULL CREDIT.
+  Wrong evaluation: Giving Answer 0.5/1.5 because "lacks legal reasoning" — FORBIDDEN. Responsiveness is the only criterion.
 
 CONCLUSION COMPONENT:
 
