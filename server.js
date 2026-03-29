@@ -2879,36 +2879,36 @@ Student Answer: ${answer}
 
 Score each ALAC component using these weights which reflect actual Philippine Bar Exam priorities (total = 10 points):
 
-A — ANSWER (Max 1.5 points)
+A — ANSWER (Max 1.5 points) — SEQUENTIAL DECISION TREE:
+Follow these steps IN ORDER. Stop at first match.
 
-TWO CRITERIA (in order):
-1. Is the answer RESPONSIVE to the question?
-2. Is the answer CORRECT (matches model/alternative)?
+STEP 1: Did student answer the question at all?
+If NO → score: 0/1.5. STOP.
 
-SCORING:
-1.5/1.5 — Responsive AND correct. Student directly answered the question AND the position matches the model answer or any alternative answer.
-1.0/1.5 — Responsive but CONTRADICTS correct answer. Student directly answered the question BUT the position is OPPOSITE to the model answer AND does not match any alternative answer. Deduct 0.5 for wrong legal position.
-0.5/1.5 — Partially responsive. Student touched on the topic but did not clearly answer the specific question asked.
-0/1.5 — Not responsive. Student did not answer the question at all, left blank, or answered a different question.
+STEP 2: Check student position vs references.
+State explicitly:
+"Model answer position: [YES/NO/conclusion]"
+"Student position: [YES/NO/conclusion]"
+"Match with model or any alternative: YES/NO"
 
-CONTRADICTION CHECK:
-Before finalizing Answer score, check: "Does the student's YES/NO position match the model answer or ANY alternative answer?"
-If YES → no deduction → 1.5/1.5
-If NO → deduct 0.5 → 1.0/1.5
-If PARTIALLY → 0.5/1.5
-If NOT ANSWERED → 0/1.5
+STEP 3 — Assign score:
+- Match found (student position agrees with model OR any alternative) → 1.5/1.5
+- No match (student position CONTRADICTS all references and all alternatives) → 1.0/1.5. Feedback must say: "Responsive but contradicts correct legal position. -0.5 penalty applied."
+- Partially responsive (hedged/unclear) → 0.5/1.5
+- Not responsive (blank/irrelevant) → 0/1.5
+
+CRITICAL: Responsive alone does NOT equal 1.5/1.5. Student must be BOTH responsive AND correct. Wrong legal position = 1.0/1.5 maximum.
 
 EXAMPLES:
 1.5/1.5 — Model: "No, Juan cannot insist..." Student: "No, he cannot insist..." → Responsive + matches model. Full credit.
 1.0/1.5 — Model: "No, Juan cannot insist..." Student: "Yes, Juan can insist..." → Responsive but wrong position. -0.5 penalty.
 1.5/1.5 — Model says YES but Alternative 2 says NO. Student says NO. → Matches Alternative 2. Full credit.
 
-FORBIDDEN DEDUCTION REASONS (still apply):
+FORBIDDEN DEDUCTION REASONS:
 - "lacks legal reasoning" → belongs in L
 - "lacks legal basis" → belongs in L
 - "lacks factual analysis" → belongs in A
 - "lacks depth or detail" → belongs in L/A
-- "lacks substantive content" → belongs in L/A
 The ONLY valid deduction from Answer (A) is: -0.5 for contradicting the correct legal position (when no alternative supports it).
 
 L — Legal Basis (3.0 pts): The purpose of this component is to check whether the student knows WHAT law or doctrine governs the issue — not to test their ability to memorize article numbers or G.R. citation numbers.
@@ -3375,6 +3375,18 @@ ${maSection}
 ${(keyPoints || []).length ? `Key Points: ${keyPoints.join(', ')}` : ''}
 ${refCtx ? `Legal Context: ${refCtx.slice(0, 400)}` : ''}
 Student Answer: ${answer}
+
+ANSWER (A) SCORING — SEQUENTIAL DECISION TREE:
+Follow these steps IN ORDER. Stop at first match.
+STEP 1: Did student answer the question at all? If NO → score: 0/1.5. STOP.
+STEP 2: Check student position vs references. State explicitly: "Model answer position: [YES/NO/conclusion]" "Student position: [YES/NO/conclusion]" "Match with model or any alternative: YES/NO"
+STEP 3 — Assign score:
+- Match found (student position agrees with model OR any alternative) → 1.5/1.5
+- No match (student position CONTRADICTS all references and all alternatives) → 1.0/1.5. Feedback must say: "Responsive but contradicts correct legal position. -0.5 penalty applied."
+- Partially responsive (hedged/unclear) → 0.5/1.5
+- Not responsive (blank/irrelevant) → 0/1.5
+CRITICAL: Responsive alone does NOT equal 1.5/1.5. Student must be BOTH responsive AND correct. Wrong legal position = 1.0/1.5 maximum.
+
 ${GRADE_SCALE}
 Respond ONLY with valid JSON: {"score":"X/10","numericScore":0,"grade":"...","alac":{"answer":{"score":0,"max":1.5,"feedback":"under 50 words","studentDid":""},"legalBasis":{"score":0,"max":3,"feedback":"under 50 words","studentDid":""},"application":{"score":0,"max":4,"feedback":"under 50 words","studentDid":""},"conclusion":{"score":0,"max":1.5,"feedback":"under 50 words","studentDid":""}},"overallFeedback":"under 200 words","strengths":[],"improvements":["ONLY from model answer"],"keyMissed":["ONLY from model answer"],"matchedAlternative":1,"format":"essay"}`;
     } else {
