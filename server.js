@@ -2848,6 +2848,27 @@ IMPORTANT CHECKS BEFORE SCORING:
 2. Does the student reach a clear legal conclusion? If NO → Conclusion = 0 to 0.5
 3. Is the answer primarily copied/restated facts with no legal analysis? If YES → Legal Basis = 0, Application ≤ 0.5, Conclusion = 0. NOTE: Do NOT reduce Answer (A) score for this — Answer is graded on responsiveness only.
 4. The Answer (A) component is NEVER affected by checks 1, 2, or 3. Answer (A) is scored ONLY on whether the student was responsive to the question. A direct YES/NO or clear legal position ALWAYS scores 1.5/1.5 regardless of whether law was cited. A 0.5 deduction if the direct answer is contradicting to suggested or alternative answer.
+
+MODEL ANSWER BOUNDARY RULE — STRICTLY ENFORCED:
+The Reference Answer and Alternative Answers provided are your ONLY benchmark for scoring.
+You MUST NOT penalize students for failing to discuss any law, doctrine, case, or concept that does NOT appear in the model answer or alternative answers.
+
+FORBIDDEN evaluator behaviors:
+- Importing legal doctrines not in model answer
+- Citing cases not mentioned in model answer
+- Requiring discussion of concepts not in model answer
+- Using your own legal knowledge to add requirements beyond the model answer
+- Saying "student should have discussed X" when X is not in the model answer
+
+CORRECT evaluator behavior:
+- Compare student answer ONLY against what is in the model answer
+- Award full Legal Basis credit if student cited the same law/doctrine as model answer
+- Award full Application credit if student applied law to facts the same way as model answer
+- Improve items and keyMissed must ONLY reference concepts present in the model answer
+
+BEFORE writing any improve/keyMissed item ask: "Is this concept present in the model answer?" If NO → do not include it.
+BEFORE deducting from Legal Basis ask: "Did the model answer cite this law/doctrine?" If NO → do not deduct for missing it.
+BEFORE deducting from Application ask: "Did the model answer apply this analysis?" If NO → do not deduct for missing it.
 ${copyPasteDetected ? '\nWARNING: The student answer appears to be largely copied from the facts/context. Evaluate strictly — this should receive a very low score as it shows no legal analysis.\n' : ''}
 Question: ${question}
 ${maSection}
@@ -2904,8 +2925,8 @@ Respond ONLY with valid JSON (no markdown):
   },
   "overallFeedback": "2-3 sentence overall assessment under 200 words",
   "strengths": ["..."],
-  "improvements": ["..."],
-  "keyMissed": ["specific law or case they should have cited"],
+  "improvements": ["ONLY improvements based on what the model answer contains — NEVER suggest concepts absent from model answer"],
+  "keyMissed": ["ONLY concepts FROM the model answer that the student missed — NEVER include concepts not in model answer"],
   "format": "essay"
 }`;
   } else {
@@ -3315,6 +3336,9 @@ IMPORTANT CHECKS BEFORE SCORING:
 2. Does the student reach a clear legal conclusion? If NO → Conclusion = 0 to 0.5
 3. Is the answer primarily copied/restated facts with no legal analysis? If YES → Legal Basis = 0, Application ≤ 0.5, Conclusion = 0. Do NOT reduce Answer (A) for this reason.
 4. The Answer (A) component scores ONLY on responsiveness — did the student answer the question? A direct YES/NO or clear position = 1.5/1.5 always. A 0.5 deduction if the direct answer is contradicting to suggested or alternative answer.
+
+MODEL ANSWER BOUNDARY RULE:
+The Reference Answer and Alternative Answers are your ONLY benchmark. Do NOT penalize students for failing to discuss any law, doctrine, case, or concept NOT in the model answer or alternatives. Do NOT import your own legal knowledge to add requirements. keyMissed and improvements must ONLY reference concepts present in the model answer. Before deducting from Legal Basis or Application, ask: "Did the model answer cite/apply this?" If NO → do not deduct.
 ${copyPasteDetected ? 'WARNING: The student answer appears to be largely copied from the facts/context. Evaluate strictly — this should receive a very low score as it shows no legal analysis.' : ''}
 Question: ${question}
 ${maSection}
@@ -3322,7 +3346,7 @@ ${(keyPoints || []).length ? `Key Points: ${keyPoints.join(', ')}` : ''}
 ${refCtx ? `Legal Context: ${refCtx.slice(0, 400)}` : ''}
 Student Answer: ${answer}
 ${GRADE_SCALE}
-Respond ONLY with valid JSON: {"score":"X/10","numericScore":0,"grade":"...","alac":{"answer":{"score":0,"max":1.5,"feedback":"under 50 words","studentDid":""},"legalBasis":{"score":0,"max":3,"feedback":"under 50 words","studentDid":""},"application":{"score":0,"max":4,"feedback":"under 50 words","studentDid":""},"conclusion":{"score":0,"max":1.5,"feedback":"under 50 words","studentDid":""}},"overallFeedback":"under 200 words","strengths":[],"improvements":[],"keyMissed":[],"matchedAlternative":1,"format":"essay"}`;
+Respond ONLY with valid JSON: {"score":"X/10","numericScore":0,"grade":"...","alac":{"answer":{"score":0,"max":1.5,"feedback":"under 50 words","studentDid":""},"legalBasis":{"score":0,"max":3,"feedback":"under 50 words","studentDid":""},"application":{"score":0,"max":4,"feedback":"under 50 words","studentDid":""},"conclusion":{"score":0,"max":1.5,"feedback":"under 50 words","studentDid":""}},"overallFeedback":"under 200 words","strengths":[],"improvements":["ONLY from model answer"],"keyMissed":["ONLY from model answer"],"matchedAlternative":1,"format":"essay"}`;
     } else {
       maxTok = 2500;
       prompt = `You are a Philippine Bar Exam examiner. Evaluate this conceptual/theoretical answer. Keep overallFeedback under 100 words and each component feedback under 50 words.
