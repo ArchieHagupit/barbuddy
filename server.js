@@ -2879,7 +2879,7 @@ Student Answer: ${answer}
 
 Score each ALAC component using these weights which reflect actual Philippine Bar Exam priorities (total = 10 points):
 
-A — Answer (1.5 pts): Direct answer to the question upfront.
+A — Answer (1.5 pts): Direct answer to the question upfront. A 0.5 deduction if the direct answer is contradicting to suggested or alternative answer.
 
 L — Legal Basis (3.0 pts): The purpose of this component is to check whether the student knows WHAT law or doctrine governs the issue — not to test their ability to memorize article numbers or G.R. citation numbers.
 
