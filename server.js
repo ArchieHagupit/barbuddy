@@ -2849,30 +2849,26 @@ IMPORTANT CHECKS BEFORE SCORING:
 3. Is the answer primarily copied/restated facts with no legal analysis? If YES → Legal Basis = 0, Application ≤ 0.5, Conclusion = 0. NOTE: Do NOT reduce Answer (A) score for this — Answer is graded on responsiveness only.
 4. The Answer (A) component is NEVER affected by checks 1, 2, or 3. Answer (A) is scored ONLY on whether the student was responsive to the question. A direct YES/NO or clear legal position ALWAYS scores 1.5/1.5 regardless of whether law was cited. A 0.5 deduction if the direct answer is contradicting to suggested or alternative answer.
 
-ABSOLUTE BENCHMARK RULE — NO EXCEPTIONS:
+MODEL ANSWER BOUNDARY RULE — STRICTLY ENFORCED:
+The Reference Answer and Alternative Answers provided are your ONLY benchmark for scoring.
+You MUST NOT penalize students for failing to discuss any law, doctrine, case, or concept that does NOT appear in the model answer or alternative answers.
 
-Your job is to grade the student against the provided benchmark answer ONLY.
-You are NOT a law professor adding topics. You are NOT improving the question syllabus. You are ONLY checking if the student answered as well as the benchmark answer.
+FORBIDDEN evaluator behaviors:
+- Importing legal doctrines not in model answer
+- Citing cases not mentioned in model answer
+- Requiring discussion of concepts not in model answer
+- Using your own legal knowledge to add requirements beyond the model answer
+- Saying "student should have discussed X" when X is not in the model answer
 
-THE ONLY VALID REASON TO DEDUCT FROM LEGAL BASIS is: The benchmark answer cited a specific law, doctrine, or case AND the student missed it.
-THE ONLY VALID REASON TO DEDUCT FROM APPLICATION is: The benchmark answer made a specific analytical point AND the student missed it.
+CORRECT evaluator behavior:
+- Compare student answer ONLY against what is in the model answer
+- Award full Legal Basis credit if student cited the same law/doctrine as model answer
+- Award full Application credit if student applied law to facts the same way as model answer
+- Improve items and keyMissed must ONLY reference concepts present in the model answer
 
-BEFORE writing ANY deduction or improve item:
-Step 1: Find the exact sentence in the benchmark answer that supports this deduction.
-Step 2: If you CANNOT find it in the benchmark answer → DELETE the deduction entirely.
-Step 3: If you CAN find it → include it.
-There is NO Step 4. There are no exceptions.
-
-CONCRETE EXAMPLE OF WRONG BEHAVIOR:
-Benchmark answer discusses: RCC Section 2, RCC Section 18, juridical personality, certificate of incorporation.
-Student discusses: RCC Section 2, RCC Section 18, juridical personality, certificate of incorporation.
-Wrong feedback: "Student failed to cite corporation by estoppel under Section 20"
-Why wrong: Section 20 / estoppel is NOT in the benchmark answer.
-Correct feedback: Student cited same provisions as benchmark → full or near-full credit.
-
-SELF-CHECK BEFORE FINALIZING SCORES:
-For each deduction you wrote, ask: "Does the benchmark answer contain this concept?"
-YES → keep the deduction. NO → remove it and increase the score.
+BEFORE writing any improve/keyMissed item ask: "Is this concept present in the model answer?" If NO → do not include it.
+BEFORE deducting from Legal Basis ask: "Did the model answer cite this law/doctrine?" If NO → do not deduct for missing it.
+BEFORE deducting from Application ask: "Did the model answer apply this analysis?" If NO → do not deduct for missing it.
 ${copyPasteDetected ? '\nWARNING: The student answer appears to be largely copied from the facts/context. Evaluate strictly — this should receive a very low score as it shows no legal analysis.\n' : ''}
 Question: ${question}
 ${maSection}
@@ -3341,12 +3337,8 @@ IMPORTANT CHECKS BEFORE SCORING:
 3. Is the answer primarily copied/restated facts with no legal analysis? If YES → Legal Basis = 0, Application ≤ 0.5, Conclusion = 0. Do NOT reduce Answer (A) for this reason.
 4. The Answer (A) component scores ONLY on responsiveness — did the student answer the question? A direct YES/NO or clear position = 1.5/1.5 always. A 0.5 deduction if the direct answer is contradicting to suggested or alternative answer.
 
-ABSOLUTE BENCHMARK RULE — NO EXCEPTIONS:
-Grade the student against the benchmark answer ONLY. You are NOT adding topics — ONLY checking if the student answered as well as the benchmark.
-THE ONLY VALID REASON TO DEDUCT FROM LEGAL BASIS: benchmark cited a law/doctrine AND student missed it.
-THE ONLY VALID REASON TO DEDUCT FROM APPLICATION: benchmark made an analytical point AND student missed it.
-BEFORE writing ANY deduction: Find the exact sentence in the benchmark that supports it. If you CANNOT find it → DELETE the deduction and increase the score.
-SELF-CHECK: For each deduction ask "Does the benchmark contain this concept?" YES → keep. NO → remove it.
+MODEL ANSWER BOUNDARY RULE:
+The Reference Answer and Alternative Answers are your ONLY benchmark. Do NOT penalize students for failing to discuss any law, doctrine, case, or concept NOT in the model answer or alternatives. Do NOT import your own legal knowledge to add requirements. keyMissed and improvements must ONLY reference concepts present in the model answer. Before deducting from Legal Basis or Application, ask: "Did the model answer cite/apply this?" If NO → do not deduct.
 ${copyPasteDetected ? 'WARNING: The student answer appears to be largely copied from the facts/context. Evaluate strictly — this should receive a very low score as it shows no legal analysis.' : ''}
 Question: ${question}
 ${maSection}
