@@ -2858,51 +2858,33 @@ Student Answer: ${answer}
 
 Score each ALAC component using these weights which reflect actual Philippine Bar Exam priorities (total = 10 points):
 
-A — Answer (Max 1.5 points)
+A — ANSWER (Max 1.5 points)
+  SOLE CRITERION: Responsiveness to the question
 
-  THE ONLY CRITERION: Is the answer responsive to the question asked?
-  A responsive answer directly addresses what was asked — nothing more is required.
+  Ask yourself ONE question only: "Did the student answer what was asked?"
 
-  SCORING:
-  - 1.5/1.5: Answer is responsive to the question. The student addressed what was asked, whether briefly or in detail.
-  - 1.0/1.5: Answer is partially responsive. Student addressed the question but only in part, or the response is ambiguous.
-  - 0.5/1.5: Answer is minimally responsive. Student touched on the topic but did not clearly address the specific question asked.
-  - 0/1.5: Answer is not responsive. Student did not address the question at all, answered a different question, or left blank.
+  YES → 1.5/1.5. Stop. Do not evaluate anything else.
+  PARTIALLY → 1.0/1.5
+  BARELY → 0.5/1.5
+  NO → 0/1.5
 
-  WHAT RESPONSIVENESS MEANS:
-  A response is RESPONSIVE if it addresses the specific question asked — regardless of:
-  - Length (one word or one paragraph)
-  - Whether law is cited (law belongs in L)
-  - Whether facts are applied (belongs in A)
-  - Whether conclusion is stated (belongs in C)
-  - Whether reasoning is shown (belongs in L/A)
+  "Yes. ABC corporation is correct." → 1.5/1.5
+  "No, he is not correct." → 1.5/1.5
+  "Yes there is a valid insurance contract." → 1.5/1.5
+  "The petition will prosper." → 1.5/1.5
 
-  WHAT RESPONSIVENESS DOES NOT REQUIRE:
-  - Legal citations — that is Legal Basis (L)
-  - Factual analysis — that is Application (A)
-  - Conclusory statement — that is Conclusion (C)
-  - Explanation or elaboration
-  - Specific format or length
+  THE FOLLOWING ARE FORBIDDEN REASONS TO DEDUCT FROM ANSWER (A):
+  - "lacks legal reasoning"
+  - "lacks legal basis"
+  - "lacks factual analysis"
+  - "lacks depth"
+  - "lacks detail"
+  - "lacks substantive content"
+  - "merely restates conclusion"
+  - "incomplete analysis"
+  - "no citation"
 
-  EXAMPLES:
-
-  Question: "Is there a valid insurance contract?"
-
-  1.5/1.5 — Responsive: "Yes, there is a valid and binding insurance contract." — Directly addresses the question asked.
-  1.5/1.5 — Responsive: "Yes there is a valid and binding insurance contract." — Same — directly responsive. Full credit.
-  1.5/1.5 — Responsive: "No, Sisa's contention is not tenable." — Directly answers whether contention is correct.
-  1.5/1.5 — Responsive: "The petition will prosper." — Directly answers whether petition prospers.
-  1.0/1.5 — Partially Responsive: "It depends on whether consent was given." — Hedged — partially addresses the question.
-  0/1.5 — Not Responsive: "The law provides that consent is required." — States a legal rule but does not answer the specific question asked.
-  0/1.5 — Not Responsive: [blank or irrelevant answer] — Did not address the question.
-
-  ABSOLUTE RULE:
-  NEVER deduct from Answer (A) for reasons that belong to other ALAC components.
-  The Answer component has ONE job: Was the student RESPONSIVE to the question?
-  If YES → 1.5/1.5
-  If PARTIALLY → 1.0/1.5
-  If BARELY → 0.5/1.5
-  If NO → 0/1.5
+  If your feedback for Answer (A) contains ANY of the above phrases → you are wrong. Re-score Answer as 1.5/1.5.
 
 L — Legal Basis (3.0 pts): The purpose of this component is to check whether the student knows WHAT law or doctrine governs the issue — not to test their ability to memorize article numbers or G.R. citation numbers.
 
@@ -2931,64 +2913,38 @@ CRITICAL INSTRUCTION: Do NOT deduct points for failure to cite article numbers, 
 
 A — Application (4.0 pts): HIGHEST WEIGHT. How well the student applies the law to the specific facts. Only award full points if the student explicitly connects the legal rule to the specific parties and facts in the question. Partial credit for general application. Zero for restating the law without applying it to the facts. This demonstrates actual legal reasoning ability which is the primary skill tested in the bar exam.
 
-C — Conclusion (1.5 pts): Clear restatement of the answer with finality. Shows the student can synthesize their analysis.
+C — CONCLUSION (Max 1.5 points)
+  SOLE CRITERION: Is there a closing statement?
 
-CONCLUSION SCORING RULE:
-  - If student's legal position is correct (matches model answer or alternative): Conclusion minimum score: 1.0/1.5
-  - Deduct only if conclusion:
-    * Is completely absent (0/1.5)
-    * Directly contradicts correct legal position
-    * Is incoherent or nonsensical
-  - NEVER deduct from Conclusion just because it is brief or lacks detail
+  Ask yourself ONE question only: "Did the student end with a closing statement that wraps up their answer?"
 
-CRITICAL DISTINCTION — Answer vs Conclusion:
+  1.5/1.5 — Clear closing statement present. "Therefore, X is liable." / "Thus, the contention is correct." / "Hence, the contract is valid."
+  1.0/1.5 — Closing statement present but brief. Wraps up the answer even without full reasoning.
+  0.5/1.5 — Implied conclusion only. Answer trails off without clear closing.
+  0/1.5 — No conclusion at all. Student ends mid-analysis, no closing statement.
 
-  A — Answer (OPENING):
-  - Position: FIRST sentence of the answer
-  - Content: Direct YES/NO or legal position ONLY
-  - No reasoning required, no law citation required, no facts required
-  - Just: "Yes/No, [legal position]."
-  - Grade: Did they answer directly? Full credit.
+  THE FOLLOWING ARE FORBIDDEN REASONS TO DEDUCT FROM CONCLUSION (C):
+  - "lacks legal foundation"
+  - "lacks prior legal analysis"
+  - "lacks citation of authority"
+  - "requires prior legal reasoning"
+  - "lacks depth"
 
-  C — Conclusion (CLOSING):
-  - Position: LAST sentence of the answer
-  - Content: Final statement AFTER showing legal reasoning and application
-  - Should reinforce the Answer with legal backing
-  - Should reference the reasoning shown in L and A
-  - Example: "Therefore, since X law applies and Y facts are present, the answer is Z."
+  The Conclusion component only checks if a closing statement EXISTS and wraps up the answer. Legal analysis belongs in L and A components.
 
-  KEY RULE:
-  The Answer (A) is judged ONLY on whether the student stated a clear position.
-  The Conclusion (C) is judged on whether the student's closing statement properly wraps up the legal analysis.
-  They are NOT the same component.
-  NEVER apply Conclusion criteria to Answer.
-  NEVER apply Answer criteria to Conclusion.
+  If your feedback for Conclusion (C) contains ANY of the above phrases → you are wrong. Re-score based only on whether a closing statement exists.
 
-COMPONENT ISOLATION — CRITICAL:
-Each ALAC component must be evaluated INDEPENDENTLY and ONLY on its own criteria.
+COMPONENT FIREWALL — ABSOLUTE RULE
 
-NEVER penalize Answer (A) for what belongs in:
-  L — Legal Basis
-  A — Application
-  C — Conclusion
+  Each component is evaluated on its OWN criteria ONLY. Cross-contamination is forbidden.
 
-NEVER penalize Legal Basis (L) for what belongs in Application (A).
+  A — Answer: Was it responsive? ONLY this.
+  L — Legal Basis: Was law cited? ONLY this.
+  A — Application: Was law applied to facts? ONLY this.
+  C — Conclusion: Was there a closing statement? ONLY this.
 
-Each component stands alone. Cross-component penalization is FORBIDDEN.
-
-CALIBRATION EXAMPLES:
-
-ANSWER COMPONENT:
-
-  Responsive (1.5/1.5): "Yes, there is a valid insurance contract." — Responsive to the question. FULL CREDIT.
-  Responsive (1.5/1.5): "No, Sisa's contention is not tenable." — Responsive to the question. FULL CREDIT.
-  Wrong evaluation: Giving Answer 0.5/1.5 because "lacks legal reasoning" — FORBIDDEN. Responsiveness is the only criterion.
-
-CONCLUSION COMPONENT:
-
-  Perfect Conclusion (1.5/1.5): "Therefore, since voluntary desistance was prevented by arrest under Article 6, Sisa is liable for attempted crime, not frustrated." — Wraps up reasoning, references law and facts.
-  Acceptable Conclusion (1.0/1.5): "Thus, the contention is not tenable." — Present but does not reinforce reasoning.
-  Missing Conclusion (0/1.5): Student ends with application paragraph, no closing statement at all.
+  Before finalizing each score ask: "Am I using criteria from a DIFFERENT component?"
+  If YES → remove that reasoning and re-score.
 
 ${GRADE_SCALE}
 
