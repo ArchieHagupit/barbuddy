@@ -3171,7 +3171,7 @@ IMPORTANT: Return pure JSON only. No { } inside string values. Plain text senten
 }
 
 // ── callClaudeHaikuJSON — haiku-only, semaphore-guarded, for fast batch eval ─
-async function callClaudeHaikuJSON(prompt, maxTokens = 2000) {
+async function callClaudeHaikuJSON(prompt, maxTokens = 3000) {
   await aiSemaphore.acquire();
   const JSON_SYSTEM = 'You are a JSON API endpoint. Output ONLY valid JSON. STRICT RULES: (1) Use single quotes inside string values — NEVER double quotes inside strings. (2) No literal newlines inside string values — use \\n if needed. (3) No trailing commas anywhere. (4) Response must start with { and end with }. (5) No markdown, no code fences, no backticks, no explanations. (6) If feedback contains quotes, use single quotes instead.';
   const JSON_SUFFIX = '\n\nCRITICAL: Return ONLY raw JSON. No markdown. No backticks. No fences. Start with { and end with }. Use single quotes inside string values (never double quotes inside strings). No trailing commas. No line breaks inside string values.';
