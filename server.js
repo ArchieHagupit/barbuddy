@@ -2847,7 +2847,7 @@ IMPORTANT CHECKS BEFORE SCORING:
 1. Does the student cite ANY law, article, doctrine, or case? If NO → Legal Basis = 0
 2. Does the student reach a clear legal conclusion? If NO → Conclusion = 0 to 0.5
 3. Is the answer primarily copied/restated facts with no legal analysis? If YES → Legal Basis = 0, Application ≤ 0.5, Conclusion = 0. NOTE: Do NOT reduce Answer (A) score for this — Answer is graded on responsiveness only.
-4. The Answer (A) component is NEVER affected by checks 1, 2, or 3. Answer (A) is scored ONLY on whether the student was responsive to the question. A direct YES/NO or clear legal position ALWAYS scores 1.5/1.5 regardless of whether law was cited. 
+4. The Answer (A) component is NEVER affected by checks 1, 2, or 3. Answer (A) is scored ONLY on whether the student was responsive to the question. A direct YES/NO or clear legal position ALWAYS scores 1.5/1.5 regardless of whether law was cited. A 0.5 deduction if the direct answer is contradicting to suggested or alternative answer.
 ${copyPasteDetected ? '\nWARNING: The student answer appears to be largely copied from the facts/context. Evaluate strictly — this should receive a very low score as it shows no legal analysis.\n' : ''}
 Question: ${question}
 ${maSection}
