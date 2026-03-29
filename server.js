@@ -2846,8 +2846,8 @@ CRITICAL JSON OUTPUT RULES: Use single quotes inside all string values (never do
 IMPORTANT CHECKS BEFORE SCORING:
 1. Does the student cite ANY law, article, doctrine, or case? If NO → Legal Basis = 0
 2. Does the student reach a clear legal conclusion? If NO → Conclusion = 0 to 0.5
-3. Is the answer primarily copied/restated facts with no legal analysis? If YES → Legal Basis = 0, Application ≤ 0.5, Conclusion = 0. NOTE: Do NOT reduce Answer (A) score for this — Answer is graded on responsiveness only.
-4. The Answer (A) component is NEVER affected by checks 1, 2, or 3. Answer (A) is scored ONLY on whether the student was responsive to the question. A direct YES/NO or clear legal position ALWAYS scores 1.5/1.5 regardless of whether law was cited.
+3. Is the answer primarily copied/restated facts with no legal analysis? If YES → Answer ≤ 0.5, Legal Basis = 0, Application ≤ 0.5, Conclusion = 0. An answer that merely restates the given facts without legal reasoning CANNOT score above 2/10 total.
+4. A passing answer MUST contain: a direct legal position, at least one cited law/doctrine/case, legal reasoning connecting law to facts, and a conclusion. Without ALL four, the answer cannot score above 5/10 total.
 ${copyPasteDetected ? '\nWARNING: The student answer appears to be largely copied from the facts/context. Evaluate strictly — this should receive a very low score as it shows no legal analysis.\n' : ''}
 Question: ${question}
 ${maSection}
@@ -2858,37 +2858,11 @@ Student Answer: ${answer}
 
 Score each ALAC component using these weights which reflect actual Philippine Bar Exam priorities (total = 10 points):
 
-A — ANSWER (Max 1.5 points)
-  SOLE CRITERION: Responsiveness to the question
-
-  Ask yourself ONE question only: "Did the student answer what was asked?"
-
-  YES → 1.5/1.5. Stop. Do not evaluate anything else.
-  PARTIALLY → 1.0/1.5
-  BARELY → 0.5/1.5
-  NO → 0/1.5
-
-  "Yes. ABC corporation is correct." → 1.5/1.5
-  "No, he is not correct." → 1.5/1.5
-  "Yes there is a valid insurance contract." → 1.5/1.5
-  "The petition will prosper." → 1.5/1.5
-
-  THE FOLLOWING ARE FORBIDDEN REASONS TO DEDUCT FROM ANSWER (A):
-  - "lacks legal reasoning"
-  - "lacks legal basis"
-  - "lacks factual analysis"
-  - "lacks depth"
-  - "lacks detail"
-  - "lacks substantive content"
-  - "merely restates conclusion"
-  - "incomplete analysis"
-  - "no citation"
-
-  If your feedback for Answer (A) contains ANY of the above phrases → you are wrong. Re-score Answer as 1.5/1.5.
+A — Answer (1.5 pts): Direct answer to the question upfront.
 
 L — Legal Basis (3.0 pts): The purpose of this component is to check whether the student knows WHAT law or doctrine governs the issue — not to test their ability to memorize article numbers or G.R. citation numbers.
 
-Award points in Legal Basis using this scale:
+Award points using this scale:
 
   3.0/3.0 — FULL CREDIT. Award full 3 points if ANY of these is true:
   • Student correctly named a recognized legal doctrine or principle that actually exists in Philippine law and is applicable to the question (e.g. 'the four-fold test', 'doctrine of strained relations', 'the economic reality test', 'principle of non-diminution of benefits', 'the totality of conduct doctrine', 'the business judgment rule', 'doctrine of piercing the corporate veil', etc.)
@@ -2913,38 +2887,7 @@ CRITICAL INSTRUCTION: Do NOT deduct points for failure to cite article numbers, 
 
 A — Application (4.0 pts): HIGHEST WEIGHT. How well the student applies the law to the specific facts. Only award full points if the student explicitly connects the legal rule to the specific parties and facts in the question. Partial credit for general application. Zero for restating the law without applying it to the facts. This demonstrates actual legal reasoning ability which is the primary skill tested in the bar exam.
 
-C — CONCLUSION (Max 1.5 points)
-  SOLE CRITERION: Is there a closing statement?
-
-  Ask yourself ONE question only: "Did the student end with a closing statement that wraps up their answer?"
-
-  1.5/1.5 — Clear closing statement present. "Therefore, X is liable." / "Thus, the contention is correct." / "Hence, the contract is valid."
-  1.0/1.5 — Closing statement present but brief. Wraps up the answer even without full reasoning.
-  0.5/1.5 — Implied conclusion only. Answer trails off without clear closing.
-  0/1.5 — No conclusion at all. Student ends mid-analysis, no closing statement.
-
-  THE FOLLOWING ARE FORBIDDEN REASONS TO DEDUCT FROM CONCLUSION (C):
-  - "lacks legal foundation"
-  - "lacks prior legal analysis"
-  - "lacks citation of authority"
-  - "requires prior legal reasoning"
-  - "lacks depth"
-
-  The Conclusion component only checks if a closing statement EXISTS and wraps up the answer. Legal analysis belongs in L and A components.
-
-  If your feedback for Conclusion (C) contains ANY of the above phrases → you are wrong. Re-score based only on whether a closing statement exists.
-
-COMPONENT FIREWALL — ABSOLUTE RULE
-
-  Each component is evaluated on its OWN criteria ONLY. Cross-contamination is forbidden.
-
-  A — Answer: Was it responsive? ONLY this.
-  L — Legal Basis: Was law cited? ONLY this.
-  A — Application: Was law applied to facts? ONLY this.
-  C — Conclusion: Was there a closing statement? ONLY this.
-
-  Before finalizing each score ask: "Am I using criteria from a DIFFERENT component?"
-  If YES → remove that reasoning and re-score.
+C — Conclusion (1.5 pts): Clear restatement of the answer with finality. Shows the student can synthesize their analysis.
 
 ${GRADE_SCALE}
 
@@ -3228,7 +3171,7 @@ IMPORTANT: Return pure JSON only. No { } inside string values. Plain text senten
 }
 
 // ── callClaudeHaikuJSON — haiku-only, semaphore-guarded, for fast batch eval ─
-async function callClaudeHaikuJSON(prompt, maxTokens = 3000) {
+async function callClaudeHaikuJSON(prompt, maxTokens = 2000) {
   await aiSemaphore.acquire();
   const JSON_SYSTEM = 'You are a JSON API endpoint. Output ONLY valid JSON. STRICT RULES: (1) Use single quotes inside string values — NEVER double quotes inside strings. (2) No literal newlines inside string values — use \\n if needed. (3) No trailing commas anywhere. (4) Response must start with { and end with }. (5) No markdown, no code fences, no backticks, no explanations. (6) If feedback contains quotes, use single quotes instead.';
   const JSON_SUFFIX = '\n\nCRITICAL: Return ONLY raw JSON. No markdown. No backticks. No fences. Start with { and end with }. Use single quotes inside string values (never double quotes inside strings). No trailing commas. No line breaks inside string values.';
@@ -3370,8 +3313,8 @@ IMPORTANT: Return pure JSON only. Never include { or } characters inside any str
 IMPORTANT CHECKS BEFORE SCORING:
 1. Does the student cite ANY law, article, doctrine, or case? If NO → Legal Basis = 0
 2. Does the student reach a clear legal conclusion? If NO → Conclusion = 0 to 0.5
-3. Is the answer primarily copied/restated facts with no legal analysis? If YES → Legal Basis = 0, Application ≤ 0.5, Conclusion = 0. Do NOT reduce Answer (A) for this reason.
-4. The Answer (A) component scores ONLY on responsiveness — did the student answer the question? A direct YES/NO or clear position = 1.5/1.5 always.
+3. Is the answer primarily copied/restated facts with no legal analysis? If YES → Answer ≤ 0.5, Legal Basis = 0, Application ≤ 0.5, Conclusion = 0. An answer that merely restates the given facts without legal reasoning CANNOT score above 2/10 total.
+4. A passing answer MUST contain: a direct legal position, at least one cited law/doctrine/case, legal reasoning connecting law to facts, and a conclusion. Without ALL four, the answer cannot score above 5/10 total.
 ${copyPasteDetected ? 'WARNING: The student answer appears to be largely copied from the facts/context. Evaluate strictly — this should receive a very low score as it shows no legal analysis.' : ''}
 Question: ${question}
 ${maSection}
@@ -4049,7 +3992,7 @@ async function callClaudeJSON(messages, maxTokens, retries = 3, { temperature } 
 }
 
 // callClaude: Sonnet first → 20s wait → Sonnet again → Haiku → 60s wait → Haiku → throw
-async function callClaude(messages, max_tokens=3000, { temperature } = {}) {
+async function callClaude(messages, max_tokens=2000, { temperature } = {}) {
   const SONNET = 'claude-sonnet-4-20250514';
   const HAIKU  = 'claude-haiku-4-5-20251001';
   // [model, milliseconds to wait BEFORE this attempt]
