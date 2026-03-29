@@ -2858,15 +2858,36 @@ Student Answer: ${answer}
 
 Score each ALAC component using these weights which reflect actual Philippine Bar Exam priorities (total = 10 points):
 
-A — Answer (1.5 pts) — STRICT RULE:
+A — Answer (1.5 pts) — NON-NEGOTIABLE RULE:
 
-  1.5/1.5: Student gives a DIRECT answer to the question (YES/NO/clear legal position) regardless of length or detail.
-    Examples that get 1.5:
-    - "No, he is not correct."
-    - "Yes, the contract is valid."
-    - "The petition will prosper."
-    - "LTO is not liable."
-    - "The argument is untenable."
+  The Answer component has ONE job: Did the student directly answer the question?
+
+  ALWAYS give 1.5/1.5 when student:
+  - States YES or NO clearly
+  - States a clear legal conclusion
+  - Directly addresses what was asked
+
+  NEVER deduct from Answer (A) because:
+  - "lacks legal basis" — belongs in L component
+  - "lacks reasoning" — belongs in A component
+  - "lacks explanation" — belongs in A component
+  - "too brief" — brevity is not a deficiency here
+  - "incomplete analysis" — analysis is in L and A
+  - "lacks substantive discussion" — not required here
+
+  EXAMPLES — ALL must receive 1.5/1.5:
+  - "Yes there is a valid insurance contract."
+  - "No, he is not correct."
+  - "The petition will prosper."
+  - "Yes, the contract is valid and binding."
+  - "No. The argument is untenable."
+  - "LTO is not liable."
+
+  The Answer (A) component is a THRESHOLD check:
+  Did they answer? YES → 1.5
+  Did they not answer? NO → 0 to 0.5
+
+  It is NOT a quality check — quality is measured in L and A components.
 
   1.0/1.5: Answer is present but indirect or hedged (e.g. "It depends on...")
 
@@ -2875,22 +2896,6 @@ A — Answer (1.5 pts) — STRICT RULE:
   0.5/1.5: Answer is contradictory to suggested or alternative answer
 
   0/1.5: No answer given at all
-
-CRITICAL RULE FOR ANSWER COMPONENT:
-  A direct YES/NO or clear legal position statement ALWAYS gets 1.5/1.5 for the Answer component — no exceptions.
-
-  Do NOT deduct from Answer (A) because:
-  - The answer is too brief
-  - The answer lacks explanation
-  - The answer is only one sentence
-  - The student did not cite law in the answer
-
-  Law citation and explanation belong in Legal Basis (L) and Application (A) components — NOT in the Answer component.
-
-  The Answer component ONLY evaluates whether the student directly answered the question.
-  Legal citations belong in Legal Basis (L).
-  Factual application belongs in Application (A).
-  Never mix component criteria.
 
 L — Legal Basis (3.0 pts): The purpose of this component is to check whether the student knows WHAT law or doctrine governs the issue — not to test their ability to memorize article numbers or G.R. citation numbers.
 
@@ -2920,6 +2925,35 @@ CRITICAL INSTRUCTION: Do NOT deduct points for failure to cite article numbers, 
 A — Application (4.0 pts): HIGHEST WEIGHT. How well the student applies the law to the specific facts. Only award full points if the student explicitly connects the legal rule to the specific parties and facts in the question. Partial credit for general application. Zero for restating the law without applying it to the facts. This demonstrates actual legal reasoning ability which is the primary skill tested in the bar exam.
 
 C — Conclusion (1.5 pts): Clear restatement of the answer with finality. Shows the student can synthesize their analysis.
+
+COMPONENT ISOLATION — CRITICAL:
+Each ALAC component must be evaluated INDEPENDENTLY and ONLY on its own criteria.
+
+NEVER penalize Answer (A) for what belongs in:
+  L — Legal Basis
+  A — Application
+  C — Conclusion
+
+NEVER penalize Legal Basis (L) for what belongs in Application (A).
+
+Each component stands alone. Cross-component penalization is FORBIDDEN.
+
+CALIBRATION EXAMPLE:
+
+Question: "Is there a valid insurance contract?"
+
+Student Answer: "Yes there is a valid and binding insurance contract."
+
+Correct Scoring:
+- A (Answer): 1.5/1.5 — FULL CREDIT. Student directly answered YES with clear legal conclusion. No deduction allowed.
+- L (Legal Basis): depends on whether they cited applicable law
+- A (Application): depends on whether they applied facts to law
+- C (Conclusion): depends on concluding statement
+
+WRONG Scoring:
+- A (Answer): 0.5/1.5 — NEVER DO THIS
+  Reason given: "lacks legal reasoning"
+  Why wrong: Legal reasoning is L and A, not Answer.
 
 ${GRADE_SCALE}
 
