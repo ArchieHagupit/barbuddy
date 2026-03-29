@@ -1571,6 +1571,21 @@ select.form-input{cursor:pointer;}
         <div id="backfillConceptualLabel" style="font-size:12px;color:var(--muted);"></div>
       </div>
     </div>
+    <!-- ALTERNATIVE ALAC CACHE BACKFILL -->
+    <div style="background:var(--card);border:1px solid var(--bdr2);border-radius:16px;padding:20px;margin-top:18px;">
+      <h3 style="font-family:var(--fd);font-size:16px;font-weight:700;color:var(--og);margin-bottom:4px;">⚡ Pre-generate Alternative ALAC</h3>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.55;">Generates structured ALAC model answers for all cached alternative answers. After running, matched alternative results display with full ALAC formatting.</p>
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+        <button class="btn-gold" id="backfillAltAlacBtn" onclick="startAltAlacBackfill()" style="font-size:13px;padding:8px 18px;">⚡ Start Backfill</button>
+        <span id="backfillAltAlacStatus" style="font-size:13px;color:var(--muted);"></span>
+      </div>
+      <div id="backfillAltAlacProgress" style="display:none;margin-top:14px;">
+        <div style="background:var(--card3);border-radius:8px;height:8px;overflow:hidden;margin-bottom:8px;">
+          <div id="backfillAltAlacBar" style="height:100%;width:0%;background:var(--og);border-radius:8px;transition:width .4s;"></div>
+        </div>
+        <div id="backfillAltAlacLabel" style="font-size:12px;color:var(--muted);"></div>
+      </div>
+    </div>
     <!-- BAR EXAM DATE CARD -->
     <div style="background:var(--card);border:1px solid var(--bdr2);border-radius:16px;padding:20px;margin-top:18px;">
       <h3 style="font-family:var(--fd);font-size:16px;font-weight:700;color:var(--gold-l);margin-bottom:4px;">⚖️ Bar Exam Date</h3>
@@ -4937,7 +4952,7 @@ function parseALACString(text){
   return comps;
 }
 // Render an ALAC components object as colored section cards
-function renderALACSections(components){
+function renderALACSections(components, headerLabel){
   if(!components) return '';
   const DEFS=[
     {field:'answer',      label:'A — Answer',      color:'#4a9eff', icon:'⚖️'},
@@ -4947,8 +4962,9 @@ function renderALACSections(components){
   ];
   const parts=DEFS.filter(d=>components[d.field]);
   if(!parts.length) return '';
+  const title=headerLabel||'📘 Model Answer (ALAC Format)';
   return `<div class="alac-model-answer">
-    <div class="alac-model-header">📘 Model Answer (ALAC Format)</div>
+    <div class="alac-model-header">${title}</div>
     ${parts.map(d=>`<div class="alac-section">
       <div class="alac-section-label" style="color:${d.color};">${d.icon} ${d.label}</div>
       <div class="alac-section-content">${h(components[d.field])}</div>
@@ -4994,23 +5010,33 @@ function renderModelAnswer(evaluation, questionType){
        </div>`
     : '';
 
-  // 1. Structured ALAC components from server
-  if(evaluation.alacModelAnswer){
-    const rendered=renderALACSections(evaluation.alacModelAnswer);
+  // Determine ALAC header label
+  const alacLabel = (evaluation.usedAlternative && evaluation.matchedAlternativeNumber > 0)
+    ? `📘 Alternative Answer ${evaluation.matchedAlternativeNumber} (ALAC Format)`
+    : '📘 Model Answer (ALAC Format)';
+
+  // 1. Matched alternative ALAC from server
+  if(evaluation.matchedAlternativeAlac){
+    const rendered=renderALACSections(evaluation.matchedAlternativeAlac, alacLabel);
     if(rendered) return altBanner + rendered;
   }
-  // 2. Structured conceptual components from server
+  // 2. Structured ALAC components from server
+  if(evaluation.alacModelAnswer){
+    const rendered=renderALACSections(evaluation.alacModelAnswer, alacLabel);
+    if(rendered) return altBanner + rendered;
+  }
+  // 3. Structured conceptual components from server
   if(evaluation.conceptualModelAnswer){
     const rendered=renderConceptualSections(evaluation.conceptualModelAnswer);
     if(rendered) return altBanner + rendered;
   }
-  // 3. Formatted ALAC string or plain modelAnswer
+  // 4. Formatted ALAC string or plain modelAnswer
   const text=evaluation.modelAnswerFormatted||evaluation.modelAnswer||evaluation.correctAnswer||'';
   if(!text) return '<em style="color:#777;font-size:13px;">No model answer available for this question.</em>';
-  // 4. Try parsing as ALAC text
+  // 5. Try parsing as ALAC text
   const comps=parseALACString(text);
   if(comps){
-    const rendered=renderALACSections(comps);
+    const rendered=renderALACSections(comps, alacLabel);
     if(rendered) return altBanner + rendered;
   }
   return altBanner + `<div class="plain-model-answer">${h(text)}</div>`;
@@ -5711,7 +5737,7 @@ async function endMockSession(){
   </div>`;
 
   // Build batch payload
-  const batchPayload=mockQs.map((q,i)=>({id:q.id||null,question:q.prompt||q.q,answer:mockAnswers[i]||'',context:q.context||'',modelAnswer:q.modelAnswer,keyPoints:q.keyPoints,subject:q.subject,_cachedAlternatives:q._cachedAlternatives||null,_cachedAlac:q._cachedAlac||null,alternativeAnswer1:q.alternativeAnswer1||null,alternativeAnswer2:q.alternativeAnswer2||null,alternativeAnswer3:q.alternativeAnswer3||null,alternativeAnswer4:q.alternativeAnswer4||null,alternativeAnswer5:q.alternativeAnswer5||null}));
+  const batchPayload=mockQs.map((q,i)=>({id:q.id||null,question:q.prompt||q.q,answer:mockAnswers[i]||'',context:q.context||'',modelAnswer:q.modelAnswer,keyPoints:q.keyPoints,subject:q.subject,_cachedAlternatives:q._cachedAlternatives||null,_cachedAlac:q._cachedAlac||null,alternativeAnswer1:q.alternativeAnswer1||null,alternativeAnswer2:q.alternativeAnswer2||null,alternativeAnswer3:q.alternativeAnswer3||null,alternativeAnswer4:q.alternativeAnswer4||null,alternativeAnswer5:q.alternativeAnswer5||null,alternativeAlac1:q.alternativeAlac1||null,alternativeAlac2:q.alternativeAlac2||null,alternativeAlac3:q.alternativeAlac3||null,alternativeAlac4:q.alternativeAlac4||null,alternativeAlac5:q.alternativeAlac5||null}));
   let scores=[];
   const authHdr=sessionToken||'';
   const submissionId='sub_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);
@@ -6074,12 +6100,25 @@ function buildResultsHtml(){
       // Model answer — render with ALAC sections if structured
       card+=`<div style="font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:.08em;color:#7a6128;margin:12px 0 5px;">MODEL ANSWER</div>`;
       if(s.usedAlternative) card+=`<div style="background:#e8f5e9;border:1px solid #81c784;border-radius:4px;padding:6px 10px;margin-bottom:8px;font-size:12px;color:#2e7d32;">✅ Matched to Alternative Answer ${s.matchedAlternativeNumber} — scored against this version</div>`;
+      const _printAlacHeader=(s.usedAlternative&&s.matchedAlternativeNumber>0)?`Alternative Answer ${s.matchedAlternativeNumber} (ALAC Format)`:'Model Answer (ALAC Format)';
       (()=>{
+        // 0. Prefer matchedAlternativeAlac if present
+        const altAc=s.matchedAlternativeAlac;
+        if(altAc&&(altAc.answer||altAc.legalBasis||altAc.application||altAc.conclusion)){
+          const DEFS=[['A — Answer',altAc.answer],['L — Legal Basis',altAc.legalBasis],['A — Application',altAc.application],['C — Conclusion',altAc.conclusion]];
+          let sec=`<div class="alac-model-answer"><div class="alac-model-header">${_printAlacHeader}</div>`;
+          DEFS.forEach(([label,content])=>{
+            if(content) sec+=`<div class="alac-section"><div class="alac-section-label">${label}</div><div class="alac-section-content">${e(content)}</div></div>`;
+          });
+          sec+='</div>';
+          card+=sec;
+          return;
+        }
         // 1. Prefer structured alacModelAnswer components
         const ac=s.alacModelAnswer;
         if(ac&&(ac.answer||ac.legalBasis||ac.application||ac.conclusion)){
           const DEFS=[['A — Answer',ac.answer],['L — Legal Basis',ac.legalBasis],['A — Application',ac.application],['C — Conclusion',ac.conclusion]];
-          let sec='<div class="alac-model-answer"><div class="alac-model-header">Model Answer (ALAC Format)</div>';
+          let sec=`<div class="alac-model-answer"><div class="alac-model-header">${_printAlacHeader}</div>`;
           DEFS.forEach(([label,content])=>{
             if(content) sec+=`<div class="alac-section"><div class="alac-section-label">${label}</div><div class="alac-section-content">${e(content)}</div></div>`;
           });
@@ -6113,7 +6152,7 @@ function buildResultsHtml(){
         const up=ma.toUpperCase();
         const found=PSEC.map(ps=>({...ps,idx:up.indexOf(ps.k+':')})).filter(ps=>ps.idx!==-1).sort((a,b)=>a.idx-b.idx);
         if(found.length<2){card+=`<div style="background:#f0f8f0;border:1px solid #b0d8b0;border-radius:4px;padding:10px 14px;font-size:13px;line-height:1.7;margin-bottom:10px;">${e(ma)}</div>`;return;}
-        let sec='<div class="alac-model-answer"><div class="alac-model-header">Model Answer (ALAC Format)</div>';
+        let sec=`<div class="alac-model-answer"><div class="alac-model-header">${_printAlacHeader}</div>`;
         found.forEach((f,i)=>{
           const end=f.idx+f.k.length+1;
           const next=found[i+1]?found[i+1].idx:ma.length;
@@ -6964,6 +7003,51 @@ async function startConceptualBackfill() {
           btn.textContent = '⚡ Re-run Backfill';
         } else {
           label.textContent = `Caching ${ps.done} / ${ps.total} conceptual questions…`;
+        }
+      } catch(e) { /* ignore poll errors */ }
+    }, 1500);
+  } catch(e) {
+    status.textContent = '❌ ' + e.message;
+    btn.disabled = false;
+  }
+}
+
+let _altAlacBackfillPollInterval = null;
+async function startAltAlacBackfill() {
+  const btn = document.getElementById('backfillAltAlacBtn');
+  const status = document.getElementById('backfillAltAlacStatus');
+  const progressWrap = document.getElementById('backfillAltAlacProgress');
+  const bar = document.getElementById('backfillAltAlacBar');
+  const label = document.getElementById('backfillAltAlacLabel');
+  const tok = sessionToken || '';
+
+  btn.disabled = true;
+  status.textContent = 'Starting…';
+
+  try {
+    const r = await fetch('/api/admin/backfill-alternative-alac', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-session-token': tok } });
+    const d = await r.json();
+    if (d.error) { status.textContent = '❌ ' + d.error; btn.disabled = false; return; }
+    if (!d.started) { status.textContent = d.message || 'Nothing to cache.'; btn.disabled = false; return; }
+
+    progressWrap.style.display = 'block';
+    status.textContent = '';
+
+    clearInterval(_altAlacBackfillPollInterval);
+    _altAlacBackfillPollInterval = setInterval(async () => {
+      try {
+        const pr = await fetch('/api/admin/backfill-alternative-alac/status', { headers: { 'x-session-token': tok } });
+        const ps = await pr.json();
+        const pct = ps.total > 0 ? Math.round((ps.done / ps.total) * 100) : 0;
+        bar.style.width = pct + '%';
+        if (ps.complete) {
+          label.textContent = `✅ All ${ps.done} questions cached${ps.errors ? ` (${ps.errors} errors)` : ''}.`;
+          status.textContent = '';
+          clearInterval(_altAlacBackfillPollInterval);
+          btn.disabled = false;
+          btn.textContent = '⚡ Re-run Backfill';
+        } else {
+          label.textContent = `Caching ${ps.done} / ${ps.total} alternative ALACs…`;
         }
       } catch(e) { /* ignore poll errors */ }
     }, 1500);

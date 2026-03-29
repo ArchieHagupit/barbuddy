@@ -225,6 +225,12 @@ function mapQRow(q) {
     alternativeAnswer3: q.alternative_answer_3 || null,
     alternativeAnswer4: q.alternative_answer_4 || null,
     alternativeAnswer5: q.alternative_answer_5 || null,
+    // Alternative ALAC model answers
+    alternativeAlac1: q.alternative_alac_1 || null,
+    alternativeAlac2: q.alternative_alac_2 || null,
+    alternativeAlac3: q.alternative_alac_3 || null,
+    alternativeAlac4: q.alternative_alac_4 || null,
+    alternativeAlac5: q.alternative_alac_5 || null,
   };
 }
 
@@ -1140,7 +1146,7 @@ app.get('/api/spaced-repetition/due', requireAuth, async (req, res) => {
     const questionIds = dueRecords.map(r => r.question_id).filter(Boolean);
     const { data: questions, error: qError } = await supabase
       .from('questions')
-      .select('id, question_text, context, model_answer, key_points, subject, source, year, type, max_score, alternative_answers, model_answer_alac, model_answer_conceptual, alternative_answer_1, alternative_answer_2, alternative_answer_3, alternative_answer_4, alternative_answer_5')
+      .select('id, question_text, context, model_answer, key_points, subject, source, year, type, max_score, alternative_answers, model_answer_alac, model_answer_conceptual, alternative_answer_1, alternative_answer_2, alternative_answer_3, alternative_answer_4, alternative_answer_5, alternative_alac_1, alternative_alac_2, alternative_alac_3, alternative_alac_4, alternative_alac_5')
       .in('id', questionIds);
     if (qError) console.error('[spaced-rep/due] Questions query error:', qError.message);
     const qMap = {};
@@ -1169,6 +1175,11 @@ app.get('/api/spaced-repetition/due', requireAuth, async (req, res) => {
           alternativeAnswer3: q.alternative_answer_3 || null,
           alternativeAnswer4: q.alternative_answer_4 || null,
           alternativeAnswer5: q.alternative_answer_5 || null,
+          alternativeAlac1: q.alternative_alac_1 || null,
+          alternativeAlac2: q.alternative_alac_2 || null,
+          alternativeAlac3: q.alternative_alac_3 || null,
+          alternativeAlac4: q.alternative_alac_4 || null,
+          alternativeAlac5: q.alternative_alac_5 || null,
         },
       };
     });
@@ -1327,6 +1338,17 @@ app.patch('/api/admin/questions/:id', adminOnly, async (req, res) => {
       updates.alternative_answer_3     = null;
       updates.alternative_answer_4     = null;
       updates.alternative_answer_5     = null;
+      updates.alternative_alac_1       = null;
+      updates.alternative_alac_2       = null;
+      updates.alternative_alac_3       = null;
+      updates.alternative_alac_4       = null;
+      updates.alternative_alac_5       = null;
+    }
+    // Clear specific alt ALAC when that alternative is edited directly
+    for (let i = 1; i <= 5; i++) {
+      if (updates[`alternative_answer_${i}`] !== undefined) {
+        updates[`alternative_alac_${i}`] = null;
+      }
     }
     const { data, error } = await supabase
       .from('questions').update(updates).eq('id', req.params.id).select().single();
@@ -1350,7 +1372,7 @@ app.post('/api/admin/backfill-alac-cache', adminOnly, async (_req, res) => {
   // Fetch all questions missing at least one cache column
   const { data, error } = await supabase
     .from('questions')
-    .select('id, question_text, context, model_answer, subject, alternative_answers, model_answer_alac, alternative_answer_1, alternative_answer_2, alternative_answer_3, alternative_answer_4, alternative_answer_5')
+    .select('id, question_text, context, model_answer, subject, alternative_answers, model_answer_alac, alternative_answer_1, alternative_answer_2, alternative_answer_3, alternative_answer_4, alternative_answer_5, alternative_alac_1, alternative_alac_2, alternative_alac_3, alternative_alac_4, alternative_alac_5')
     .or('alternative_answer_1.is.null,model_answer_alac.is.null');
   if (error) return res.status(500).json({ error: error.message });
   if (!data || data.length === 0) return res.json({ started: false, message: 'All questions already cached' });
@@ -1441,6 +1463,66 @@ app.post('/api/admin/backfill-conceptual-cache', adminOnly, async (_req, res) =>
     conceptualBackfillState.running  = false;
     conceptualBackfillState.complete = true;
     console.log(`[conceptual-backfill] complete — ${conceptualBackfillState.done} processed, ${conceptualBackfillState.errors} errors`);
+  })();
+});
+
+// ── Admin: Pre-generate alternative ALAC cache ──────────────────────────────
+const altAlacBackfillState = { running: false, done: 0, total: 0, errors: 0, complete: false };
+
+app.get('/api/admin/backfill-alternative-alac/status', adminOnly, (_req, res) => {
+  res.json({ ...altAlacBackfillState });
+});
+
+app.post('/api/admin/backfill-alternative-alac', adminOnly, async (_req, res) => {
+  if (altAlacBackfillState.running) return res.json({ started: false, message: 'Backfill already in progress' });
+
+  // Fetch questions that have alternative answers but missing their ALAC
+  const { data, error } = await supabase
+    .from('questions')
+    .select('id, question_text, context, subject, alternative_answer_1, alternative_answer_2, alternative_answer_3, alternative_answer_4, alternative_answer_5, alternative_alac_1, alternative_alac_2, alternative_alac_3, alternative_alac_4, alternative_alac_5')
+    .or('alternative_answer_1.not.is.null,alternative_answer_2.not.is.null,alternative_answer_3.not.is.null,alternative_answer_4.not.is.null,alternative_answer_5.not.is.null');
+  if (error) return res.status(500).json({ error: error.message });
+
+  // Filter to only those with at least one missing alt ALAC
+  const needsWork = (data || []).filter(q => {
+    for (let i = 1; i <= 5; i++) {
+      if (q[`alternative_answer_${i}`] && !q[`alternative_alac_${i}`]) return true;
+    }
+    return false;
+  });
+  if (needsWork.length === 0) return res.json({ started: false, message: 'All alternative ALACs already cached' });
+
+  Object.assign(altAlacBackfillState, { running: true, done: 0, total: needsWork.length, errors: 0, complete: false });
+  res.json({ started: true, total: needsWork.length });
+
+  (async () => {
+    for (const q of needsWork) {
+      try {
+        const cacheUpdate = {};
+        for (let i = 1; i <= 5; i++) {
+          const altText = q[`alternative_answer_${i}`];
+          if (altText && !q[`alternative_alac_${i}`]) {
+            console.log(`[alt-alac-backfill] Generating ALAC for Q ${q.id} Alt ${i}...`);
+            const alacResult = await generateALACModelAnswer(q.question_text, q.context, altText, q.subject);
+            if (alacResult) {
+              cacheUpdate[`alternative_alac_${i}`] = alacResult.components || alacResult;
+            }
+            await new Promise(r => setTimeout(r, 1500));
+          }
+        }
+        if (Object.keys(cacheUpdate).length > 0) {
+          const { error: ue } = await supabase.from('questions').update(cacheUpdate).eq('id', q.id);
+          if (ue) { console.warn(`[alt-alac-backfill] update failed for ${q.id}:`, ue.message); altAlacBackfillState.errors++; }
+        }
+      } catch (e) {
+        console.warn(`[alt-alac-backfill] error on ${q.id}:`, e.message);
+        altAlacBackfillState.errors++;
+      }
+      altAlacBackfillState.done++;
+    }
+    altAlacBackfillState.running  = false;
+    altAlacBackfillState.complete = true;
+    console.log(`[alt-alac-backfill] complete — ${altAlacBackfillState.done} processed, ${altAlacBackfillState.errors} errors`);
   })();
 });
 
@@ -2836,7 +2918,7 @@ app.post('/api/evaluate', async (req, res) => {
   if (questionId) {
     const { data: qCache } = await supabase
       .from('questions')
-      .select('alternative_answers, model_answer_alac, model_answer_conceptual, alternative_answer_1, alternative_answer_2, alternative_answer_3, alternative_answer_4, alternative_answer_5')
+      .select('alternative_answers, model_answer_alac, model_answer_conceptual, alternative_answer_1, alternative_answer_2, alternative_answer_3, alternative_answer_4, alternative_answer_5, alternative_alac_1, alternative_alac_2, alternative_alac_3, alternative_alac_4, alternative_alac_5')
       .eq('id', questionId)
       .single();
     _qCache             = qCache || null;
@@ -2991,9 +3073,36 @@ Respond ONLY with valid JSON (no markdown):
     }
 
     // Generate structured ALAC model answer for situational questions
+    let _needsAltAlacCache = false;
+    let _altAlacCacheNum   = 0;
     if (isSituational && result.modelAnswer) {
-      // Use cached ALAC only for single-answer questions (multi-alternative ALAC varies per match)
-      if (_cachedAlac && !hasAlternatives) {
+      if (hasAlternatives && result.matchedAlternativeNumber > 0) {
+        // ── Alternative ALAC: check cache first ──
+        const altNum = result.matchedAlternativeNumber;
+        const cachedAltAlac = _qCache?.[`alternative_alac_${altNum}`] || null;
+        if (cachedAltAlac) {
+          result.alacModelAnswer = cachedAltAlac;
+          result.modelAnswerFormatted = [
+            `ANSWER: ${cachedAltAlac.answer}`,
+            `LEGAL BASIS: ${cachedAltAlac.legalBasis}`,
+            `APPLICATION: ${cachedAltAlac.application}`,
+            `CONCLUSION: ${cachedAltAlac.conclusion}`,
+          ].filter(s => !s.match(/:\s*$/)).join('\n\n');
+          result.modelAnswer = result.modelAnswerFormatted;
+          console.log(`[evaluate] alt-alac cache hit for Alt ${altNum}`);
+        } else {
+          const alacResult = await generateALACModelAnswer(question, context, result.modelAnswer, subject);
+          if (alacResult) {
+            result.alacModelAnswer      = alacResult.components;
+            result.modelAnswerFormatted = alacResult.formatted;
+            result.modelAnswer          = alacResult.formatted;
+            _needsAltAlacCache = true;
+            _altAlacCacheNum   = altNum;
+          }
+        }
+        result.matchedAlternativeAlac = result.alacModelAnswer || null;
+      } else if (_cachedAlac && !hasAlternatives) {
+        // Use cached ALAC for single-answer questions
         result.alacModelAnswer      = _cachedAlac;
         result.modelAnswerFormatted = [
           `ANSWER: ${_cachedAlac.answer}`,
@@ -3027,7 +3136,7 @@ Respond ONLY with valid JSON (no markdown):
     }
 
     // ── Write cache to Supabase (fire-and-forget) ─────────────
-    if (questionId && (_needsAltCache || _needsAlacCache || _needsConceptualCache)) {
+    if (questionId && (_needsAltCache || _needsAlacCache || _needsConceptualCache || _needsAltAlacCache)) {
       const cacheUpdate = {};
       if (_needsAltCache) {
         cacheUpdate.alternative_answers = alternatives;
@@ -3035,6 +3144,9 @@ Respond ONLY with valid JSON (no markdown):
       }
       if (_needsAlacCache)       cacheUpdate.model_answer_alac        = result.alacModelAnswer;
       if (_needsConceptualCache) cacheUpdate.model_answer_conceptual  = result.conceptualModelAnswer;
+      if (_needsAltAlacCache && _altAlacCacheNum > 0) {
+        cacheUpdate[`alternative_alac_${_altAlacCacheNum}`] = result.alacModelAnswer;
+      }
       supabase.from('questions').update(cacheUpdate).eq('id', questionId)
         .then(({ error: ce }) => { if (ce) console.warn('[cache-write] /api/evaluate failed:', ce.message); });
     }
@@ -3402,9 +3514,36 @@ Respond ONLY with valid JSON: {"score":"X/10","numericScore":0,"grade":"...","br
         result.usedAlternative = false;
       }
 
+      let _needsAltAlacCache = false;
+      let _altAlacCacheNum   = 0;
       if (isSit && result.modelAnswer) {
-        // Use cached ALAC only for single-answer questions (multi-alternative ALAC varies per match)
-        if (_cachedAlac && !hasAlternatives) {
+        if (hasAlternatives && result.matchedAlternativeNumber > 0) {
+          // ── Alternative ALAC: check cache first ──
+          const altNum = result.matchedAlternativeNumber;
+          const cachedAltAlac = item[`alternativeAlac${altNum}`] || item[`alternative_alac_${altNum}`] || null;
+          if (cachedAltAlac) {
+            result.alacModelAnswer = cachedAltAlac;
+            result.modelAnswerFormatted = [
+              `ANSWER: ${cachedAltAlac.answer}`,
+              `LEGAL BASIS: ${cachedAltAlac.legalBasis}`,
+              `APPLICATION: ${cachedAltAlac.application}`,
+              `CONCLUSION: ${cachedAltAlac.conclusion}`,
+            ].filter(s => !s.match(/:\s*$/)).join('\n\n');
+            result.modelAnswer = result.modelAnswerFormatted;
+            console.log(`[eval-batch] alt-alac cache hit for Alt ${altNum} Q${idx+1}`);
+          } else {
+            const alacResult = await generateALACModelAnswer(question, context, result.modelAnswer, subject);
+            if (alacResult) {
+              result.alacModelAnswer      = alacResult.components;
+              result.modelAnswerFormatted = alacResult.formatted;
+              result.modelAnswer          = alacResult.formatted;
+              _needsAltAlacCache = true;
+              _altAlacCacheNum   = altNum;
+            }
+          }
+          result.matchedAlternativeAlac = result.alacModelAnswer || null;
+        } else if (_cachedAlac && !hasAlternatives) {
+          // Use cached ALAC for single-answer questions
           result.alacModelAnswer      = _cachedAlac;
           result.modelAnswerFormatted = [
             `ANSWER: ${_cachedAlac.answer}`,
@@ -3438,7 +3577,7 @@ Respond ONLY with valid JSON: {"score":"X/10","numericScore":0,"grade":"...","br
       }
 
       // ── Write cache to Supabase (fire-and-forget) ───────────
-      if (questionId && (_needsAltCache || _needsAlacCache || _needsConceptualCache)) {
+      if (questionId && (_needsAltCache || _needsAlacCache || _needsConceptualCache || _needsAltAlacCache)) {
         const cacheUpdate = {};
         if (_needsAltCache) {
           cacheUpdate.alternative_answers = alternatives;
@@ -3446,6 +3585,9 @@ Respond ONLY with valid JSON: {"score":"X/10","numericScore":0,"grade":"...","br
         }
         if (_needsAlacCache)       cacheUpdate.model_answer_alac        = result.alacModelAnswer;
         if (_needsConceptualCache) cacheUpdate.model_answer_conceptual  = result.conceptualModelAnswer;
+        if (_needsAltAlacCache && _altAlacCacheNum > 0) {
+          cacheUpdate[`alternative_alac_${_altAlacCacheNum}`] = result.alacModelAnswer;
+        }
         supabase.from('questions').update(cacheUpdate).eq('id', questionId)
           .then(({ error: ce }) => { if (ce) console.warn(`[cache-write] Q${idx + 1} failed:`, ce.message); });
       }
