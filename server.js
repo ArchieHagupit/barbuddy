@@ -2847,7 +2847,7 @@ IMPORTANT CHECKS BEFORE SCORING:
 1. Does the student cite ANY law, article, doctrine, or case? If NO → Legal Basis = 0
 2. Does the student reach a clear legal conclusion? If NO → Conclusion = 0 to 0.5
 3. Is the answer primarily copied/restated facts with no legal analysis? If YES → Legal Basis = 0, Application ≤ 0.5, Conclusion = 0. NOTE: Do NOT reduce Answer (A) score for this — Answer is graded on responsiveness only.
-4. The Answer (A) component is NEVER affected by checks 1, 2, or 3. Answer (A) is scored ONLY on whether the student was responsive to the question. A direct YES/NO or clear legal position ALWAYS scores 1.5/1.5 regardless of whether law was cited. A 0.5 deduction if the direct answer is contradicting to suggested or alternative answer.
+4. The Answer (A) component is NEVER affected by checks 1, 2, or 3. Answer (A) is scored ONLY on whether the student was responsive to the question. The Answer (A) component scores ONLY on responsiveness — did the student answer the question? A correct direct YES/NO = 1.5/1.5 always. Only 1.0 if the direct answer is contradicting to suggested or alternative answer. 
 
 MODEL ANSWER BOUNDARY RULE — STRICTLY ENFORCED:
 The Reference Answer and Alternative Answers provided are your ONLY benchmark for scoring.
@@ -2879,7 +2879,7 @@ Student Answer: ${answer}
 
 Score each ALAC component using these weights which reflect actual Philippine Bar Exam priorities (total = 10 points):
 
-A — Answer (1.5 pts): Direct answer to the question upfront. A 0.5 deduction if the direct answer is contradicting to suggested or alternative answer.
+A — Answer (1.5 pts): Direct answer to the question upfront.
 
 L — Legal Basis (3.0 pts): The purpose of this component is to check whether the student knows WHAT law or doctrine governs the issue — not to test their ability to memorize article numbers or G.R. citation numbers.
 
@@ -3335,7 +3335,7 @@ IMPORTANT CHECKS BEFORE SCORING:
 1. Does the student cite ANY law, article, doctrine, or case? If NO → Legal Basis = 0
 2. Does the student reach a clear legal conclusion? If NO → Conclusion = 0 to 0.5
 3. Is the answer primarily copied/restated facts with no legal analysis? If YES → Legal Basis = 0, Application ≤ 0.5, Conclusion = 0. Do NOT reduce Answer (A) for this reason.
-4. The Answer (A) component scores ONLY on responsiveness — did the student answer the question? A direct YES/NO or clear position = 1.5/1.5 always. A 0.5 deduction if the direct answer is contradicting to suggested or alternative answer.
+4. The Answer (A) component scores ONLY on responsiveness — did the student answer the question? A direct YES/NO = 1.5/1.5 always. Only 1.0 if the direct answer is contradicting to suggested or alternative answer. 
 
 MODEL ANSWER BOUNDARY RULE:
 The Reference Answer and Alternative Answers are your ONLY benchmark. Do NOT penalize students for failing to discuss any law, doctrine, case, or concept NOT in the model answer or alternatives. Do NOT import your own legal knowledge to add requirements. keyMissed and improvements must ONLY reference concepts present in the model answer. Before deducting from Legal Basis or Application, ask: "Did the model answer cite/apply this?" If NO → do not deduct.
