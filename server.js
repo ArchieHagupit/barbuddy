@@ -2926,6 +2926,37 @@ A — Application (4.0 pts): HIGHEST WEIGHT. How well the student applies the la
 
 C — Conclusion (1.5 pts): Clear restatement of the answer with finality. Shows the student can synthesize their analysis.
 
+CONCLUSION SCORING RULE:
+  - If student's legal position is correct (matches model answer or alternative): Conclusion minimum score: 1.0/1.5
+  - Deduct only if conclusion:
+    * Is completely absent (0/1.5)
+    * Directly contradicts correct legal position
+    * Is incoherent or nonsensical
+  - NEVER deduct from Conclusion just because it is brief or lacks detail
+
+CRITICAL DISTINCTION — Answer vs Conclusion:
+
+  A — Answer (OPENING):
+  - Position: FIRST sentence of the answer
+  - Content: Direct YES/NO or legal position ONLY
+  - No reasoning required, no law citation required, no facts required
+  - Just: "Yes/No, [legal position]."
+  - Grade: Did they answer directly? Full credit.
+
+  C — Conclusion (CLOSING):
+  - Position: LAST sentence of the answer
+  - Content: Final statement AFTER showing legal reasoning and application
+  - Should reinforce the Answer with legal backing
+  - Should reference the reasoning shown in L and A
+  - Example: "Therefore, since X law applies and Y facts are present, the answer is Z."
+
+  KEY RULE:
+  The Answer (A) is judged ONLY on whether the student stated a clear position.
+  The Conclusion (C) is judged on whether the student's closing statement properly wraps up the legal analysis.
+  They are NOT the same component.
+  NEVER apply Conclusion criteria to Answer.
+  NEVER apply Answer criteria to Conclusion.
+
 COMPONENT ISOLATION — CRITICAL:
 Each ALAC component must be evaluated INDEPENDENTLY and ONLY on its own criteria.
 
@@ -2938,22 +2969,19 @@ NEVER penalize Legal Basis (L) for what belongs in Application (A).
 
 Each component stands alone. Cross-component penalization is FORBIDDEN.
 
-CALIBRATION EXAMPLE:
+CALIBRATION EXAMPLES:
 
-Question: "Is there a valid insurance contract?"
+ANSWER COMPONENT:
 
-Student Answer: "Yes there is a valid and binding insurance contract."
+  Perfect Answer (1.5/1.5): "Yes, there is a valid insurance contract." — Direct, clear, answers the question. FULL CREDIT.
+  Perfect Answer (1.5/1.5): "No, Sisa's contention is not tenable." — Direct, clear, answers the question. FULL CREDIT.
+  Wrong evaluation: Giving Answer 0.5/1.5 because "lacks legal reasoning" — FORBIDDEN. Legal reasoning belongs in L and A.
 
-Correct Scoring:
-- A (Answer): 1.5/1.5 — FULL CREDIT. Student directly answered YES with clear legal conclusion. No deduction allowed.
-- L (Legal Basis): depends on whether they cited applicable law
-- A (Application): depends on whether they applied facts to law
-- C (Conclusion): depends on concluding statement
+CONCLUSION COMPONENT:
 
-WRONG Scoring:
-- A (Answer): 0.5/1.5 — NEVER DO THIS
-  Reason given: "lacks legal reasoning"
-  Why wrong: Legal reasoning is L and A, not Answer.
+  Perfect Conclusion (1.5/1.5): "Therefore, since voluntary desistance was prevented by arrest under Article 6, Sisa is liable for attempted crime, not frustrated." — Wraps up reasoning, references law and facts.
+  Acceptable Conclusion (1.0/1.5): "Thus, the contention is not tenable." — Present but does not reinforce reasoning.
+  Missing Conclusion (0/1.5): Student ends with application paragraph, no closing statement at all.
 
 ${GRADE_SCALE}
 
