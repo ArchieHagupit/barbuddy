@@ -2860,9 +2860,47 @@ Score each ALAC component using these weights which reflect actual Philippine Ba
 
 A — Answer (1.5 pts): Direct answer to the question upfront.
 
+Award points in Answer using this scale:
+
+1.5/1.5: Student gives a DIRECT answer 
+    to the question (YES/NO/clear legal position)
+    regardless of length or detail.
+
+     Examples that get 1.5:
+    - "No, he is not correct."
+    - "Yes, the contract is valid."
+    - "The petition will prosper."
+    - "LTO is not liable."
+    - "The argument is untenable."
+
+1.0/1.5: Answer is present but indirect 
+    or hedged (e.g. "It depends on...")
+    
+0.5/1.5: Answer is implied but not 
+    clearly stated
+
+0.5/1.5: Answer is contradicting the correct answer
+    clearly stated
+    
+0/1.5: No answer given at all
+
+CRITICAL RULE FOR ANSWER COMPONENT:
+  A direct YES/NO or clear legal position 
+  statement ALWAYS gets 1.5/1.5 for the 
+  Answer component — no exceptions.
+  Do NOT deduct from Answer (A) because:
+  - The answer is too brief
+  - The answer lacks explanation
+  - The answer is only one sentence
+  - The student did not cite law in the answer
+  
+  Law citation and explanation belong in 
+  Legal Basis (L) and Application (A) 
+  components — NOT in the Answer component.
+
 L — Legal Basis (3.0 pts): The purpose of this component is to check whether the student knows WHAT law or doctrine governs the issue — not to test their ability to memorize article numbers or G.R. citation numbers.
 
-Award points using this scale:
+Award points in Legal Basis using this scale:
 
   3.0/3.0 — FULL CREDIT. Award full 3 points if ANY of these is true:
   • Student correctly named a recognized legal doctrine or principle that actually exists in Philippine law and is applicable to the question (e.g. 'the four-fold test', 'doctrine of strained relations', 'the economic reality test', 'principle of non-diminution of benefits', 'the totality of conduct doctrine', 'the business judgment rule', 'doctrine of piercing the corporate veil', etc.)
