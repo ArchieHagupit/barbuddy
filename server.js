@@ -3003,6 +3003,55 @@ If NO → remove the deduction. Increase the score.
 If YES → deduction is valid.
 
 ${copyPasteDetected ? 'COPY-PASTE WARNING: Answer appears copied from facts. Score strictly.\n' : ''}
+
+════════════════════════════════════════
+FEEDBACK TONE — STRICTLY FOLLOW
+════════════════════════════════════════
+
+You are a supportive bar exam mentor, not a harsh critic. Your feedback must:
+- Acknowledge what the student did correctly first
+- Frame gaps as opportunities for growth
+- Use encouraging language throughout
+- Sound like a mentor who wants the student to pass
+- Be specific about what would make the answer better
+
+FORBIDDEN PHRASES — never use these:
+- 'the reference answer says...'
+- 'the model answer requires...'
+- 'student failed to...'
+- 'student merely...'
+- 'student completely missed...'
+- 'answer is inadequate...'
+- 'missing critical...'
+- 'completely wrong...'
+- 'no understanding of...'
+- 'student should have known...'
+
+REQUIRED PHRASES — use these patterns instead:
+- 'A stronger answer would also...'
+- 'To earn full marks, consider adding...'
+- 'You correctly identified... — well done!'
+- 'Building on your answer, you could also...'
+- 'A good answer for this question would...'
+- 'To complete your analysis, address...'
+- 'You are on the right track — strengthen this by...'
+- 'Great start — to maximize your score...'
+- 'Your answer shows understanding of X — adding Y would make it complete.'
+
+FOR COMPONENT FEEDBACK (under 50 words each):
+- Start with what student got right (even briefly)
+- Then frame what is missing as what would make it better
+- End positively or with specific actionable advice
+
+FOR OVERALL FEEDBACK (under 200 words):
+- Open with genuine acknowledgment of what student demonstrated
+- Middle: specific areas to strengthen
+- Close: encouraging note about improvement
+
+FOR keyMissed[] and improvements[]:
+- Frame as 'Consider discussing...' not 'Student missed...'
+- Frame as 'A good answer would include...' not 'Failed to include...'
+
 Score each ALAC component (total = 10 points):
 
 A — ANSWER (Max 1.5 pts) — DECISION TREE:
@@ -3065,10 +3114,10 @@ Respond ONLY with valid JSON (no markdown):
     "application": { "score": 2.8, "max": 4.0, "feedback": "...", "studentDid": "..." },
     "conclusion":  { "score": 1.2, "max": 1.5, "feedback": "...", "studentDid": "..." }
   },
-  "overallFeedback": "2-3 sentence overall assessment under 200 words",
+  "overallFeedback": "Open with what student did well. Then 1-2 areas to strengthen. Close with encouraging note. Under 200 words.",
   "strengths": ["..."],
-  "improvements": ["ONLY from Reference Answer — never suggest concepts absent from it"],
-  "keyMissed": ["ONLY from Reference Answer — never add outside concepts"],
+  "improvements": ["Consider discussing...", "A stronger answer would also include...", "To earn full marks, address..."],
+  "keyMissed": ["A complete answer would address...", "Consider also discussing...", "Strengthening this area: ..."],
   "format": "essay"
 }`;
   } else {
@@ -3082,6 +3131,54 @@ Question: ${question}
 ${maSection}
 ${(keyPoints||[]).length?`Key Points: ${keyPoints.join(', ')}`:''}
 Student Answer: ${answer}
+
+════════════════════════════════════════
+FEEDBACK TONE — STRICTLY FOLLOW
+════════════════════════════════════════
+
+You are a supportive bar exam mentor, not a harsh critic. Your feedback must:
+- Acknowledge what the student did correctly first
+- Frame gaps as opportunities for growth
+- Use encouraging language throughout
+- Sound like a mentor who wants the student to pass
+- Be specific about what would make the answer better
+
+FORBIDDEN PHRASES — never use these:
+- 'the reference answer says...'
+- 'the model answer requires...'
+- 'student failed to...'
+- 'student merely...'
+- 'student completely missed...'
+- 'answer is inadequate...'
+- 'missing critical...'
+- 'completely wrong...'
+- 'no understanding of...'
+- 'student should have known...'
+
+REQUIRED PHRASES — use these patterns instead:
+- 'A stronger answer would also...'
+- 'To earn full marks, consider adding...'
+- 'You correctly identified... — well done!'
+- 'Building on your answer, you could also...'
+- 'A good answer for this question would...'
+- 'To complete your analysis, address...'
+- 'You are on the right track — strengthen this by...'
+- 'Great start — to maximize your score...'
+- 'Your answer shows understanding of X — adding Y would make it complete.'
+
+FOR COMPONENT FEEDBACK (under 50 words each):
+- Start with what student got right (even briefly)
+- Then frame what is missing as what would make it better
+- End positively or with specific actionable advice
+
+FOR OVERALL FEEDBACK (under 100 words):
+- Open with genuine acknowledgment of what student demonstrated
+- Middle: specific areas to strengthen
+- Close: encouraging note about improvement
+
+FOR keyMissed[] and improvements[]:
+- Frame as 'Consider discussing...' not 'Student missed...'
+- Frame as 'A good answer would include...' not 'Failed to include...'
 
 Score out of 10 using these components:
   Accuracy     (4 pts): Is the answer legally correct and on-point?
@@ -3097,14 +3194,14 @@ Respond ONLY with valid JSON (no markdown):
   "score": "X/10", "numericScore": 0, "grade": "Excellent|Good|Satisfactory|Needs Improvement|Poor",
   "matchedAlternative": 1,
   "breakdown": {
-    "accuracy":     { "score": 0.0, "max": 4, "feedback": "under 50 words" },
-    "completeness": { "score": 0.0, "max": 3, "feedback": "under 50 words" },
-    "clarity":      { "score": 0.0, "max": 3, "feedback": "under 50 words" }
+    "accuracy":     { "score": 0.0, "max": 4, "feedback": "under 50 words — start with what student got right" },
+    "completeness": { "score": 0.0, "max": 3, "feedback": "under 50 words — start with what student got right" },
+    "clarity":      { "score": 0.0, "max": 3, "feedback": "under 50 words — start with what student got right" }
   },
-  "overallFeedback": "Brief overall assessment under 100 words",
-  "keyMissed": ["key concept or point the student failed to mention"],
+  "overallFeedback": "Open with what student did well. Then 1-2 areas to strengthen. Close with encouraging note. Under 100 words.",
+  "keyMissed": ["A complete answer would address...", "Consider also discussing..."],
   "strengths": ["what the student did well"],
-  "improvements": ["specific thing to improve"],
+  "improvements": ["Consider discussing...", "A stronger answer would also include..."],
   "format": "conceptual"
 }`;
   }
@@ -3563,6 +3660,12 @@ SELF-CHECK — Before finalizing each score ask: 'Can I point to the exact part 
 
 ${copyPasteDetected ? 'COPY-PASTE WARNING: Answer appears copied from facts. Score strictly.' : ''}
 
+FEEDBACK TONE — STRICTLY FOLLOW:
+You are a supportive bar exam mentor, not a harsh critic. Your feedback must: acknowledge what the student did correctly first, frame gaps as opportunities for growth, use encouraging language throughout, sound like a mentor who wants the student to pass, be specific about what would make the answer better.
+FORBIDDEN PHRASES — never use these: 'the reference answer says...', 'the model answer requires...', 'student failed to...', 'student merely...', 'student completely missed...', 'answer is inadequate...', 'missing critical...', 'completely wrong...', 'no understanding of...', 'student should have known...'
+REQUIRED PHRASES — use these patterns instead: 'A stronger answer would also...', 'To earn full marks, consider adding...', 'You correctly identified... — well done!', 'Building on your answer, you could also...', 'You are on the right track — strengthen this by...', 'Great start — to maximize your score...', 'Your answer shows understanding of X — adding Y would make it complete.'
+FOR COMPONENT FEEDBACK: Start with what student got right, then frame what is missing as what would make it better. FOR OVERALL FEEDBACK: Open with genuine acknowledgment, then areas to strengthen, close encouragingly. FOR keyMissed/improvements: Frame as 'Consider discussing...' or 'A good answer would include...' — never 'Student missed...' or 'Failed to include...'
+
 A — ANSWER (Max 1.5 pts) — DECISION TREE:
 Step 1: Did student answer the question? NO → 0/1.5. STOP.
 Step 2: Does student position match Reference Answer OR any Alternative Answer? YES → 1.5/1.5. STOP. PARTIAL/UNCLEAR → 0.5/1.5. STOP. NO (contradicts all) → 1.0/1.5. STOP.
@@ -3591,20 +3694,27 @@ C — CONCLUSION (Max 1.5 pts):
 NEVER deduct for lacking legal foundation — that belongs in L and A components.
 
 ${GRADE_SCALE}
-Respond ONLY with valid JSON: {"score":"X/10","numericScore":0,"grade":"...","alac":{"answer":{"score":0,"max":1.5,"feedback":"under 50 words","studentDid":""},"legalBasis":{"score":0,"max":3,"feedback":"under 50 words","studentDid":""},"application":{"score":0,"max":4,"feedback":"under 50 words","studentDid":""},"conclusion":{"score":0,"max":1.5,"feedback":"under 50 words","studentDid":""}},"overallFeedback":"under 200 words","strengths":[],"improvements":["ONLY from Reference Answer"],"keyMissed":["ONLY from Reference Answer"],"matchedAlternative":1,"format":"essay"}`;
+Respond ONLY with valid JSON: {"score":"X/10","numericScore":0,"grade":"...","alac":{"answer":{"score":0,"max":1.5,"feedback":"under 50 words — start with what student got right","studentDid":""},"legalBasis":{"score":0,"max":3,"feedback":"under 50 words — start with what student got right","studentDid":""},"application":{"score":0,"max":4,"feedback":"under 50 words — start with what student got right","studentDid":""},"conclusion":{"score":0,"max":1.5,"feedback":"under 50 words — start with what student got right","studentDid":""}},"overallFeedback":"Open with what student did well then areas to strengthen then encouraging close. Under 200 words","strengths":[],"improvements":["Consider discussing...","A stronger answer would also include..."],"keyMissed":["A complete answer would address...","Consider also discussing..."],"matchedAlternative":1,"format":"essay"}`;
     } else {
       maxTok = 2500;
       prompt = `You are a Philippine Bar Exam examiner. Evaluate this conceptual/theoretical answer. Keep overallFeedback under 100 words and each component feedback under 50 words.
 CRITICAL JSON OUTPUT RULES: Use single quotes inside all string values (never double quotes inside strings). No newlines inside string values. No trailing commas. Keep all feedback fields on a single line.
 IMPORTANT: Return pure JSON only. Never include { or } characters inside any string value. Write all feedback as plain text sentences only. No code examples, no nested structures, no special characters inside strings.
 IMPORTANT: overallFeedback, keyMissed, strengths, improvements MUST be top-level fields — do NOT nest them inside breakdown.
+
+FEEDBACK TONE — STRICTLY FOLLOW:
+You are a supportive bar exam mentor, not a harsh critic. Your feedback must: acknowledge what the student did correctly first, frame gaps as opportunities for growth, use encouraging language throughout, sound like a mentor who wants the student to pass, be specific about what would make the answer better.
+FORBIDDEN PHRASES — never use these: 'the reference answer says...', 'the model answer requires...', 'student failed to...', 'student merely...', 'student completely missed...', 'answer is inadequate...', 'missing critical...', 'completely wrong...', 'no understanding of...', 'student should have known...'
+REQUIRED PHRASES — use these patterns instead: 'A stronger answer would also...', 'To earn full marks, consider adding...', 'You correctly identified... — well done!', 'Building on your answer, you could also...', 'You are on the right track — strengthen this by...', 'Great start — to maximize your score...', 'Your answer shows understanding of X — adding Y would make it complete.'
+FOR COMPONENT FEEDBACK: Start with what student got right, then frame what is missing as what would make it better. FOR OVERALL FEEDBACK: Open with genuine acknowledgment, then areas to strengthen, close encouragingly. FOR keyMissed/improvements: Frame as 'Consider discussing...' or 'A good answer would include...' — never 'Student missed...' or 'Failed to include...'
+
 Question: ${question}
 ${maSection}
 ${(keyPoints || []).length ? `Key Points: ${keyPoints.join(', ')}` : ''}
 Student Answer: ${answer}
 Score: Accuracy(4pts) + Completeness(3pts) + Clarity(3pts) = 10.
 ${GRADE_SCALE}
-Respond ONLY with valid JSON: {"score":"X/10","numericScore":0,"grade":"...","breakdown":{"accuracy":{"score":0,"max":4,"feedback":"under 50 words"},"completeness":{"score":0,"max":3,"feedback":"under 50 words"},"clarity":{"score":0,"max":3,"feedback":"under 50 words"}},"overallFeedback":"under 100 words","keyMissed":[],"strengths":[],"improvements":[],"matchedAlternative":1,"format":"conceptual"}`;
+Respond ONLY with valid JSON: {"score":"X/10","numericScore":0,"grade":"...","breakdown":{"accuracy":{"score":0,"max":4,"feedback":"under 50 words — start with what student got right"},"completeness":{"score":0,"max":3,"feedback":"under 50 words — start with what student got right"},"clarity":{"score":0,"max":3,"feedback":"under 50 words — start with what student got right"}},"overallFeedback":"Open with what student did well then areas to strengthen then encouraging close. Under 100 words","keyMissed":["A complete answer would address...","Consider also discussing..."],"strengths":[],"improvements":["Consider discussing...","A stronger answer would also include..."],"matchedAlternative":1,"format":"conceptual"}`;
     }
 
     const result = await callClaudeHaikuJSON(prompt, maxTok);
