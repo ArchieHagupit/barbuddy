@@ -851,6 +851,18 @@ select.form-input{cursor:pointer;}
 .tt-on{background:rgba(20,180,160,.15);border-color:rgba(20,180,160,.4);color:#14b4a0;}
 .tt-off{background:rgba(155,35,53,.15);border-color:rgba(155,35,53,.4);color:#e07080;}
 .dl-picker{display:none;align-items:center;gap:6px;flex-wrap:wrap;padding:7px 10px 10px 40px;background:rgba(255,255,255,.03);border:1px solid var(--bdr2);border-top:none;border-radius:0 0 9px 9px;margin-top:-6px;margin-bottom:6px;}
+/* Loading screen */
+@keyframes bbPulse {
+  0%, 100% { transform: scale(1); box-shadow: 0 8px 32px rgba(201,168,76,0.3); }
+  50% { transform: scale(1.05); box-shadow: 0 8px 40px rgba(201,168,76,0.5); }
+}
+@keyframes bbLoadBar {
+  0% { width: 0%; margin-left: 0%; }
+  50% { width: 60%; margin-left: 20%; }
+  100% { width: 0%; margin-left: 100%; }
+}
+#bb-loading-screen.fade-out { opacity: 0; pointer-events: none; }
+
 /* Auth wall */
 @keyframes authBgShift{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
 #authWall{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(8,12,24,.85);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);background-image:radial-gradient(ellipse at 20% 50%,rgba(120,40,40,.15) 0%,transparent 60%),radial-gradient(ellipse at 80% 20%,rgba(201,168,76,.08) 0%,transparent 50%);opacity:0;transition:opacity 0.25s ease;}
@@ -1177,6 +1189,77 @@ select.form-input{cursor:pointer;}
 </style>
 </head>
 <body>
+<div id="bb-loading-screen" style="
+  position: fixed;
+  inset: 0;
+  background: #0D1B2A;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 99999;
+  transition: opacity 0.4s ease;
+">
+  <div style="
+    width: 72px;
+    height: 72px;
+    background: linear-gradient(135deg, #C9A84C, #f0c96e);
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 20px;
+    box-shadow: 0 8px 32px rgba(201,168,76,0.3);
+    animation: bbPulse 1.8s ease-in-out infinite;
+  ">
+    <span style="font-size: 36px;">⚖️</span>
+  </div>
+  <div style="
+    font-size: 28px;
+    font-weight: bold;
+    color: #C9A84C;
+    letter-spacing: 0.05em;
+    margin-bottom: 6px;
+    font-family: Georgia, serif;
+  ">
+    Bar<span style="font-style:italic;">Buddy</span>
+  </div>
+  <div style="
+    font-size: 13px;
+    color: rgba(255,255,255,0.45);
+    margin-bottom: 40px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  ">
+    Philippine Bar 2026
+  </div>
+  <div style="
+    width: 200px;
+    height: 3px;
+    background: rgba(255,255,255,0.08);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-bottom: 16px;
+  ">
+    <div id="bb-loading-bar" style="
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #C9A84C, #f0c96e);
+      border-radius: 2px;
+      transition: width 0.3s ease;
+      animation: bbLoadBar 2s ease-in-out infinite;
+    "></div>
+  </div>
+  <div id="bb-loading-msg" style="
+    font-size: 13px;
+    color: rgba(255,255,255,0.4);
+    letter-spacing: 0.03em;
+    transition: opacity 0.2s ease;
+  ">
+    Preparing your review session...
+  </div>
+</div>
+
 <a href="#main-content" style="position:absolute;left:-9999px;top:auto;width:1px;height:1px;overflow:hidden;">Skip to main content</a>
 
 <img
@@ -2361,6 +2444,56 @@ function getMotivationalQuote() {
 }
 
 // ══════════════════════════════════
+// LOADING SCREEN
+// ══════════════════════════════════
+const BB_LOADING_MESSAGES = [
+  'Preparing your review session...',
+  'Loading your progress...',
+  'Fetching questions...',
+  'Checking your access...',
+  'Almost ready...',
+  'Setting up your dashboard...',
+];
+let _bbMsgIdx = 0;
+let _bbMsgInterval = null;
+
+function startLoadingScreen() {
+  const screen = document.getElementById('bb-loading-screen');
+  const msg = document.getElementById('bb-loading-msg');
+  if (!screen) return;
+  screen.style.display = 'flex';
+  screen.style.opacity = '1';
+  screen.classList.remove('fade-out');
+  _bbMsgInterval = setInterval(() => {
+    _bbMsgIdx = (_bbMsgIdx + 1) % BB_LOADING_MESSAGES.length;
+    if (msg) {
+      msg.style.opacity = '0';
+      setTimeout(() => {
+        msg.textContent = BB_LOADING_MESSAGES[_bbMsgIdx];
+        msg.style.opacity = '1';
+      }, 200);
+    }
+  }, 1500);
+}
+
+function hideLoadingScreen() {
+  const screen = document.getElementById('bb-loading-screen');
+  if (!screen) return;
+  if (_bbMsgInterval) { clearInterval(_bbMsgInterval); _bbMsgInterval = null; }
+  const msg = document.getElementById('bb-loading-msg');
+  if (msg) msg.textContent = 'Ready!';
+  setTimeout(() => {
+    screen.classList.add('fade-out');
+    setTimeout(() => { screen.style.display = 'none'; }, 400);
+  }, 300);
+}
+
+function setLoadingMsg(text) {
+  const msg = document.getElementById('bb-loading-msg');
+  if (msg) msg.textContent = text;
+}
+
+// ══════════════════════════════════
 // INIT
 // ══════════════════════════════════
 async function init() {
@@ -2450,19 +2583,23 @@ window.addEventListener('pageshow', (event) => {
 });
 
 window.addEventListener('DOMContentLoaded', async () => {
+  startLoadingScreen();
   // Restore admin key from previous session so sidebar admin button shows
   const savedAdminKey = localStorage.getItem('bb_admin_key');
   if (savedAdminKey) {
     window._adminKey = savedAdminKey;
     adminKey = savedAdminKey;
   }
+  setLoadingMsg('Verifying your session...');
   const hasSession = await checkExistingSession();
   if (!hasSession) {
     // Auth wall stays visible; fade it in so there's no flash
+    hideLoadingScreen();
     const aw = document.getElementById('authWall');
     aw.style.display = 'flex';
     requestAnimationFrame(() => { aw.style.opacity = '1'; });
   }
+  setLoadingMsg('Loading your dashboard...');
   await init();
   // Restore last view or fall back to overview
   if (hasSession) {
@@ -2484,6 +2621,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     } catch(e) {
       navToOverview();
     }
+    hideLoadingScreen();
     checkForInterruptedExam().catch(() => {});
     resumePendingEvaluation().catch(() => {});
   } else {
@@ -7118,6 +7256,8 @@ async function doLogin() {
       }
       return;
     }
+    startLoadingScreen();
+    setLoadingMsg('Logging you in...');
     onAuthSuccess(d.token, d.user);
   } catch(e) { errEl.textContent = 'Network error. Try again.'; }
   finally { btn.disabled = false; btn.textContent = 'Log In'; }
@@ -7160,6 +7300,7 @@ async function onAuthSuccess(token, user) {
   setTimeout(() => { aw.style.display = 'none'; }, 260);
   updateUserDisplay();
   updateSidebarAdminVisibility();
+  setLoadingMsg('Loading your dashboard...');
   // Prefetch KB and progress in parallel before rendering
   await Promise.allSettled([
     refreshKBState(),
@@ -7193,6 +7334,7 @@ async function onAuthSuccess(token, user) {
   checkForInterruptedExam().catch(() => {});
   // Check for spaced repetition reviews due
   checkDueReviews().catch(() => {});
+  hideLoadingScreen();
 }
 
 function updateUserDisplay() {
