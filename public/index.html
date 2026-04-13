@@ -863,6 +863,38 @@ select.form-input{cursor:pointer;}
 }
 #bb-loading-screen.fade-out { opacity: 0; pointer-events: none; }
 
+/* Skeleton loading */
+@keyframes skeletonShimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.bb-skeleton {
+  background: linear-gradient(90deg, rgba(255,255,255,0.04) 25%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.04) 75%);
+  background-size: 200% 100%;
+  animation: skeletonShimmer 1.5s infinite;
+  border-radius: 6px;
+}
+.bb-skeleton-text { height: 14px; margin-bottom: 8px; border-radius: 4px; }
+.bb-skeleton-title { height: 20px; width: 40%; margin-bottom: 16px; border-radius: 4px; }
+.bb-skeleton-card {
+  border-radius: 10px; padding: 20px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.06);
+  margin-bottom: 16px;
+}
+.bb-skeleton-stat { height: 48px; border-radius: 8px; flex: 1; }
+.bb-skeleton-bar { height: 12px; border-radius: 6px; margin-bottom: 12px; }
+.bb-skeleton-circle { width: 48px; height: 48px; border-radius: 50%; flex-shrink: 0; }
+.bb-spinner {
+  width: 18px; height: 18px;
+  border: 2px solid rgba(255,255,255,0.1);
+  border-top-color: #C9A84C;
+  border-radius: 50%;
+  animation: bbSpin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes bbSpin { to { transform: rotate(360deg); } }
+
 /* Auth wall */
 @keyframes authBgShift{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
 #authWall{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(8,12,24,.85);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);background-image:radial-gradient(ellipse at 20% 50%,rgba(120,40,40,.15) 0%,transparent 60%),radial-gradient(ellipse at 80% 20%,rgba(201,168,76,.08) 0%,transparent 50%);opacity:0;transition:opacity 0.25s ease;}
@@ -3165,7 +3197,7 @@ async function renderProgressPage() {
     </div>`;
 
   if (_progressActiveTab === 'xp') {
-    container.innerHTML = tabBar + '<div id="xpLevelContent"><div style="text-align:center;padding:60px;color:var(--muted);">Loading XP data…</div></div>';
+    container.innerHTML = tabBar + '<div id="xpLevelContent">' + skeletonXPLevel() + '</div>';
     renderXPLevelTab();
   } else {
     container.innerHTML = tabBar + '<div id="progressDashContent"></div>';
@@ -3182,9 +3214,69 @@ let _progScoreChart = null;
 // Keep the old name as an alias so any other callers still work
 async function renderProgressDashboard() { return renderProgressPage(); }
 
+function skeletonProgressDashboard() {
+  // Stat cards row
+  const statCards = `<div class="bb-skeleton-card">
+    <div style="display:flex;gap:12px;">
+      ${[1,2,3,4].map(() => '<div class="bb-skeleton bb-skeleton-stat"></div>').join('')}
+    </div>
+  </div>`;
+  // Streak
+  const streak = `<div class="bb-skeleton-card">
+    <div class="bb-skeleton bb-skeleton-title" style="width:25%;"></div>
+    <div style="display:flex;align-items:center;gap:12px;">
+      <div class="bb-skeleton bb-skeleton-circle" style="width:36px;height:36px;"></div>
+      <div style="flex:1;"><div class="bb-skeleton bb-skeleton-text" style="width:50%;"></div><div class="bb-skeleton bb-skeleton-text" style="width:70%;height:11px;"></div></div>
+    </div>
+  </div>`;
+  // Score chart
+  const chart = `<div class="bb-skeleton-card">
+    <div class="bb-skeleton bb-skeleton-title" style="width:30%;"></div>
+    <div class="bb-skeleton" style="height:180px;border-radius:8px;"></div>
+  </div>`;
+  // Subject bars
+  const subjects = `<div class="bb-skeleton-card">
+    <div class="bb-skeleton bb-skeleton-title" style="width:35%;"></div>
+    ${[90,75,60,45,80,55,70,65].map(w => `<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+      <div class="bb-skeleton" style="width:80px;height:13px;border-radius:4px;flex-shrink:0;"></div>
+      <div class="bb-skeleton bb-skeleton-bar" style="flex:1;"></div>
+      <div class="bb-skeleton" style="width:35px;height:13px;border-radius:4px;flex-shrink:0;"></div>
+    </div>`).join('')}
+  </div>`;
+  // Insights
+  const insights = `<div class="bb-skeleton-card">
+    <div class="bb-skeleton bb-skeleton-title" style="width:20%;"></div>
+    ${[1,2,3].map(() => '<div class="bb-skeleton bb-skeleton-text" style="width:' + (50 + Math.floor(Math.random()*40)) + '%;height:16px;margin-bottom:10px;"></div>').join('')}
+  </div>`;
+  return `<div style="padding:0;">${statCards}${streak}${chart}${subjects}${insights}</div>`;
+}
+
+function skeletonXPLevel() {
+  // XP hero
+  const hero = `<div class="bb-skeleton-card" style="text-align:center;">
+    <div style="display:flex;align-items:center;gap:16px;justify-content:center;margin-bottom:16px;">
+      <div class="bb-skeleton bb-skeleton-circle" style="width:56px;height:56px;"></div>
+      <div style="text-align:left;"><div class="bb-skeleton bb-skeleton-text" style="width:120px;height:18px;"></div><div class="bb-skeleton bb-skeleton-text" style="width:180px;height:12px;"></div></div>
+    </div>
+    <div class="bb-skeleton" style="height:10px;border-radius:5px;width:100%;"></div>
+  </div>`;
+  // XP history table rows
+  const rows = [1,2,3,4,5].map(() => `<div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
+    <div class="bb-skeleton" style="width:70px;height:13px;border-radius:4px;flex-shrink:0;"></div>
+    <div class="bb-skeleton bb-skeleton-text" style="flex:1;width:auto;"></div>
+    <div class="bb-skeleton" style="width:60px;height:20px;border-radius:10px;flex-shrink:0;"></div>
+    <div class="bb-skeleton" style="width:50px;height:13px;border-radius:4px;flex-shrink:0;"></div>
+  </div>`).join('');
+  const table = `<div class="bb-skeleton-card">
+    <div class="bb-skeleton bb-skeleton-title" style="width:30%;"></div>
+    ${rows}
+  </div>`;
+  return `<div style="padding:0;">${hero}${table}</div>`;
+}
+
 async function _renderProgressDashboardInto(container) {
   if (!container) return;
-  container.innerHTML = '<div style="text-align:center;padding:60px;color:var(--muted);">Loading your progress…</div>';
+  container.innerHTML = skeletonProgressDashboard();
 
   let results = [];
   try {
