@@ -3380,33 +3380,17 @@ async function _renderProgressDashboardInto(container) {
   const barColor = p => p >= 85 ? '#2ec4a0' : p >= 70 ? '#d4a843' : '#e07080';
   const pctColor = p => p >= 85 ? '#2ec4a0' : p >= 70 ? '#d4a843' : '#e07080';
 
-  // Score history for chart — last 15 days only
-  const cutoff15 = new Date(); cutoff15.setDate(cutoff15.getDate() - 15);
-  const recent15 = results.filter(r => new Date(r.finished_at) >= cutoff15);
-
-  // Group by day (average score per day)
-  const byDay = {};
-  recent15.forEach(r => {
-    const key = manilaDateStr(new Date(r.finished_at));
-    if (!byDay[key]) byDay[key] = [];
-    byDay[key].push(pct(r));
+  // Score history for chart
+  const chartLabels = results.map(r => {
+    const d = new Date(r.finished_at);
+    return d.toLocaleDateString('en-US',{timeZone:'Asia/Manila',month:'numeric',day:'numeric'});
   });
-
-  // Generate all 15 day slots
-  const chartSlots = [];
-  for (let i = 14; i >= 0; i--) {
-    const d = new Date(); d.setDate(d.getDate() - i);
-    const key = manilaDateStr(d);
-    const scores = byDay[key];
-    chartSlots.push({
-      label: d.toLocaleDateString('en-US',{timeZone:'Asia/Manila',month:'numeric',day:'numeric'}),
-      score: scores ? Math.round(scores.reduce((a,b)=>a+b,0)/scores.length) : null
-    });
-  }
-
-  const chartLabels = chartSlots.map(s => s.label);
-  const chartData   = chartSlots.map(s => s.score);
-  const pointColors = chartData.map(p => p === null ? 'transparent' : p >= 70 ? '#2ec4a0' : '#e07080');
+  const chartData = allPcts;
+  const pointColors = chartData.map(p => p >= 70 ? '#2ec4a0' : '#e07080');
+  const segColors   = chartData.map((p,i) => {
+    if (i === 0) return p >= 70 ? '#2ec4a0' : '#e07080';
+    return chartData[i-1] >= 70 ? '#2ec4a0' : '#e07080';
+  });
 
   container.innerHTML = `
     <div class="prog-page">
@@ -3447,9 +3431,7 @@ async function _renderProgressDashboardInto(container) {
       <!-- Score history chart -->
       <div class="prog-section">
         <div class="prog-section-title">📈 Score History</div>
-        ${recent15.length === 0
-          ? `<div style="font-size:13px;color:var(--muted);margin-bottom:12px;">No sessions in the last 15 days. Take a Mock Bar to see your trend here.</div>`
-          : recent15.length === 1
+        ${totalSess === 1
           ? `<div style="font-size:13px;color:var(--muted);margin-bottom:12px;">Complete more sessions to see your trend.</div>`
           : ''}
         <div class="prog-chart-wrap">
@@ -3496,15 +3478,23 @@ async function _renderProgressDashboardInto(container) {
       datasets: [{
         label: 'Score %',
         data: chartData,
-        borderColor: '#d4a843',
+        borderColor: function(ctx2) {
+          const chart = ctx2.chart;
+          const { ctx: c, chartArea } = chart;
+          if (!chartArea) return '#d4a843';
+          const gradient = c.createLinearGradient(chartArea.left, 0, chartArea.right, 0);
+          chartData.forEach((p,i) => {
+            gradient.addColorStop(i / Math.max(chartData.length-1,1), p >= 70 ? '#2ec4a0' : '#e07080');
+          });
+          return gradient;
+        },
         borderWidth: 2.5,
         pointBackgroundColor: pointColors,
         pointBorderColor: pointColors,
-        pointRadius: chartData.map(p => p === null ? 0 : 5),
-        pointHoverRadius: chartData.map(p => p === null ? 0 : 7),
+        pointRadius: 5,
+        pointHoverRadius: 7,
         tension: 0.35,
         fill: false,
-        spanGaps: false,
       }]
     },
     options: {
@@ -3514,11 +3504,7 @@ async function _renderProgressDashboardInto(container) {
         legend: { display: false },
         tooltip: {
           callbacks: {
-            label: ctx3 => {
-              const slot = chartSlots[ctx3.dataIndex];
-              if (!slot || slot.score === null) return 'No sessions';
-              return `Score: ${slot.score}%`;
-            },
+            label: ctx3 => `Score: ${ctx3.parsed.y}%`,
           },
           backgroundColor: 'rgba(15,20,35,.95)',
           borderColor: 'rgba(212,168,67,.3)',
