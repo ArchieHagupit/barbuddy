@@ -4400,7 +4400,7 @@ async function callClaudeJSON(messages, maxTokens, retries = 3, { temperature } 
 
 // callClaude: Sonnet first → 20s wait → Sonnet again → Haiku → 60s wait → Haiku → throw
 async function callClaude(messages, max_tokens=2000, { temperature } = {}) {
-  const SONNET = 'claude-sonnet-4-20250514';
+  const SONNET = 'claude-sonnet-4-5-20250929';
   const HAIKU  = 'claude-haiku-4-5-20251001';
   // [model, milliseconds to wait BEFORE this attempt]
   const SCHEDULE = [

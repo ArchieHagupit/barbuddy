@@ -447,3 +447,10 @@ All handled by extractJSON() 5-strategy system.
 - Results screen (renderModelAnswer)
 - Print preview (buildResultsHtml)
 - Email preview (buildResultsHtml email path)
+
+## Model Strings (updated April 2026)
+- SONNET: claude-sonnet-4-5-20250929
+  (migrated from deprecated claude-sonnet-4-20250514)
+- HAIKU: claude-haiku-4-5-20251001 (active, no change)
+- Deprecation deadline: June 15, 2026
+- Always use constants — never hardcode model strings
