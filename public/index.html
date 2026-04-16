@@ -3380,12 +3380,15 @@ async function _renderProgressDashboardInto(container) {
   const barColor = p => p >= 85 ? '#2ec4a0' : p >= 70 ? '#d4a843' : '#e07080';
   const pctColor = p => p >= 85 ? '#2ec4a0' : p >= 70 ? '#d4a843' : '#e07080';
 
-  // Score history for chart
-  const chartLabels = results.map(r => {
+  // Score history for chart — last 15 sessions only
+  const chartResults = [...results]
+    .sort((a, b) => new Date(a.finished_at) - new Date(b.finished_at))
+    .slice(-15);
+  const chartLabels = chartResults.map(r => {
     const d = new Date(r.finished_at);
     return d.toLocaleDateString('en-US',{timeZone:'Asia/Manila',month:'numeric',day:'numeric'});
   });
-  const chartData = allPcts;
+  const chartData = chartResults.map(pct);
   const pointColors = chartData.map(p => p >= 70 ? '#2ec4a0' : '#e07080');
   const segColors   = chartData.map((p,i) => {
     if (i === 0) return p >= 70 ? '#2ec4a0' : '#e07080';
@@ -3430,7 +3433,7 @@ async function _renderProgressDashboardInto(container) {
 
       <!-- Score history chart -->
       <div class="prog-section">
-        <div class="prog-section-title">📈 Score History</div>
+        <div class="prog-section-title">📈 Score History (Last 15 Sessions)</div>
         ${totalSess === 1
           ? `<div style="font-size:13px;color:var(--muted);margin-bottom:12px;">Complete more sessions to see your trend.</div>`
           : ''}
