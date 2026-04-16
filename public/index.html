@@ -3470,6 +3470,13 @@ async function _renderProgressDashboardInto(container) {
       </div>
     </div>`;
 
+  // ── Render countdown immediately (uses cached _barExamDate) ──
+  const _ppEarly = container.querySelector('.prog-page');
+  if (_ppEarly) {
+    _ppEarly.insertAdjacentHTML('afterbegin', _renderCountdownWidget());
+    _startCountdown();
+  }
+
   // ── Draw Chart.js line graph ─────────────────────────────────
   if (_progScoreChart) { _progScoreChart.destroy(); _progScoreChart = null; }
   const ctx = document.getElementById('progScoreChart');
@@ -3572,10 +3579,11 @@ async function _renderProgressDashboardInto(container) {
     refreshSidebarReviewBadges();
     const pp = container.querySelector('.prog-page');
     if (pp) {
-      pp.insertAdjacentHTML('afterbegin', _renderCountdownWidget() + _renderSRDueWidget(dueItems));
+      const cdEl = pp.querySelector('#countdown-section');
+      if (cdEl) cdEl.insertAdjacentHTML('afterend', _renderSRDueWidget(dueItems));
+      else pp.insertAdjacentHTML('afterbegin', _renderSRDueWidget(dueItems));
       pp.insertAdjacentHTML('beforeend',  _renderSRStats(srStats));
     }
-    _startCountdown();
   } catch(e) { /* non-critical — progress page still works */ }
 }
 
