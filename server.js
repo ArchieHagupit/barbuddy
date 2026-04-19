@@ -159,8 +159,13 @@ function makeSyllabusUpload() {
 const app       = express();
 const PORT      = process.env.PORT || 3000;
 const API_KEY   = process.env.ANTHROPIC_API_KEY;
-const ADMIN_KEY   = process.env.ADMIN_KEY   || 'barbuddy-admin-2025';
+const ADMIN_KEY   = process.env.ADMIN_KEY;
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || null;
+
+if (!ADMIN_KEY || ADMIN_KEY.length < 20) {
+  console.error('[FATAL] ADMIN_KEY env var missing or too short (min 20 chars). Refusing to start.');
+  process.exit(1);
+}
 
 const VALID_SUBJECTS = ['civil','criminal','political','labor','commercial','taxation','remedial','ethics','custom'];
 const SUBJECT_MAP_FALLBACK = {
@@ -756,7 +761,24 @@ async function initializeApp() {
 // ── Middleware ──────────────────────────────────────────────
 app.use(compression());
 app.use(cors());
-app.use(express.json({ limit: '80mb' }));
+
+// Block WordPress/bot probes BEFORE anything else (static, auth, routes)
+app.use((req, res, next) => {
+  const p = req.path.toLowerCase().replace(/\/+/g, '/');
+  const blocked = [
+    '/wp-admin', '/wp-includes', '/wp-login',
+    '/wp-content', '/wp-json', '/wp-cron',
+    '/wordpress', '/xmlrpc.php', '/wlwmanifest',
+    '/feed', '/wp1', '/wp2',
+    'license.txt', 'readme.html', 'setup-config'
+  ];
+  if (blocked.some(b => p.includes(b))) return res.status(404).send('Not found');
+  next();
+});
+
+// JSON body limit: small by default; file uploads use multer (separate limit)
+app.use(express.json({ limit: '2mb' }));
+
 app.get('/barbuddyemblem.webp', (req, res, next) => {
   res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
   next();
@@ -816,22 +838,6 @@ async function authOrAdmin(req, res, next) {
     next();
   } catch(e) { res.status(500).json({ error: 'Auth error' }); }
 }
-
-// ── Block WordPress/bot probe paths ──────────────────────────
-app.use((req, res, next) => {
-  const path = req.path.toLowerCase();
-  const blocked = [
-    '/wp-admin', '/wp-includes', '/wp-login',
-    '/wp-content', '/wp-json', '/wp-cron',
-    '/wordpress', '/xmlrpc.php', '/wlwmanifest',
-    '/feed', '/wp1', '/wp2',
-    'license.txt', 'readme.html',
-    'setup-config'
-  ];
-  const normalizedPath = path.replace(/\/+/g, '/');
-  if (blocked.some(b => normalizedPath.includes(b))) return res.status(404).send('Not found');
-  next();
-});
 
 // ── Auth routes ──────────────────────────────────────────────
 app.post('/api/auth/register', async (req, res) => {
