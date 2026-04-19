@@ -10,6 +10,26 @@ const { Resend } = require('resend');
 const crypto     = require('crypto');
 const bcrypt     = require('bcryptjs');
 const { createClient } = require('@supabase/supabase-js');
+const rateLimit = require('express-rate-limit');
+
+// ── Rate limiters ────────────────────────────────────────────
+// Auth: 10 attempts per IP per 15 min. Protects login/register/forgot-password.
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many attempts. Try again in 15 minutes.' },
+});
+
+// Eval: 30 requests per IP per minute. Protects Anthropic quota.
+const evalLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many evaluation requests. Slow down.' },
+});
 
 // ── Semaphore — limits concurrent AI calls globally ─────────
 class Semaphore {
@@ -21,8 +41,10 @@ class Semaphore {
     });
   }
   release() {
-    this.count--;
-    if (this.queue.length) { this.count++; this.queue.shift()(); }
+    // Hand slot directly to next waiter if any — count stays the same.
+    if (this.queue.length) { this.queue.shift()(); return; }
+    // Otherwise free the slot, clamped at 0 to survive unbalanced releases.
+    this.count = Math.max(0, this.count - 1);
   }
 }
 const aiSemaphore = new Semaphore(20);
@@ -476,7 +498,22 @@ function sanitizeAIResponse(text) {
 
 // Auth/settings state — loaded from Supabase at startup, users+sessions live in DB
 let RESET_REQUESTS = [];
-const SETTINGS = { registrationOpen: true, mockBarPublic: true, barExamDate: '2026-11-01' };
+// Loaded from Supabase `settings` table at boot; updated via admin PATCH.
+// Per CLAUDE.md the bar exam is September 6, 2026.
+const SETTINGS = { registrationOpen: true, mockBarPublic: true, barExamDate: '2026-09-06' };
+
+async function loadSettingsFromDB() {
+  try {
+    const keys = ['registrationOpen', 'mockBarPublic', 'barExamDate'];
+    const { data } = await supabase.from('settings').select('key, value').in('key', keys);
+    (data || []).forEach(row => {
+      if (row.key in SETTINGS) SETTINGS[row.key] = row.value;
+    });
+    console.log('[settings] Loaded from DB:', SETTINGS);
+  } catch (e) {
+    console.warn('[settings] Load failed, using defaults:', e.message);
+  }
+}
 
 // ── Field mappers: Supabase snake_case → camelCase for frontend ─────────────
 function mapUser(u) {
@@ -691,25 +728,28 @@ async function syncQuestionsFromBatch(batch) {
   const questions = batch.questions || [];
   if (questions.length === 0) return;
 
-  for (let i = 0; i < questions.length; i++) {
-    const q   = questions[i];
-    const qId = `q_${batch.id}_${i}`;
-    await supabase.from('questions').upsert([{
-      id:            qId,
-      batch_id:      batch.id,
-      subject:       batch.subject,
-      year:          q.year    || batch.year   || 'Unknown',
-      source:        q.source  || batch.source || 'upload',
-      type:          q.type    || 'situational',
-      question_text: q.q       || q.question   || q.question_text || '',
-      context:       q.context || q.facts      || null,
-      model_answer:  q.answer  || q.modelAnswer || null,
-      key_points:    q.keyPoints || q.key_points || [],
-      max_score:     q.max     || q.maxScore    || 10,
-    }], { onConflict: 'id' });
+  const rows = questions.map((q, i) => ({
+    id:            `q_${batch.id}_${i}`,
+    batch_id:      batch.id,
+    subject:       batch.subject,
+    year:          q.year    || batch.year   || 'Unknown',
+    source:        q.source  || batch.source || 'upload',
+    type:          q.type    || 'situational',
+    question_text: q.q       || q.question   || q.question_text || '',
+    context:       q.context || q.facts      || null,
+    model_answer:  q.answer  || q.modelAnswer || null,
+    key_points:    q.keyPoints || q.key_points || [],
+    max_score:     q.max     || q.maxScore    || 10,
+  }));
+
+  // Single batch upsert — one round-trip instead of N.
+  const { error } = await supabase.from('questions').upsert(rows, { onConflict: 'id' });
+  if (error) {
+    console.error(`[syncQuestions] Batch ${batch.id} upsert failed:`, error.message);
+    throw error;
   }
 
-  console.log(`Synced ${questions.length} questions from ${batch.name}`);
+  console.log(`Synced ${rows.length} questions from ${batch.name}`);
 }
 
 async function deletePastBarEntry(id) {
@@ -753,6 +793,7 @@ async function initializeApp() {
   RESET_REQUESTS = Array.isArray(rr) ? rr : [];
 
   await cleanupSessions();
+  await loadSettingsFromDB();
 
   const totalQ = KB.pastBar.reduce((a, pb) => a + (pb.questions?.length || pb.qCount || 0), 0);
   console.log(`✅ Supabase loaded — ${KB.pastBar.length} past bar batches, ${totalQ} questions, ${KB.references.length} refs`);
@@ -840,7 +881,7 @@ async function authOrAdmin(req, res, next) {
 }
 
 // ── Auth routes ──────────────────────────────────────────────
-app.post('/api/auth/register', async (req, res) => {
+app.post('/api/auth/register', authLimiter, async (req, res) => {
   try {
     if (!SETTINGS.registrationOpen) return res.status(403).json({ error: 'Registration is currently closed' });
     const { name, email, password, school } = req.body || {};
@@ -872,7 +913,7 @@ app.post('/api/auth/register', async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', authLimiter, async (req, res) => {
   try {
     const { email, password } = req.body || {};
     if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
@@ -942,7 +983,7 @@ app.get('/api/admin/export/users', (req, res) => {
 });
 
 // ── Password reset routes ─────────────────────────────────────
-app.post('/api/auth/forgot-password', async (req, res) => {
+app.post('/api/auth/forgot-password', authLimiter, async (req, res) => {
   try {
     const { email } = req.body || {};
     if (!email) return res.status(400).json({ error: 'Email required' });
@@ -2915,7 +2956,7 @@ const GRADE_SCALE = `Assign grade based on numericScore (passing score is 7.0/10
   Poor:               below 4.0`;
 
 // ── ESSAY EVALUATION (smart multi-format) ───────────────────
-app.post('/api/evaluate', async (req, res) => {
+app.post('/api/evaluate', evalLimiter, async (req, res) => {
   if (!API_KEY) return res.status(500).json({ error:'API key not set' });
   const { question, answer, modelAnswer, keyPoints, subject, context, forceType, questionId } = req.body;
   const refCtx = KB.references.filter(r=>r.subject===subject).slice(0,1).map(r=>r.summary||'').join('');
@@ -3917,7 +3958,7 @@ app.get('/api/eval-queue-status/:submissionId', requireAuth, (req, res) => {
 });
 
 // ── EVALUATE BATCH — fire-and-forget; client polls for progress ─
-app.post('/api/evaluate-batch', requireAuth, async (req, res) => {
+app.post('/api/evaluate-batch', requireAuth, evalLimiter, async (req, res) => {
   if (!API_KEY) return res.status(500).json({ error: 'API key not set' });
   const { questions, submissionId: clientId, resultId, sessionType, subject } = req.body;
   if (!Array.isArray(questions) || !questions.length)
