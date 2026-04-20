@@ -801,6 +801,11 @@ async function initializeApp() {
 }
 
 // ── Middleware ──────────────────────────────────────────────
+// Trust Railway's edge proxy (1 hop). Required for express-rate-limit to see
+// the real client IP via X-Forwarded-For. DO NOT set to `true` — that would
+// trust arbitrary client-supplied X-Forwarded-For headers and defeat rate limiting.
+app.set('trust proxy', 1);
+
 app.use(compression());
 app.use(cors());
 
