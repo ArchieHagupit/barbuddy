@@ -9,3 +9,5 @@ uploads/results.json
 uploads/settings.json
 uploads/reset_requests.json
 *.log
+
+.claude/
