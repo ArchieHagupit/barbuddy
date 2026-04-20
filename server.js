@@ -4568,7 +4568,9 @@ async function migrateOldQuestionTypes() {
 
 async function migrateUserSchema() {
   // Ensure existing users without a status field default to 'active'
-  await supabase.from('users').update({ status: 'active' }).is('status', null).catch(() => {});
+  try {
+    await supabase.from('users').update({ status: 'active' }).is('status', null);
+  } catch (_) { /* ignore — non-fatal */ }
   console.log('[startup] User schema ready');
 }
 
