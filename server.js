@@ -462,33 +462,11 @@ app.post('/api/auth/forgot-password', authLimiter, async (req, res) => {
   } catch(e) { res.json({ success: true }); }
 });
 
-app.get('/api/admin/reset-requests', adminOnly, (_req, res) => {
-  const sorted = [...RESET_REQUESTS].sort((a, b) => new Date(b.requestedAt) - new Date(a.requestedAt));
-  res.json(sorted);
-});
-
-app.post('/api/admin/reset-password', adminOnly, async (req, res) => {
-  try {
-    const { userId, newPassword, requestId } = req.body || {};
-    if (!userId || !newPassword) return res.status(400).json({ error: 'userId and newPassword required' });
-    const { data: user } = await supabase.from('users').select('id').eq('id', userId).single();
-    if (!user) return res.status(404).json({ error: 'User not found' });
-    const passwordHash = await bcrypt.hash(newPassword, 10);
-    await supabase.from('users').update({ password_hash: passwordHash }).eq('id', userId);
-    if (requestId) {
-      const r = RESET_REQUESTS.find(r => r.id === requestId);
-      if (r) { r.status = 'resolved'; r.resolvedAt = new Date().toISOString(); }
-      saveSetting('reset_requests', RESET_REQUESTS).catch(() => {});
-    }
-    res.json({ success: true });
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
-
-app.delete('/api/admin/reset-requests/:id', adminOnly, async (req, res) => {
-  const item = RESET_REQUESTS.find(r => r.id === req.params.id);
-  if (item) { item.status = 'dismissed'; saveSetting('reset_requests', RESET_REQUESTS).catch(() => {}); }
-  res.json({ ok: true });
-});
+// ── Admin user management (reset requests + user CRUD) ──
+app.use(require('./routes/admin-users')({
+  adminOnly,
+  getResetRequests: () => RESET_REQUESTS,
+}));
 
 // ── Settings routes ───────────────────────────────────────────
 app.use(require('./routes/settings')({ adminOnly }));
@@ -762,81 +740,6 @@ app.post('/api/admin/backfill-alternative-alac', adminOnly, async (_req, res) =>
     altAlacBackfillState.complete = true;
     console.log(`[alt-alac-backfill] complete — ${altAlacBackfillState.done}/${totalPairs} pairs processed, ${altAlacBackfillState.errors} errors`);
   })();
-});
-
-// ── Admin user-management routes ──────────────────────────────
-app.get('/api/admin/users', adminOnly, async (req, res) => {
-  try {
-    const { search, limit = 5 } = req.query;
-    let query = supabase.from('users').select('*').order('joined_at', { ascending: false });
-    if (search && search.trim()) {
-      const s = search.trim().replace(/%/g, '');
-      query = query.or(`name.ilike.%${s}%,email.ilike.%${s}%`);
-      query = query.limit(20);
-    } else {
-      query = query.limit(parseInt(limit) || 5);
-    }
-    const { data } = await query;
-    res.json((data || []).map(u => {
-      const m = mapUser(u);
-      return { id: m.id, name: m.name, email: m.email, role: m.role, isAdmin: m.isAdmin,
-               active: m.active, status: m.status, createdAt: m.createdAt, registeredAt: m.registeredAt,
-               school: m.school, stats: m.stats, tabSettings: m.tabSettings || null,
-               spacedRepEnabled: m.spacedRepEnabled, customSubjectEnabled: m.customSubjectEnabled, level: m.level, xp: m.xp };
-    }));
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
-
-app.patch('/api/admin/users/:userId', adminOnly, async (req, res) => {
-  try {
-    const { active, isAdmin } = req.body || {};
-    const updates = {};
-    if (active  !== undefined) updates.is_active = !!active;
-    if (isAdmin !== undefined) updates.is_admin  = !!isAdmin;
-    const { error } = await supabase.from('users').update(updates).eq('id', req.params.userId);
-    if (error) throw error;
-    res.json({ ok: true });
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
-
-app.patch('/api/admin/users/:userId/role', adminOnly, async (req, res) => {
-  try {
-    const { isAdmin } = req.body || {};
-    if (req.params.userId === req.userId && !isAdmin)
-      return res.status(400).json({ error: 'Cannot remove your own admin access' });
-    const { error } = await supabase.from('users').update({ is_admin: !!isAdmin }).eq('id', req.params.userId);
-    if (error) throw error;
-    res.json({ success: true, userId: req.params.userId, isAdmin: !!isAdmin });
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
-
-app.patch('/api/admin/users/:userId/spaced-repetition', adminOnly, async (req, res) => {
-  try {
-    const { enabled } = req.body;
-    const { userId } = req.params;
-    const { error } = await supabase.from('users').update({ spaced_repetition_enabled: !!enabled }).eq('id', userId);
-    if (error) return res.status(500).json({ error: error.message });
-    res.json({ ok: true, userId, enabled: !!enabled });
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
-
-app.patch('/api/admin/users/:userId/custom-subject', adminOnly, async (req, res) => {
-  try {
-    const { enabled } = req.body;
-    const { userId } = req.params;
-    const { error } = await supabase.from('users').update({ custom_subject_enabled: !!enabled }).eq('id', userId);
-    if (error) return res.status(500).json({ error: error.message });
-    res.json({ ok: true, userId, enabled: !!enabled });
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
-
-app.delete('/api/admin/users/:userId', adminOnly, async (req, res) => {
-  try {
-    await supabase.from('sessions').delete().eq('user_id', req.params.userId);
-    const { error } = await supabase.from('users').delete().eq('id', req.params.userId);
-    if (error) throw error;
-    res.json({ ok: true });
-  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 
