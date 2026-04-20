@@ -554,30 +554,7 @@ app.delete('/api/admin/reset-requests/:id', adminOnly, async (req, res) => {
 });
 
 // ── Settings routes ───────────────────────────────────────────
-app.get('/api/settings', (_req, res) => res.json(SETTINGS));
-
-app.post('/api/admin/settings', adminOnly, async (req, res) => {
-  const { registrationOpen, mockBarPublic } = req.body || {};
-  if (registrationOpen !== undefined) SETTINGS.registrationOpen = !!registrationOpen;
-  if (mockBarPublic     !== undefined) SETTINGS.mockBarPublic    = !!mockBarPublic;
-  await Promise.all([
-    saveSetting('registration_open', SETTINGS.registrationOpen),
-    saveSetting('mock_bar_public',   SETTINGS.mockBarPublic),
-  ]);
-  res.json(SETTINGS);
-});
-
-app.patch('/api/admin/settings', adminOnly, async (req, res) => {
-  const { key, value } = req.body || {};
-  if (!key || value === undefined) return res.status(400).json({ error: 'key and value required' });
-  if (key === 'bar_exam_date') {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return res.status(400).json({ error: 'Invalid date format (YYYY-MM-DD)' });
-    SETTINGS.barExamDate = value;
-    await saveSetting('bar_exam_date', value);
-    return res.json({ ok: true, barExamDate: value });
-  }
-  res.status(400).json({ error: `Unknown setting key: ${key}` });
-});
+app.use(require('./routes/settings')({ adminOnly }));
 
 // ── Results routes ────────────────────────────────────────────
 app.post('/api/results/save', requireAuth, async (req, res) => {
