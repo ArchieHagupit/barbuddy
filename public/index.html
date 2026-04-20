@@ -3569,25 +3569,68 @@ async function _renderProgressDashboardInto(container) {
   });
 
   // ── Inject Spaced Repetition sections ────────────────────────
-  try {
-    const [dueResp, statsResp] = await Promise.all([
+  // Two-phase render for perceived performance:
+  //   Phase 1: immediately render from window._srDueItems cache (populated
+  //            at boot by checkDueReviews) so the SR card appears with the
+  //            rest of the Progress page, not 400-1000ms later.
+  //   Phase 2: silently re-fetch in background and swap in fresh DOM.
+  //
+  // If the cache is empty (user opened Progress before boot fetch finished)
+  // we skip Phase 1 and rely on Phase 2 — same behavior as before the fix.
+  const pp = container.querySelector('.prog-page');
+  if (pp) {
+    const cachedDue = window._srDueItems;
+    // Phase 1 — render immediately from cache (if we have it)
+    if (Array.isArray(cachedDue)) {
+      const cdEl = pp.querySelector('#countdown-section');
+      const dueHtml = _renderSRDueWidget(cachedDue);
+      // Wrap in a marker div so Phase 2 can find and replace it
+      const dueWrap = `<div id="sr-due-container">${dueHtml}</div>`;
+      if (cdEl) cdEl.insertAdjacentHTML('afterend', dueWrap);
+      else pp.insertAdjacentHTML('afterbegin', dueWrap);
+      // Stats: render a lightweight placeholder that looks right structurally
+      // but has zero values — will be replaced in Phase 2. _renderSRStats
+      // handles all-zero input gracefully (no progress bar, "first Mock Bar"
+      // placeholder text). This is briefly misleading but only for ~200-500ms
+      // before the real stats replace it.
+      pp.insertAdjacentHTML('beforeend',
+        `<div id="sr-stats-container">${_renderSRStats({ total:0, mastered:0, dueNow:0, upcomingThisWeek:0 })}</div>`);
+    }
+
+    // Phase 2 — background fetch, swap in fresh data when ready
+    Promise.all([
       fetch('/api/spaced-repetition/due',   { headers: { 'x-session-token': sessionToken } }),
       fetch('/api/spaced-repetition/stats',  { headers: { 'x-session-token': sessionToken } }),
-    ]);
-    const dueItems = dueResp.ok   ? await dueResp.json()   : [];
-    const srStats  = statsResp.ok ? await statsResp.json()  : { total:0, mastered:0, dueNow:0, upcomingThisWeek:0 };
-    window._srDueItems = dueItems;
-    window._srDueCounts = {};
-    dueItems.forEach(item => { window._srDueCounts[item.subject] = (window._srDueCounts[item.subject]||0) + 1; });
-    refreshSidebarReviewBadges();
-    const pp = container.querySelector('.prog-page');
-    if (pp) {
-      const cdEl = pp.querySelector('#countdown-section');
-      if (cdEl) cdEl.insertAdjacentHTML('afterend', _renderSRDueWidget(dueItems));
-      else pp.insertAdjacentHTML('afterbegin', _renderSRDueWidget(dueItems));
-      pp.insertAdjacentHTML('beforeend',  _renderSRStats(srStats));
-    }
-  } catch(e) { /* non-critical — progress page still works */ }
+    ]).then(async ([dueResp, statsResp]) => {
+      const dueItems = dueResp.ok   ? await dueResp.json()   : [];
+      const srStats  = statsResp.ok ? await statsResp.json()  : { total:0, mastered:0, dueNow:0, upcomingThisWeek:0 };
+      window._srDueItems = dueItems;
+      window._srDueCounts = {};
+      dueItems.forEach(item => { window._srDueCounts[item.subject] = (window._srDueCounts[item.subject]||0) + 1; });
+      refreshSidebarReviewBadges();
+
+      // Swap in fresh DOM — find our marker containers, replace their innerHTML
+      const dueContainer   = document.getElementById('sr-due-container');
+      const statsContainer = document.getElementById('sr-stats-container');
+      if (dueContainer) {
+        dueContainer.innerHTML = _renderSRDueWidget(dueItems);
+      } else {
+        // Cache was empty at Phase 1 — inject now (fallback path)
+        const pp2 = container.querySelector('.prog-page');
+        if (pp2) {
+          const cdEl2 = pp2.querySelector('#countdown-section');
+          if (cdEl2) cdEl2.insertAdjacentHTML('afterend', `<div id="sr-due-container">${_renderSRDueWidget(dueItems)}</div>`);
+          else pp2.insertAdjacentHTML('afterbegin', `<div id="sr-due-container">${_renderSRDueWidget(dueItems)}</div>`);
+        }
+      }
+      if (statsContainer) {
+        statsContainer.innerHTML = _renderSRStats(srStats);
+      } else {
+        const pp2 = container.querySelector('.prog-page');
+        if (pp2) pp2.insertAdjacentHTML('beforeend', `<div id="sr-stats-container">${_renderSRStats(srStats)}</div>`);
+      }
+    }).catch(() => { /* non-critical — Phase 1 cache already visible, or page works without SR */ });
+  }
 }
 
 // ── XP & Level Tab ────────────────────────────────────────────
