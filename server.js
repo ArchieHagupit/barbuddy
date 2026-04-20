@@ -9,7 +9,6 @@ const multer     = require('multer');
 const { Resend } = require('resend');
 const crypto     = require('crypto');
 const bcrypt     = require('bcryptjs');
-const { createClient } = require('@supabase/supabase-js');
 // ── Rate limiters ────────────────────────────────────────────
 const { authLimiter, evalLimiter } = require('./middleware/rate-limiters');
 
@@ -22,11 +21,7 @@ const evalProgress = new Map(); // submissionId → { total, done, complete }
 const evalResults  = new Map(); // submissionId → scores array (set after all jobs finish)
 const xpResults    = new Map(); // submissionId → xpData (set after awardXP resolves)
 
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_KEY,
-  { auth: { persistSession: false } }
-);
+const { supabase } = require('./config/supabase');
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
