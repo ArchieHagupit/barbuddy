@@ -152,29 +152,7 @@ const KB = {
 };
 
 // ── Questions table helpers ───────────────────────────────────
-async function getQuestionsForSubject(subject, limit = 400) {
-  const { data, error } = await supabase
-    .from('questions')
-    .select('*, batch_info:past_bar!batch_id(enabled)')
-    .eq('subject', subject);
-  if (error || !data || data.length === 0) return null; // null = fall back to KB
-  const enabled = data.filter(q => q.batch_info?.enabled !== false);
-  if (enabled.length === 0) return null;
-  const shuffled = enabled.sort(() => Math.random() - 0.5);
-  return shuffled.slice(0, limit).map(mapQRow);
-}
-
-async function getQuestionsForSubjects(subjects, limit = 800) {
-  const { data, error } = await supabase
-    .from('questions')
-    .select('*, batch_info:past_bar!batch_id(enabled)')
-    .in('subject', subjects);
-  if (error || !data || data.length === 0) return null; // null = fall back to KB
-  const enabled = data.filter(q => q.batch_info?.enabled !== false);
-  if (enabled.length === 0) return null;
-  const shuffled = enabled.sort(() => Math.random() - 0.5);
-  return shuffled.slice(0, limit).map(mapQRow);
-}
+const { getQuestionsForSubject, getQuestionsForSubjects } = require('./lib/db-questions');
 
 // Tab visibility settings (admin-controlled)
 const DEFAULT_TAB_SETTINGS = {
@@ -210,22 +188,8 @@ const { extractJSON, repairJSON, sanitizeAIResponse } = require('./lib/json');
 
 // Auth/settings state — loaded from Supabase at startup, users+sessions live in DB
 let RESET_REQUESTS = [];
-// Loaded from Supabase `settings` table at boot; updated via admin PATCH.
-// Per CLAUDE.md the bar exam is September 6, 2026.
-const SETTINGS = { registrationOpen: true, mockBarPublic: true, barExamDate: '2026-09-06' };
-
-async function loadSettingsFromDB() {
-  try {
-    const keys = ['registrationOpen', 'mockBarPublic', 'barExamDate'];
-    const { data } = await supabase.from('settings').select('key, value').in('key', keys);
-    (data || []).forEach(row => {
-      if (row.key in SETTINGS) SETTINGS[row.key] = row.value;
-    });
-    console.log('[settings] Loaded from DB:', SETTINGS);
-  } catch (e) {
-    console.warn('[settings] Load failed, using defaults:', e.message);
-  }
-}
+// SETTINGS is a shared mutable object — see lib/db-settings.js comments.
+const { SETTINGS, loadSettingsFromDB, getSetting, saveSetting } = require('./lib/db-settings');
 
 // ── Field mappers: Supabase snake_case → camelCase for frontend ─────────────
 
@@ -346,84 +310,10 @@ function convertOldTopicsToSections(topics) {
 }
 
 // ── Supabase DB helpers ──────────────────────────────────────
-async function getSetting(key) {
-  const { data } = await supabase.from('settings').select('value').eq('key', key).single();
-  return data ? data.value : null;
-}
-async function saveSetting(key, value) {
-  await supabase.from('settings').upsert([{ key, value, updated_at: new Date().toISOString() }], { onConflict: 'key' });
-}
-
-async function createSession(userId) {
-  const token = crypto.randomBytes(32).toString('hex');
-  const expires = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-  await supabase.from('sessions').insert([{ token, user_id: userId, expires_at: expires }]);
-  return token;
-}
-async function verifySession(token) {
-  const { data } = await supabase
-    .from('sessions')
-    .select('*, users(*)')
-    .eq('token', token)
-    .gt('expires_at', new Date().toISOString())
-    .single();
-  return data || null;
-}
-async function deleteSession(token) {
-  await supabase.from('sessions').delete().eq('token', token);
-}
-async function cleanupSessions() {
-  await supabase.from('sessions').delete().lt('expires_at', new Date().toISOString());
-}
+const { createSession, verifySession, deleteSession, cleanupSessions } = require('./lib/db-sessions');
 setInterval(cleanupSessions, 60 * 60 * 1000);
 
-async function saveSyllabusSubject(subject, sections) {
-  await supabase.from('syllabus').upsert(
-    [{ subject, sections, updated_at: new Date().toISOString() }],
-    { onConflict: 'subject' }
-  );
-}
-async function savePastBarEntry(entry) {
-  await supabase.from('past_bar').upsert([{
-    id: entry.id, name: entry.name, subject: entry.subject,
-    year: entry.year || 'Unknown', source: entry.source || 'upload',
-    questions: entry.questions || [], q_count: entry.questions?.length || entry.qCount || 0,
-    uploaded_at: entry.uploadedAt || new Date().toISOString(),
-  }], { onConflict: 'id' });
-  await syncQuestionsFromBatch(entry);
-}
-
-async function syncQuestionsFromBatch(batch) {
-  const questions = batch.questions || [];
-  if (questions.length === 0) return;
-
-  const rows = questions.map((q, i) => ({
-    id:            `q_${batch.id}_${i}`,
-    batch_id:      batch.id,
-    subject:       batch.subject,
-    year:          q.year    || batch.year   || 'Unknown',
-    source:        q.source  || batch.source || 'upload',
-    type:          q.type    || 'situational',
-    question_text: q.q       || q.question   || q.question_text || '',
-    context:       q.context || q.facts      || null,
-    model_answer:  q.answer  || q.modelAnswer || null,
-    key_points:    q.keyPoints || q.key_points || [],
-    max_score:     q.max     || q.maxScore    || 10,
-  }));
-
-  // Single batch upsert — one round-trip instead of N.
-  const { error } = await supabase.from('questions').upsert(rows, { onConflict: 'id' });
-  if (error) {
-    console.error(`[syncQuestions] Batch ${batch.id} upsert failed:`, error.message);
-    throw error;
-  }
-
-  console.log(`Synced ${rows.length} questions from ${batch.name}`);
-}
-
-async function deletePastBarEntry(id) {
-  await supabase.from('past_bar').delete().eq('id', id);
-}
+const { saveSyllabusSubject, savePastBarEntry, syncQuestionsFromBatch, deletePastBarEntry } = require('./lib/db-syllabus');
 
 // ── App initialisation — loads all data from Supabase at startup ─────────────
 async function initializeApp() {
