@@ -1726,58 +1726,11 @@ const { evalProgress, evalResults, xpResults, EvalQueue, enqueueEval } = require
 });
 
 
-// ── EVAL PROGRESS polling (enhanced with queue info) ──────────
-app.get('/api/eval-progress/:id', requireAuth, (req, res) => {
-  const { id } = req.params;
-  const progress = evalProgress.get(id) || { total: 0, done: 0, complete: false };
-  const thisQueued  = EvalQueue.queue.filter(j => j.submissionId === id).length;
-  const otherQueued = EvalQueue.queue.length - thisQueued;
-  const estimatedWaitSec = thisQueued > 0
-    ? Math.ceil((thisQueued * EvalQueue.avgEvalTimeMs) / (EvalQueue.maxConcurrent * 1000))
-    : 0;
-  res.json({
-    ...progress,
-    queuePosition:    Math.max(0, otherQueued),
-    estimatedWaitSec,
-    semaphoreActive:  EvalQueue.activeCount,
-  });
-});
-
-// ── EVAL QUEUE STATUS — SSE for real-time queue position ───────
-app.get('/api/eval-queue-status/:submissionId', requireAuth, (req, res) => {
-  const { submissionId } = req.params;
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-
-  function sendUpdate() {
-    const prog = evalProgress.get(submissionId);
-    if (!prog) {
-      res.write(`data: ${JSON.stringify({ error: 'submission not found' })}\n\n`);
-      return true; // done — close stream
-    }
-    const thisQueued  = EvalQueue.queue.filter(j => j.submissionId === submissionId).length;
-    const otherQueued = EvalQueue.queue.length - thisQueued;
-    const estimatedSecondsRemaining = thisQueued > 0
-      ? Math.ceil((thisQueued * EvalQueue.avgEvalTimeMs) / (EvalQueue.maxConcurrent * 1000))
-      : 0;
-    res.write(`data: ${JSON.stringify({
-      position: otherQueued,
-      done: prog.done,
-      total: prog.total,
-      estimatedSecondsRemaining,
-      semaphoreActive: EvalQueue.activeCount,
-      complete: prog.complete,
-    })}\n\n`);
-    return prog.complete;
-  }
-
-  if (sendUpdate()) { res.end(); return; }
-  const interval = setInterval(() => {
-    if (sendUpdate()) { clearInterval(interval); res.end(); }
-  }, 2000);
-  req.on('close', () => clearInterval(interval));
-});
+// ── Eval status/stats routes (progress, queue-status SSE, results, queue-stats) ──
+app.use(require('./routes/evaluate')({
+  requireAuth, adminOnly,
+  evalProgress, evalResults, xpResults, EvalQueue,
+}));
 
 // ── EVALUATE BATCH — fire-and-forget; client polls for progress ─
 app.post('/api/evaluate-batch', requireAuth, evalLimiter, async (req, res) => {
@@ -1892,17 +1845,6 @@ app.post('/api/evaluate-batch', requireAuth, evalLimiter, async (req, res) => {
     });
 });
 
-// ── FETCH COMPLETED RESULTS — called by client once polling sees complete:true ─
-app.get('/api/eval-results/:submissionId', requireAuth, (req, res) => {
-  const { submissionId } = req.params;
-  const prog = evalProgress.get(submissionId);
-  if (!prog) return res.status(404).json({ error: 'Submission not found or expired' });
-  // Guard against the brief window where complete=true but evalResults isn't stored yet
-  if (!prog.complete || !evalResults.has(submissionId)) {
-    return res.status(202).json({ complete: false, waiting: true, done: prog.done, total: prog.total });
-  }
-  res.json({ complete: true, scores: evalResults.get(submissionId), xpData: xpResults.get(submissionId) || null });
-});
 
 
 // ── EMAIL ROUTES ─────────────────────────────────────────────
@@ -2264,25 +2206,6 @@ async function callClaude(messages, max_tokens=2000, { temperature } = {}) {
 const shuffle = arr => { const a=[...arr]; for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];} return a; };
 const sleep   = ms  => new Promise(r => setTimeout(r, ms));
 
-// ── Admin: Evaluation queue health ──────────────────────────
-app.get('/api/admin/queue-stats', adminOnly, (_req, res) => {
-  const globalQueueDepth  = EvalQueue.queue.length;
-  const activeSubmissions = new Set(EvalQueue.queue.map(j => j.submissionId)).size;
-  const avgMs = EvalQueue.avgEvalTimeMs;
-  const estimatedClearTimeSec = globalQueueDepth > 0
-    ? Math.ceil((globalQueueDepth * avgMs) / (EvalQueue.maxConcurrent * 1000))
-    : 0;
-  res.json({
-    semaphoreMax:          EvalQueue.maxConcurrent,
-    semaphoreActive:       EvalQueue.activeCount,
-    globalQueueDepth,
-    activeSubmissions,
-    estimatedClearTimeSec,
-    avgEvalTimeMs:         Math.round(avgMs),
-    totalProcessed:        EvalQueue.totalProcessed,
-    perUserActive:         Object.fromEntries(EvalQueue.perUserActive),
-  });
-});
 
 // ── API Status — tests Claude reachability with 10s timeout ─
 // CONTENT is kept in-memory only (regenerable from KB); no disk persistence needed
