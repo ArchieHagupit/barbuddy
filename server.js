@@ -1198,11 +1198,6 @@ app.post('/api/admin/parse-file', adminOnly, upload.single('file'), async (req, 
 });
 
 // ── Health ──────────────────────────────────────────────────
-app.get('/api/health', (req, res) => {
-  const n = Object.values(CONTENT).reduce((a,s) => a+Object.keys(s).length, 0);
-  res.json({ status:'ok', keySet:!!API_KEY, kb:{ hasSyllabus:!!KB.syllabus, refs:KB.references.length, pastBar:KB.pastBar.length }, content:{ topics:n }, gen:{ running:GEN.running, done:GEN.done, total:GEN.total } });
-});
-
 // ── Tab settings (public read, admin write) ──────────────────
 app.get('/api/tab-settings', (_req, res) => res.json({ ...TAB_SETTINGS }));
 
@@ -1992,12 +1987,6 @@ app.get('/api/admin/pastbar/:id/status', adminOnly, (req, res) => {
 });
 
 // ── Job queue status ─────────────────────────────────────────
-app.get('/api/job/:jobId', adminOnly, (req, res) => {
-  const job = JOB_MAP.get(req.params.jobId);
-  if (!job) return res.status(404).json({ error: 'Job not found or expired' });
-  res.json({ status: job.status, result: job.result, error: job.error });
-});
-
 // ── ADMIN: KB Diagnostic ─────────────────────────────────────
 app.get('/api/admin/debug/kb', adminOnly, async (_req, res) => {
   try {
@@ -2024,15 +2013,6 @@ app.get('/api/admin/debug/kb', adminOnly, async (_req, res) => {
 });
 
 // ── ADMIN: Storage info ──────────────────────────────────────
-app.get('/api/storage-info', adminOnly, (_, res) => {
-  res.json({
-    persistent: !!process.env.PERSISTENT_STORAGE_PATH,
-    storageDir: UPLOADS_DIR,
-    envVar: process.env.PERSISTENT_STORAGE_PATH || null,
-    source: 'supabase',
-  });
-});
-
 // ── ADMIN: Delete ───────────────────────────────────────────
 app.delete('/api/admin/reference/:id', adminOnly, async (req, res) => {
   try {
@@ -4028,42 +4008,14 @@ app.get('/api/admin/queue-stats', adminOnly, (_req, res) => {
 });
 
 // ── API Status — tests Claude reachability with 10s timeout ─
-app.get('/api/status', async (req, res) => {
-  const start = Date.now();
-  if (!API_KEY) return res.json({ apiOk:false, model:null, latencyMs:null, queueLength:JOB_QUEUE.length });
-  try {
-    const controller = new AbortController();
-    const t = setTimeout(() => controller.abort(), 10000);
-    const r = await fetch('https://api.anthropic.com/v1/messages', {
-      method:'POST',
-      headers:{ 'Content-Type':'application/json', 'x-api-key':API_KEY, 'anthropic-version':'2023-06-01' },
-      body:JSON.stringify({ model:'claude-haiku-4-5-20251001', max_tokens:5, messages:[{role:'user',content:'hi'}] }),
-      signal:controller.signal,
-    });
-    clearTimeout(t);
-    const d = await r.json();
-    const latencyMs = Date.now() - start;
-    const overloaded = r.status===529||r.status===429||d?.error?.type==='overloaded_error';
-    res.json({ apiOk:!overloaded&&!d.error, model:'claude-haiku-4-5-20251001', latencyMs, queueLength:JOB_QUEUE.length });
-  } catch(err) {
-    res.json({ apiOk:false, model:null, latencyMs:Date.now()-start, queueLength:JOB_QUEUE.length });
-  }
-});
-
 // CONTENT is kept in-memory only (regenerable from KB); no disk persistence needed
 function saveContent() { /* no-op — CONTENT is in-memory only */ }
 
-app.get('/robots.txt', (_req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'robots.txt'));
-});
-
-app.get('*', (req, res) => {
-  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-  res.setHeader('Pragma', 'no-cache');
-  res.setHeader('Expires', '0');
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
+// ── Misc routes (health, status, job, storage-info, robots, catchall) ──
+// Mounted LAST so the '*' catchall doesn't intercept earlier routes.
+app.use(require('./routes/misc')({
+  adminOnly, API_KEY, KB, CONTENT, GEN, JOB_MAP, JOB_QUEUE, UPLOADS_DIR,
+}));
 
 async function migrateOldQuestionTypes() {
   const oldTypes = ['mcq', 'truefalse', 'true_false', 'enumeration', 'definition', 'identification'];
