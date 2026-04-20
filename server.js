@@ -801,10 +801,12 @@ async function initializeApp() {
 }
 
 // ── Middleware ──────────────────────────────────────────────
-// Trust Railway's edge proxy (1 hop). Required for express-rate-limit to see
-// the real client IP via X-Forwarded-For. DO NOT set to `true` — that would
-// trust arbitrary client-supplied X-Forwarded-For headers and defeat rate limiting.
-app.set('trust proxy', 1);
+// Trust 2 proxy hops: Fastly edge → Railway edge → Express.
+// With only 1 hop, req.ip becomes a Fastly edge node IP (rotates per request,
+// breaks rate limiting). With 2, Express reads the real client IP from Fastly's
+// X-Forwarded-For value. DO NOT set to `true` — that would trust arbitrary
+// client-supplied X-Forwarded-For headers and defeat rate limiting.
+app.set('trust proxy', 2);
 
 app.use(compression());
 app.use(cors());
