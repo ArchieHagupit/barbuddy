@@ -807,6 +807,15 @@ async function initializeApp() {
 // client-supplied X-Forwarded-For headers and defeat rate limiting.
 app.set('trust proxy', 2);
 
+// Access log: tiny format. Skip static asset + health-check noise.
+const morgan = require('morgan');
+app.use(morgan('tiny', {
+  skip: (req) => req.path === '/api/health'
+             || req.path.startsWith('/barbuddyemblem')
+             || req.path === '/robots.txt'
+             || req.path === '/favicon.ico',
+}));
+
 app.use(compression());
 app.use(cors());
 
