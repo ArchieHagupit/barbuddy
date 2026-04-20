@@ -32,21 +32,7 @@ const evalLimiter = rateLimit({
 });
 
 // ── Semaphore — limits concurrent AI calls globally ─────────
-class Semaphore {
-  constructor(max) { this.max = max; this.count = 0; this.queue = []; }
-  acquire() {
-    return new Promise(resolve => {
-      if (this.count < this.max) { this.count++; resolve(); }
-      else this.queue.push(resolve);
-    });
-  }
-  release() {
-    // Hand slot directly to next waiter if any — count stays the same.
-    if (this.queue.length) { this.queue.shift()(); return; }
-    // Otherwise free the slot, clamped at 0 to survive unbalanced releases.
-    this.count = Math.max(0, this.count - 1);
-  }
-}
+const { Semaphore } = require('./lib/semaphore');
 const aiSemaphore = new Semaphore(20);
 
 // ── Per-submission evaluation progress ──────────────────────
@@ -63,51 +49,14 @@ const supabase = createClient(
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
 // ── XP & Level System ─────────────────────────────────────────
-const XP_VALUES = {
-  MOCK_BAR_FULL_BONUS:      1000,  // flat bonus when exactly 20 questions
-  MOCK_BAR_PER_QUESTION:      10,  // per question when partial (< 20)
-  COMPLETE_SPEED_DRILL:       40,  // flat per speed drill completion
-  HIGH_SCORE_BONUS:           50,  // per question scoring 8.0+ in any mode
-  DAILY_LOGIN:                10,  // once per day
-  STREAK_BONUS:               25,  // per day of active streak
-  FIRST_SUBJECT_COMPLETE:    200,  // one-time per subject
-  MASTER_SPACED_REP:          30,  // per question mastered
-  COMPLETE_REVIEW_SESSION:    60,  // spaced repetition review session
-};
-
-const LEVEL_THRESHOLDS = [
-  0, 100, 200, 350, 500, 700, 900, 1150, 1400, 1700,
-  2000, 2400, 2800, 3300, 3800, 4400, 5000, 5700, 6400, 7200,
-  8000, 9000, 10000, 11200, 12400, 13800, 15200, 16800, 18400, 20200,
-  22000, 24200, 26400, 28800, 31200, 33800, 36400, 39200, 42000, 45000,
-  48000, 51500, 55000, 58800, 62600, 66600, 70600, 74800, 79000, 83500,
-  88000, 93000, 98000, 103500, 109000, 115000, 121000, 127500, 134000, 141000,
-  148000, 156000, 164000, 172500, 181000, 190000, 199000, 208500, 218000, 228000,
-  238000, 249000, 260000, 271500, 283000, 295000, 307000, 319500, 332000, 345000,
-  358500, 372500, 386500, 401000, 415500, 430500, 445500, 461000, 476500, 492500,
-  509000, 526000, 543000, 560500, 578000, 596000, 614000, 632500, 651000, 100000000,
-];
-
-function getLevelFromXP(xp) {
-  for (let i = LEVEL_THRESHOLDS.length - 1; i >= 0; i--) {
-    if (xp >= LEVEL_THRESHOLDS[i]) return i + 1;
-  }
-  return 1;
-}
-
-function getTitleFromLevel(level) {
-  if (level >= 100) return 'Attorney-at-Law';
-  if (level >= 91)  return 'Senior Partner';
-  if (level >= 71)  return 'Partner';
-  if (level >= 51)  return 'Senior Counsel';
-  if (level >= 31)  return 'Junior Counsel';
-  if (level >= 11)  return 'Associate';
-  return 'Law Student';
-}
-
-function getXPForNextLevel(currentLevel) {
-  return LEVEL_THRESHOLDS[currentLevel] || null;
-}
+const {
+  XP_VALUES,
+  LEVEL_THRESHOLDS,
+  getLevelFromXP,
+  getTitleFromLevel,
+  getXPForNextLevel,
+} = require('./lib/xp');
+const { mapQRow, mapUser, mapPastBar, _mapResult } = require('./lib/mappers');
 
 async function awardXP(userId, action, description, bonusXP = 0) {
   try {
@@ -226,41 +175,6 @@ const KB = {
 };
 
 // ── Questions table helpers ───────────────────────────────────
-// Map a questions-table row to the shape expected by generateMockBar
-function mapQRow(q) {
-  return {
-    id: q.id,
-    q: q.question_text,
-    context: q.context,
-    modelAnswer: q.model_answer,
-    keyPoints: q.key_points || [],
-    subject: q.subject,
-    source: q.source,
-    year: q.year,
-    type: q.type || 'essay',
-    isReal: true,
-    pastBarId: q.batch_id,
-    pastBarName: q.source,
-    max: q.max_score || 10,
-    // Cache fields — populated from DB, used by runEvalJob to skip redundant AI calls
-    _cachedAlternatives: q.alternative_answers || null,
-    _cachedAlac: q.model_answer_alac || null,
-    _cachedConceptual: q.model_answer_conceptual || null,
-    // Individual alternative answer columns
-    alternativeAnswer1: q.alternative_answer_1 || null,
-    alternativeAnswer2: q.alternative_answer_2 || null,
-    alternativeAnswer3: q.alternative_answer_3 || null,
-    alternativeAnswer4: q.alternative_answer_4 || null,
-    alternativeAnswer5: q.alternative_answer_5 || null,
-    // Alternative ALAC model answers
-    alternativeAlac1: q.alternative_alac_1 || null,
-    alternativeAlac2: q.alternative_alac_2 || null,
-    alternativeAlac3: q.alternative_alac_3 || null,
-    alternativeAlac4: q.alternative_alac_4 || null,
-    alternativeAlac5: q.alternative_alac_5 || null,
-  };
-}
-
 async function getQuestionsForSubject(subject, limit = 400) {
   const { data, error } = await supabase
     .from('questions')
@@ -315,186 +229,7 @@ function deepMerge(defaults, overrides) {
 let TAB_SETTINGS = JSON.parse(JSON.stringify(DEFAULT_TAB_SETTINGS));
 
 // ── Universal JSON extractor ─────────────────────────────────
-function extractJSON(text) {
-  if (!text) return null;
-
-  // Sanitize: remove BOM and control characters before anything else
-  let t = text
-    .replace(/^\uFEFF/, '')
-    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')
-    .trim();
-
-  // Fix invalid JSON escape sequences that AI models emit
-  t = t
-    .replace(/\\'/g,  "'")   // \' → '
-    .replace(/\\s/g,  "s")   // \s → s
-    .replace(/\\d/g,  "d")   // \d → d
-    .replace(/\\w/g,  "w")   // \w → w
-    .replace(/\\-/g,  "-")   // \- → -
-    .replace(/\\%/g,  "%")   // \% → %
-    .replace(/\\&/g,  "&")   // \& → &
-    .replace(/\\\(/g, "(")   // \( → (
-    .replace(/\\\)/g, ")")   // \) → )
-    .replace(/\\\./g, ".")   // \. → .  (note: /\\./ would match any char — use /\\\. /)
-    .replace(/\\,/g,  ",")   // \, → ,
-    .replace(/\\:/g,  ":")   // \: → :
-    .replace(/\\;/g,  ";");  // \; → ;
-
-  // Strip { } inside quoted string values using a character-by-character walk so
-  // structural braces are preserved and escaped quotes are handled correctly.
-  function sanitizeNestedBraces(str) {
-    let result = '';
-    let inString = false;
-    let escaped = false;
-    for (let i = 0; i < str.length; i++) {
-      const ch = str[i];
-      if (escaped) { result += ch; escaped = false; continue; }
-      if (ch === '\\') { escaped = true; result += ch; continue; }
-      if (ch === '"') { inString = !inString; result += ch; continue; }
-      if (inString && ch === '{') { result += ''; continue; }
-      if (inString && ch === '}') { result += ''; continue; }
-      result += ch;
-    }
-    return result;
-  }
-  t = sanitizeNestedBraces(t);
-
-  // Fix trailing commas before closing braces/brackets
-  t = t.replace(/,\s*}/g, '}').replace(/,\s*]/g, ']');
-
-  // Fix non-JSON numeric literals
-  t = t.replace(/:\s*NaN/g, ': null').replace(/:\s*Infinity/g, ': null').replace(/:\s*undefined/g, ': null');
-
-  // Strip markdown fences (Sonnet fallback returns ```json ... ```)
-  t = t
-    .replace(/^```json\s*/i, '')
-    .replace(/^```\s*/i, '')
-    .replace(/```\s*$/i, '')
-    .trim();
-
-  // Strategy 1: Direct parse
-  try {
-    return JSON.parse(t);
-  } catch(e) {
-    const pos = parseInt(e.message.match(/position (\d+)/)?.[1]);
-    if (!isNaN(pos)) {
-      console.warn('[extractJSON] Strategy 1 failed:', e.message, '| char code at pos:', t.charCodeAt(pos));
-    } else {
-      console.warn('[extractJSON] Strategy 1 failed:', e.message);
-    }
-  }
-
-  // Strategy 2: Strip markdown fences (secondary pass on original t)
-  let stripped = t
-    .replace(/^```(?:json)?[\r\n]*/i, '')
-    .replace(/[\r\n]*```[\s\S]*$/i, '')
-    .trim();
-  try { return JSON.parse(stripped); } catch(_) {}
-
-  // Strategy 3: Brace-matched extraction (string-aware, handles trailing text)
-  {
-    let depth = 0, start = -1, inStr = false, esc = false;
-    for (let i = 0; i < t.length; i++) {
-      const ch = t[i];
-      if (esc)          { esc = false; continue; }
-      if (ch === '\\')  { esc = true;  continue; }
-      if (ch === '"')   { inStr = !inStr; continue; }
-      if (inStr)        continue;
-      if (ch === '{') {
-        if (depth === 0) start = i;
-        depth++;
-      } else if (ch === '}') {
-        depth--;
-        if (depth === 0 && start !== -1) {
-          try { return JSON.parse(t.slice(start, i + 1)); } catch(_) { break; }
-        }
-      }
-    }
-  }
-
-  // Strategy 4: Aggressive repair then parse
-  try {
-    const repaired = repairJSON(t);
-    if (repaired) return JSON.parse(repaired);
-  } catch(_) {}
-
-  // Strategy 5: jsonrepair as last resort (handles structural issues)
-  try {
-    const { jsonrepair } = require('jsonrepair');
-    const repaired = jsonrepair(t);
-    const parsed = JSON.parse(repaired);
-    if (parsed && typeof parsed === 'object') {
-      console.log('[extractJSON] Strategy 5 (jsonrepair) succeeded');
-      return parsed;
-    }
-  } catch(e) {
-    console.warn('[extractJSON] Strategy 5 (jsonrepair) failed:', e.message);
-  }
-
-  console.error('[extractJSON] All strategies failed. First 300 chars:', t.slice(0, 300));
-  return null;
-}
-
-function repairJSON(text) {
-  if (!text) return null;
-  let t = text.replace(/^\uFEFF/, '').trim();
-
-  // Strip markdown fences
-  t = t.replace(/^```(?:json)?[\r\n]*/i, '').replace(/[\r\n]*```[\s\S]*$/i, '').trim();
-
-  // Find outermost braces
-  const start = t.indexOf('{');
-  const end   = t.lastIndexOf('}');
-  if (start === -1 || end === -1) return null;
-  t = t.slice(start, end + 1);
-
-  // Fix 1: Remove trailing commas before } or ]
-  t = t.replace(/,(\s*[}\]])/g, '$1');
-
-  // Fix 2: Escape unescaped control chars inside strings (char-by-char)
-  let result = '', inStr = false, escaped = false;
-  for (let i = 0; i < t.length; i++) {
-    const ch = t[i], code = t.charCodeAt(i);
-    if (escaped)       { result += ch; escaped = false; continue; }
-    if (ch === '\\')   { result += ch; escaped = true;  continue; }
-    if (ch === '"')    { inStr = !inStr; result += ch; continue; }
-    if (inStr) {
-      if      (code === 10) result += '\\n';
-      else if (code === 13) result += '\\r';
-      else if (code === 9)  result += '\\t';
-      else result += ch;
-    } else {
-      result += ch;
-    }
-  }
-
-  // Fix 3: Close any open string and open braces (handles truncation)
-  let depth = 0, inString = false, isEscaped = false;
-  for (let i = 0; i < result.length; i++) {
-    const ch = result[i];
-    if (isEscaped)    { isEscaped = false; continue; }
-    if (ch === '\\')  { isEscaped = true;  continue; }
-    if (ch === '"')   { inString = !inString; continue; }
-    if (!inString) {
-      if (ch === '{') depth++;
-      if (ch === '}') depth--;
-    }
-  }
-  if (inString) result += '"';
-  while (depth > 0) { result += '}'; depth--; }
-
-  return result;
-}
-
-function sanitizeAIResponse(text) {
-  if (!text) return text;
-  return text
-    .replace(/^\uFEFF/, '')
-    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '')
-    .replace(/\r\n/g, '\n')
-    .replace(/\r/g, '\n')
-    .trim();
-}
+const { extractJSON, repairJSON, sanitizeAIResponse } = require('./lib/json');
 
 // Auth/settings state — loaded from Supabase at startup, users+sessions live in DB
 let RESET_REQUESTS = [];
@@ -516,49 +251,6 @@ async function loadSettingsFromDB() {
 }
 
 // ── Field mappers: Supabase snake_case → camelCase for frontend ─────────────
-function mapUser(u) {
-  if (!u) return null;
-  return {
-    id:                u.id,
-    name:              u.name,
-    email:             u.email,
-    passwordHash:      u.password_hash,
-    isAdmin:           u.is_admin || false,
-    isActive:          u.is_active !== false,
-    role:              u.is_admin ? 'admin' : 'student',
-    active:            u.is_active !== false,
-    status:            u.status || 'active',
-    joinedAt:          u.joined_at,
-    createdAt:         u.joined_at || u.registered_at,
-    registeredAt:      u.registered_at || u.joined_at,
-    tabSettings:       u.tab_settings || {},
-    progress:          u.progress || {},
-    activeExamSession: u.active_exam_session || null,
-    mockBarCount:      u.mock_bar_count || 0,
-    avgScore:          u.avg_score || 0,
-    school:            u.school || null,
-    spacedRepEnabled:  u.spaced_repetition_enabled !== false,
-    customSubjectEnabled: u.custom_subject_enabled !== false,
-    level:             u.level || 1,
-    xp:                u.xp || 0,
-    stats: { totalAttempts: u.mock_bar_count || 0, totalScore: 0, totalQuestions: 0 },
-  };
-}
-
-function mapPastBar(pb) {
-  if (!pb) return null;
-  return {
-    id:         pb.id,
-    name:       pb.name,
-    subject:    pb.subject,
-    year:       pb.year,
-    source:     pb.source,
-    questions:  pb.questions || [],
-    qCount:     pb.q_count || 0,
-    uploadedAt: pb.uploaded_at,
-    enabled:    pb.enabled !== false,  // default true
-  };
-}
 
 // Pre-generated content per topic
 // { [subject_key]: { [topic_name]: { lesson, mcq, essay, generatedAt } } }
@@ -1139,17 +831,6 @@ app.get('/api/xp/summary', requireAuth, async (req, res) => {
     res.json({ xp, level, title, xpToNextLevel, progressPercent, recentTransactions: recent || [] });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
-
-function _mapResult(r) {
-  return {
-    ...r,
-    userName:       r.users?.name  || r.user_id,
-    userEmail:      r.users?.email || '',
-    totalQuestions: r.total_questions,
-    finishedAt:     r.finished_at,
-    startedAt:      r.started_at   || null,
-  };
-}
 
 app.get('/api/admin/results', adminOnly, async (req, res) => {
   try {
