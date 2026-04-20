@@ -5,8 +5,7 @@ const cors       = require('cors');
 const path       = require('path');
 const fs         = require('fs');
 const multer     = require('multer');
-const pdfParse   = require('pdf-parse');
-const mammoth    = require('mammoth');
+// pdf-parse and mammoth are lazy-loaded in /api/admin/parse-file to speed cold starts
 const { Resend } = require('resend');
 const crypto     = require('crypto');
 const bcrypt     = require('bcryptjs');
@@ -1674,9 +1673,11 @@ app.post('/api/admin/parse-file', adminOnly, upload.single('file'), async (req, 
   try {
     let text = '';
     if (ext === '.pdf') {
+      const pdfParse = require('pdf-parse');
       const data = await pdfParse(req.file.buffer);
       text = data.text;
     } else if (ext === '.docx' || ext === '.doc') {
+      const mammoth = require('mammoth');
       const result = await mammoth.extractRawText({ buffer: req.file.buffer });
       text = result.value;
     } else {
