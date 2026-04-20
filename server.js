@@ -10,26 +10,8 @@ const { Resend } = require('resend');
 const crypto     = require('crypto');
 const bcrypt     = require('bcryptjs');
 const { createClient } = require('@supabase/supabase-js');
-const rateLimit = require('express-rate-limit');
-
 // ── Rate limiters ────────────────────────────────────────────
-// Auth: 10 attempts per IP per 15 min. Protects login/register/forgot-password.
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 10,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: 'Too many attempts. Try again in 15 minutes.' },
-});
-
-// Eval: 30 requests per IP per minute. Protects Anthropic quota.
-const evalLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 30,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: 'Too many evaluation requests. Slow down.' },
-});
+const { authLimiter, evalLimiter } = require('./middleware/rate-limiters');
 
 // ── Semaphore — limits concurrent AI calls globally ─────────
 const { Semaphore } = require('./lib/semaphore');
@@ -512,18 +494,8 @@ app.use(compression());
 app.use(cors());
 
 // Block WordPress/bot probes BEFORE anything else (static, auth, routes)
-app.use((req, res, next) => {
-  const p = req.path.toLowerCase().replace(/\/+/g, '/');
-  const blocked = [
-    '/wp-admin', '/wp-includes', '/wp-login',
-    '/wp-content', '/wp-json', '/wp-cron',
-    '/wordpress', '/xmlrpc.php', '/wlwmanifest',
-    '/feed', '/wp1', '/wp2',
-    'license.txt', 'readme.html', 'setup-config'
-  ];
-  if (blocked.some(b => p.includes(b))) return res.status(404).send('Not found');
-  next();
-});
+const { botBlocker } = require('./middleware/bot-blocker');
+app.use(botBlocker);
 
 // JSON body limit: small by default; file uploads use multer (separate limit)
 app.use(express.json({ limit: '2mb' }));
@@ -545,48 +517,9 @@ app.use(express.static(path.join(__dirname, 'public'), {
   }
 }));
 
-async function requireAuth(req, res, next) {
-  try {
-    const token = req.headers['x-session-token'];
-    if (!token) return res.status(401).json({ error: 'Not authenticated' });
-    const session = await verifySession(token);
-    if (!session) return res.status(401).json({ error: 'Session expired' });
-    req.userId = session.user_id;
-    req.user   = mapUser(session.users);
-    next();
-  } catch(e) { res.status(500).json({ error: 'Auth error' }); }
-}
-
-async function adminOnly(req, res, next) {
-  try {
-    const key = req.headers['x-admin-key'] || req.body?.adminKey;
-    if (key && key === ADMIN_KEY) return next();
-    const token = req.headers['x-session-token'];
-    if (token) {
-      const session = await verifySession(token);
-      if (session?.users?.is_admin) {
-        req.userId = session.user_id;
-        req.user   = mapUser(session.users);
-        return next();
-      }
-    }
-    return res.status(401).json({ error: 'Unauthorized' });
-  } catch(e) { res.status(500).json({ error: 'Auth error' }); }
-}
-
-async function authOrAdmin(req, res, next) {
-  try {
-    const adminKey = req.headers['x-admin-key'] || req.body?.adminKey;
-    if (adminKey === ADMIN_KEY) return next();
-    const token = req.headers['x-session-token'];
-    if (!token) return res.status(401).json({ error: 'Not authenticated' });
-    const session = await verifySession(token);
-    if (!session) return res.status(401).json({ error: 'Session expired' });
-    req.userId = session.user_id;
-    req.user   = mapUser(session.users);
-    next();
-  } catch(e) { res.status(500).json({ error: 'Auth error' }); }
-}
+const { requireAuth, adminOnly, authOrAdmin } = require('./middleware/auth')({
+  verifySession, mapUser, adminKey: ADMIN_KEY,
+});
 
 // ── Auth routes ──────────────────────────────────────────────
 app.post('/api/auth/register', authLimiter, async (req, res) => {
