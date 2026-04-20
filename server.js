@@ -164,6 +164,7 @@ let TAB_SETTINGS = JSON.parse(JSON.stringify(DEFAULT_TAB_SETTINGS));
 
 // ── Universal JSON extractor ─────────────────────────────────
 const { extractJSON, repairJSON, sanitizeAIResponse } = require('./lib/json');
+const { detectQuestionType, isCopyPastedFacts, getAlternatives, GRADE_SCALE } = require('./lib/eval-helpers');
 
 // Auth/settings state — loaded from Supabase at startup, users+sessions live in DB
 let RESET_REQUESTS = [];
@@ -1115,50 +1116,6 @@ app.use(require('./routes/mockbar')({ API_KEY, generateMockBar }));
 //   'conceptual'  → "explain X", "what is the purpose of X" → same A/C/C scoring
 //   'situational' → fact pattern present or situational keywords → ALAC scoring
 //   'conceptual'  → all other questions → Accuracy/Completeness/Clarity scoring
-function detectQuestionType(questionText, context, modelAnswer) {
-  const q   = (questionText || '').toLowerCase().trim();
-  const ctx = (context      || '').toLowerCase().trim();
-  const ans = (modelAnswer  || '').toLowerCase();
-
-  // ── Situational — context (fact pattern) is the strongest signal ──
-  const hasFacts       = ctx.length > 80;
-  const hasCaseParties = /filed|sued|plaintiff|defendant|petitioner|respondent|labor arbiter|nlrc|\brtc\b|\bca\b|supreme court/i.test(ctx);
-  if (hasFacts || hasCaseParties) return 'situational';
-
-  // ── Situational keywords in question text ──
-  const situationalKw = ['rule on', 'decide', 'resolve', 'is he liable', 'is she liable',
-    'is it valid', 'is the contract', 'may he', 'may she', 'can he', 'what crime',
-    'what offense', 'the facts show', 'in the case', 'plaintiff', 'defendant',
-    'accused', 'complainant'];
-  if (situationalKw.some(kw => q.includes(kw))) return 'situational';
-
-  // ── Model answer ALAC signal ──
-  const hasALAC  = /(answer:|legal basis:|application:|conclusion:)/i.test(ans);
-  const ansWords = ans.split(/\s+/).filter(w => w.length > 0).length;
-  if (hasALAC && ansWords > 100) return 'situational';
-
-  return 'conceptual'; // default — conceptual/theoretical questions
-}
-
-// ── Copy-paste detection — flags answers that just restate the given facts ──
-function isCopyPastedFacts(studentAnswer, facts) {
-  if (!facts || !studentAnswer) return false;
-  const normalize = (text) => text.toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
-  const normalizedAnswer = normalize(studentAnswer);
-  const normalizedFacts  = normalize(facts);
-  if (normalizedAnswer.length < 20) return false;
-  const answerWords  = normalizedAnswer.split(' ');
-  const matchingWords = answerWords.filter(w => w.length > 4 && normalizedFacts.includes(w)).length;
-  const similarity = matchingWords / answerWords.length;
-  return similarity > 0.70;
-}
-
-const GRADE_SCALE = `Assign grade based on numericScore (passing score is 7.0/10):
-  Excellent:          8.5 and above
-  Good:               7.0 to 8.4  ← passing starts here
-  Satisfactory:       5.5 to 6.9
-  Needs Improvement:  4.0 to 5.4
-  Poor:               below 4.0`;
 
 // ── ESSAY EVALUATION (smart multi-format) ───────────────────
 app.post('/api/evaluate', evalLimiter, async (req, res) => {
@@ -1597,17 +1554,6 @@ function extractAlternativeAnswers(modelAnswer) {
 
 // ── Get alternatives from individual columns — returns [{index, text, alac}] ──
 // Only includes alternatives that have a cached ALAC (alternative_alac_N not null).
-function getAlternatives(item) {
-  const alts = [];
-  for (let i = 1; i <= 5; i++) {
-    const altText = item[`alternativeAnswer${i}`] || item[`alternative_answer_${i}`];
-    const altAlac = item[`alternativeAlac${i}`]   || item[`alternative_alac_${i}`];
-    if (altAlac) {
-      alts.push({ index: i, text: (altText || '').trim(), alac: altAlac });
-    }
-  }
-  return alts;
-}
 
 // ── ALAC model answer generator ────────────────────────────────────────────────
 // Returns { formatted, components: {answer, legalBasis, application, conclusion} }
