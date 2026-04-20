@@ -6,7 +6,6 @@ const path       = require('path');
 const fs         = require('fs');
 const multer     = require('multer');
 // pdf-parse and mammoth are lazy-loaded in /api/admin/parse-file to speed cold starts
-const { Resend } = require('resend');
 const crypto     = require('crypto');
 const bcrypt     = require('bcryptjs');
 // ── Rate limiters ────────────────────────────────────────────
@@ -3071,27 +3070,8 @@ app.get('/api/eval-results/:submissionId', requireAuth, (req, res) => {
 });
 
 
-// ── EMAIL RESULTS ────────────────────────────────────────────
-app.post('/api/email-results', async (req, res) => {
-  if (!process.env.RESEND_API_KEY) {
-    return res.json({ error: 'Email not configured. Add RESEND_API_KEY to Railway environment variables.' });
-  }
-  const { to, subject, htmlBody } = req.body;
-  if (!to || !htmlBody) return res.status(400).json({ error: 'to and htmlBody required' });
-  try {
-    const resend = new Resend(process.env.RESEND_API_KEY);
-    await resend.emails.send({
-      from: 'BarBuddy Results <onboarding@resend.dev>',
-      to,
-      subject: subject || 'BarBuddy Mock Bar Results',
-      html: `<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body>${htmlBody}</body></html>`,
-    });
-    res.json({ success: true });
-  } catch(err) {
-    console.error('[email] Send error:', err.message, err.code);
-    res.status(500).json({ error: err.message });
-  }
-});
+// ── EMAIL ROUTES ─────────────────────────────────────────────
+app.use(require('./routes/email')());
 
 // ── ADMIN: Manual past bar question entry (no AI) ────────────
 app.post('/api/admin/pastbar/manual', adminOnly, async (req, res) => {
