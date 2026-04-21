@@ -2196,6 +2196,19 @@ function renderSidebar() {
   }).join('');
   list.innerHTML = html;
   sessionStorage.setItem('bb_sidebar_cache', html);
+  // Sidebar owns its SR data dependency. If SR counts aren't populated yet,
+  // kick off the fetch now. The in-flight-promise guard in checkDueReviews
+  // dedupes if another handler (DOMContentLoaded, onAuthSuccess) already
+  // fired it; this runs after renderSidebar has created the badge DOM slots,
+  // and checkDueReviews' success path calls refreshSidebarReviewBadges which
+  // finds those slots by ID and populates them.
+  //
+  // Guarded by sessionToken because renderSidebar can be called before login
+  // completes (on initial app boot) and checkDueReviews would return early
+  // anyway — but this avoids the no-op call overhead.
+  if (sessionToken && !window._srDueCounts) {
+    checkDueReviews().catch(() => {});
+  }
 }
 
 
