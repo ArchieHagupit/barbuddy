@@ -1,3 +1,44 @@
+// ══════════════════════════════════════════════════════════════════════
+// TABLE OF CONTENTS — jump to a section with Cmd+F on the label
+// ══════════════════════════════════════════════════════════════════════
+//   Line    43 — DOM SAFE HELPERS
+//   Line    51 — STATE
+//   Line   109 — EXAM SESSION AUTO-SAVE
+//   Line   418 — LOADING SCREEN
+//   Line   468 — INIT
+//   Line   604 — LOCAL BROWSER CACHE
+//   Line   648 — SERVER STATE
+//   Line   703 — SSE — LIVE GENERATION PROGRESS
+//   Line   748 — NAVIGATION
+//   Line  2154 — SIDEBAR RENDERER
+//   Line  2200 — OVERVIEW GRID
+//   Line  2287 — SYLLABUS TREE
+//   Line  2484 — LESSON VIEWER
+//   Line  2725 — PROGRESS TRACKING
+//   Line  2774 — BOOKMARKS
+//   Line  3036 — QUIZ POOL (from cache)
+//   Line  3445 — DASHBOARD
+//   Line  3486 — MOCK BAR
+//   Line  3496 — MOCK BAR SETUP PANEL
+//   Line  4159 — MANUAL QUESTION UPLOAD
+//   Line  4247 — PRINT / EMAIL RESULTS
+//   Line  4476 — ADMIN
+//   Line  4479 — TAB ACCESS CONTROL
+//   Line  4747 — SUBJECT OVERVIEW GRID (admin)
+//   Line  5304 — UTILS
+//   Line  5309 — AUTH STATE
+//   Line  5578 — SAVE MOCK BAR RESULTS
+//   Line  5611 — ADMIN: USERS
+//   Line  5797 — ADMIN: RESULTS
+//   Line  6091 — ADMIN: SYLLABUS BUILDER
+//   Line  6354 — PER-USER TAB ACCESS CONTROL
+//   Line  6522 — ADMIN: IMPROVE ITEMS INSIGHTS
+//   Line  6748 — MOCK BAR — Q-MARKER RENDERER (flag-aware)
+//   Line  6763 — FEATURE 1 — TEXT HIGHLIGHTING
+//   Line  6876 — FEATURE 2 — FLAG QUESTION FOR REVIEW
+//   Line  6987 — XP POPUP & LEVEL UP MODAL
+// ══════════════════════════════════════════════════════════════════════
+
 // ══════════════════════════════════
 // DOM SAFE HELPERS
 // ══════════════════════════════════
