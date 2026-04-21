@@ -1006,21 +1006,32 @@ function dismissSrBanner() {
 
 async function checkDueReviews() {
   if (!sessionToken) return;
-  try {
-    const [dueResp, statsResp] = await Promise.all([
-      fetch('/api/spaced-repetition/due',   { headers: { 'x-session-token': sessionToken } }),
-      fetch('/api/spaced-repetition/stats',  { headers: { 'x-session-token': sessionToken } }),
-    ]);
-    const dueItems = dueResp.ok   ? await dueResp.json()   : [];
-    // (stats unused here but warms the cache; progress page will re-fetch)
-    window._srDueItems = dueItems;
-    window._srDueCounts = {};
-    dueItems.forEach(item => {
-      window._srDueCounts[item.subject] = (window._srDueCounts[item.subject] || 0) + 1;
-    });
-    refreshSidebarReviewBadges();
-    if (dueItems.length > 0) showSrReviewBanner(dueItems.length);
-  } catch(e) { /* non-critical */ }
+  // Share the in-flight fetch so concurrent callers (e.g. the Progress page
+  // rendering on first load) can await the same promise instead of firing a
+  // duplicate network round-trip.
+  if (window._srDueFetchPromise) return window._srDueFetchPromise;
+  window._srDueFetchPromise = (async () => {
+    try {
+      const [dueResp, statsResp] = await Promise.all([
+        fetch('/api/spaced-repetition/due',   { headers: { 'x-session-token': sessionToken } }),
+        fetch('/api/spaced-repetition/stats',  { headers: { 'x-session-token': sessionToken } }),
+      ]);
+      const dueItems = dueResp.ok   ? await dueResp.json()   : [];
+      // (stats unused here but warms the cache; progress page will re-fetch)
+      window._srDueItems = dueItems;
+      window._srDueCounts = {};
+      dueItems.forEach(item => {
+        window._srDueCounts[item.subject] = (window._srDueCounts[item.subject] || 0) + 1;
+      });
+      refreshSidebarReviewBadges();
+      if (dueItems.length > 0) showSrReviewBanner(dueItems.length);
+    } catch(e) { /* non-critical */ }
+    finally {
+      // Leave cache populated but allow subsequent explicit calls to refetch
+      window._srDueFetchPromise = null;
+    }
+  })();
+  return window._srDueFetchPromise;
 }
 
 async function startReviewSession() {
@@ -1511,10 +1522,18 @@ async function _renderProgressDashboardInto(container) {
   //            rest of the Progress page, not 400-1000ms later.
   //   Phase 2: silently re-fetch in background and swap in fresh DOM.
   //
-  // If the cache is empty (user opened Progress before boot fetch finished)
-  // we skip Phase 1 and rely on Phase 2 — same behavior as before the fix.
+  // First-load fix: if the cache is empty but a fetch is already in flight
+  // (onAuthSuccess starts it BEFORE routing to the Progress page), we await
+  // that shared promise so Phase 1 renders with fresh data — no empty slot,
+  // no post-load pop-in. If no fetch is in flight (edge cases like back-
+  // button navigation), we fall through to the pre-fix behavior: skip
+  // Phase 1 and rely on Phase 2.
   const pp = container.querySelector('.prog-page');
   if (pp) {
+    // Await any in-flight boot fetch before checking the cache
+    if (!Array.isArray(window._srDueItems) && window._srDueFetchPromise) {
+      try { await window._srDueFetchPromise; } catch(_) { /* proceed with empty cache */ }
+    }
     const cachedDue = window._srDueItems;
     // Phase 1 — render immediately from cache (if we have it)
     if (Array.isArray(cachedDue)) {
@@ -5396,6 +5415,12 @@ async function onAuthSuccess(token, user) {
       if (s.barExamDate) window._barExamDate = s.barExamDate;
     }).catch(() => {}),
   ]);
+  // Start the SR due-reviews fetch as early as possible — BEFORE routing to
+  // any view — so if the user's last view was Progress, the render there can
+  // await the in-flight promise instead of showing an empty slot while its
+  // own fetch runs serially (400-1000ms of perceived delay). Not awaited
+  // here; runs concurrently with view routing.
+  checkDueReviews().catch(() => {});
   // Restore last view or land on overview
   try {
     const lastView = sessionStorage.getItem('bb_last_view');
@@ -5417,8 +5442,6 @@ async function onAuthSuccess(token, user) {
   }
   // Check for an interrupted exam session and show resume banner
   checkForInterruptedExam().catch(() => {});
-  // Check for spaced repetition reviews due
-  checkDueReviews().catch(() => {});
   hideLoadingScreen();
 }
 
