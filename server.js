@@ -326,39 +326,6 @@ app.use(require('./routes/auth')({
   getResetRequests: () => RESET_REQUESTS,
 }));
 
-// TEMPORARY EXPORT ROUTES
-app.get('/api/admin/export/kb', (req, res) => {
-  const key = req.headers['x-admin-key'];
-  if (key !== process.env.ADMIN_KEY) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-  const storagePath = process.env.PERSISTENT_STORAGE_PATH || '/data';
-  const kbPath = path.join(storagePath, 'uploads', 'kb.json');
-  console.log('Export kb from:', kbPath);
-  if (!fs.existsSync(kbPath)) {
-    return res.status(404).json({ error: 'Not found', path: kbPath });
-  }
-  const data = fs.readFileSync(kbPath, 'utf8');
-  res.setHeader('Content-Type', 'application/json');
-  res.send(data);
-});
-
-app.get('/api/admin/export/users', (req, res) => {
-  const key = req.headers['x-admin-key'];
-  if (key !== process.env.ADMIN_KEY) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-  const storagePath = process.env.PERSISTENT_STORAGE_PATH || '/data';
-  const usersPath = path.join(storagePath, 'uploads', 'users.json');
-  console.log('Export users from:', usersPath);
-  if (!fs.existsSync(usersPath)) {
-    return res.status(404).json({ error: 'Not found', path: usersPath });
-  }
-  const data = fs.readFileSync(usersPath, 'utf8');
-  res.setHeader('Content-Type', 'application/json');
-  res.send(data);
-});
-
 // ── Admin user management (reset requests + user CRUD) ──
 app.use(require('./routes/admin-users')({
   adminOnly,
@@ -492,7 +459,6 @@ app.post('/api/admin/parse-file', adminOnly, upload.single('file'), async (req, 
   }
 });
 
-// ── Health ──────────────────────────────────────────────────
 // ── Tab settings (public read + admin write + per-user overrides) ──
 app.use(require('./routes/tab-settings')({
   requireAuth, adminOnly,
@@ -1105,15 +1071,6 @@ async function generateMockBar(subjects, count, options = {}) {
 // ── MOCK BAR GENERATOR ──────────────────────────────────────
 app.use(require('./routes/mockbar')({ API_KEY, generateMockBar }));
 
-// ── Question format detection ────────────────────────────────
-// Improved question type detector — returns:
-//   'situational' → has fact pattern → ALAC scoring
-//   'definition'  → "define X", "distinguish X from Y" → Accuracy/Completeness/Clarity
-//   'conceptual'  → "explain X", "what is the purpose of X" → same A/C/C scoring
-//   'situational' → fact pattern present or situational keywords → ALAC scoring
-//   'conceptual'  → all other questions → Accuracy/Completeness/Clarity scoring
-
-
 // ── Alternative answer extractor ──────────────────────────────────────────────
 // Returns array of alternatives if the model answer contains multiple valid options,
 // or [modelAnswer] (single-element) if only one answer exists.
@@ -1144,9 +1101,6 @@ function extractAlternativeAnswers(modelAnswer) {
 
   return [modelAnswer];
 }
-
-// ── Get alternatives from individual columns — returns [{index, text, alac}] ──
-// Only includes alternatives that have a cached ALAC (alternative_alac_N not null).
 
 // ── ALAC model answer generator ────────────────────────────────────────────────
 // Returns { formatted, components: {answer, legalBasis, application, conclusion} }
