@@ -24,7 +24,7 @@ const {
   getTitleFromLevel,
   getXPForNextLevel,
 } = require('./lib/xp');
-const { mapQRow, mapUser, mapPastBar, _mapResult } = require('./lib/mappers');
+const { mapUser } = require('./lib/mappers');
 
 async function awardXP(userId, action, description, bonusXP = 0) {
   try {
@@ -137,8 +137,7 @@ const { detectQuestionType, isCopyPastedFacts, getAlternatives, GRADE_SCALE } = 
 
 // Auth/settings state — loaded from Supabase at startup, users+sessions live in DB
 let RESET_REQUESTS = [];
-// SETTINGS is a shared mutable object — see lib/db-settings.js comments.
-const { SETTINGS, loadSettingsFromDB, getSetting, saveSetting } = require('./lib/db-settings');
+const { saveSetting } = require('./lib/db-settings');
 
 // ── Field mappers: Supabase snake_case → camelCase for frontend ─────────────
 
