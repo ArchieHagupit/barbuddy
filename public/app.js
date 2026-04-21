@@ -5405,6 +5405,15 @@ async function onAuthSuccess(token, user) {
   updateUserDisplay();
   updateSidebarAdminVisibility();
   setLoadingMsg('Loading your dashboard...');
+  // Start the SR due-reviews fetch BEFORE the Promise.allSettled below, so
+  // it runs truly concurrently with the 5 boot-preamble fetches (including
+  // the slow /api/kb, which can take 4+ seconds on cold load). If we started
+  // it AFTER the allSettled, its ~400ms round-trip would stack serially on
+  // top, producing the visible "SR card pops in later" effect on hard
+  // refresh of the Progress page. Not awaited here — the in-flight promise
+  // (window._srDueFetchPromise) lets _renderProgressDashboardInto's Phase 1
+  // await it when the user's last view was Progress.
+  checkDueReviews().catch(() => {});
   // Prefetch KB and progress in parallel before rendering
   await Promise.allSettled([
     refreshKBState(),
@@ -5415,12 +5424,6 @@ async function onAuthSuccess(token, user) {
       if (s.barExamDate) window._barExamDate = s.barExamDate;
     }).catch(() => {}),
   ]);
-  // Start the SR due-reviews fetch as early as possible — BEFORE routing to
-  // any view — so if the user's last view was Progress, the render there can
-  // await the in-flight promise instead of showing an empty slot while its
-  // own fetch runs serially (400-1000ms of perceived delay). Not awaited
-  // here; runs concurrently with view routing.
-  checkDueReviews().catch(() => {});
   // Restore last view or land on overview
   try {
     const lastView = sessionStorage.getItem('bb_last_view');
