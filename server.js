@@ -202,48 +202,8 @@ setInterval(cleanupSessions, 60 * 60 * 1000);
 
 const { saveSyllabusSubject, savePastBarEntry, syncQuestionsFromBatch, deletePastBarEntry } = require('./lib/db-syllabus');
 
-// ── App initialisation — loads all data from Supabase at startup ─────────────
-async function initializeApp() {
-  console.log('Loading from Supabase...');
-
-  // Past bar
-  const { data: pbRows } = await supabase.from('past_bar').select('*');
-  KB.pastBar = (pbRows || []).map(mapPastBar);
-
-  // Syllabus
-  const { data: syllRows } = await supabase.from('syllabus').select('*');
-  KB.syllabus = { subjects: {} };
-  getAllSubjectsWithSections().forEach(s => { KB.syllabus.subjects[s] = { sections: [] }; });
-  (syllRows || []).forEach(row => {
-    KB.syllabus.subjects[row.subject] = { sections: row.sections || [] };
-  });
-
-  // References
-  const refs = await getSetting('kb_references');
-  KB.references = Array.isArray(refs) ? refs : [];
-
-  // Tab settings
-  const savedTS = await getSetting('tab_settings');
-  if (savedTS) TAB_SETTINGS = deepMerge(JSON.parse(JSON.stringify(DEFAULT_TAB_SETTINGS)), savedTS);
-
-  // App settings
-  const regOpen   = await getSetting('registration_open');
-  const mbPublic  = await getSetting('mock_bar_public');
-  const examDate  = await getSetting('bar_exam_date');
-  if (regOpen  !== null) SETTINGS.registrationOpen = !!regOpen;
-  if (mbPublic !== null) SETTINGS.mockBarPublic    = !!mbPublic;
-  if (examDate && typeof examDate === 'string') SETTINGS.barExamDate = examDate;
-
-  // Reset requests
-  const rr = await getSetting('reset_requests');
-  RESET_REQUESTS = Array.isArray(rr) ? rr : [];
-
-  await cleanupSessions();
-  await loadSettingsFromDB();
-
-  const totalQ = KB.pastBar.reduce((a, pb) => a + (pb.questions?.length || pb.qCount || 0), 0);
-  console.log(`✅ Supabase loaded — ${KB.pastBar.length} past bar batches, ${totalQ} questions, ${KB.references.length} refs`);
-}
+// ── App initialisation — loaded at startup ─────────────
+const { initializeApp } = require('./lib/init');
 
 // ── Middleware ──────────────────────────────────────────────
 // Trust 2 proxy hops: Fastly edge → Railway edge → Express.
@@ -1469,7 +1429,11 @@ async function migrateUserSchema() {
   console.log('[startup] User schema ready');
 }
 
-initializeApp().then(() => {
+initializeApp({
+  KB,
+  setTabSettings: (v) => { TAB_SETTINGS = v; },
+  setResetRequests: (v) => { RESET_REQUESTS = v; },
+}).then(() => {
   migrateOldQuestionTypes().catch(e => console.warn('[migrate] Skipped:', e.message));
   migrateUserSchema().catch(e => console.warn('[migrate] User schema skipped:', e.message));
   app.listen(PORT, () => {
