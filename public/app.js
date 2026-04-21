@@ -570,6 +570,13 @@ window.addEventListener('DOMContentLoaded', async () => {
     aw.style.display = 'flex';
     requestAnimationFrame(() => { aw.style.opacity = '1'; });
   }
+  // On hard refresh with existing session, kick off the SR fetch concurrently
+  // with init(). Without this, the sidebar "X due" badges never populate on
+  // non-Progress views (init renders sidebar from undefined _srDueCounts,
+  // onAuthSuccess doesn't run on this path, so checkDueReviews only fires
+  // as a side effect of eventually visiting Progress). The in-flight promise
+  // (window._srDueFetchPromise) lets Progress's Phase 1 await it if needed.
+  if (hasSession) checkDueReviews().catch(() => {});
   setLoadingMsg('Loading your dashboard...');
   await init();
   // Restore last view or fall back to overview
