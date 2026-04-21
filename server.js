@@ -1008,7 +1008,8 @@ async function callClaudeHaikuJSON(prompt, maxTokens = 3000, _truncRetry = 0) {
         if (_truncRetry < 1) {
           return callClaudeHaikuJSON(prompt, maxTokens + 1000, _truncRetry + 1);
         }
-        console.warn('[callClaudeHaikuJSON] Still truncated after retry — proceeding with partial response.');
+        console.error('[callClaudeHaikuJSON] Double-truncation on retry — returning null to trigger error path rather than parse mangled response');
+        return null;
       }
       const raw = sanitizeAIResponse(d.content.map(c => c.text || '').join(''));
       const parsed = extractJSON(raw);
@@ -1326,32 +1327,37 @@ async function extractPastBarInBackground(id, content, name, subject, year) {
 const JSON_FORMAT_REMINDER = '\n\nRESPONSE FORMAT — STRICTLY FOLLOW:\n1. Your ENTIRE response must be valid JSON only\n2. Start with { or [ immediately — no preamble\n3. End with } or ] — no text after\n4. No markdown code fences (no ```)\n5. No explanations before or after the JSON\n6. If unsure, return the JSON with empty arrays rather than explaining why';
 
 async function callClaudeJSON(messages, maxTokens, retries = 3, { temperature } = {}) {
-  const msgs = messages.map((m, i) => {
-    if (i !== messages.length - 1 || m.role !== 'user') return m;
-    const alreadyHasInstruction = m.content.includes('valid JSON') || m.content.includes('ONLY JSON') || m.content.includes('ONLY with valid JSON');
-    return alreadyHasInstruction ? m : { ...m, content: m.content + JSON_FORMAT_REMINDER };
-  });
+  await aiSemaphore.acquire();
+  try {
+    const msgs = messages.map((m, i) => {
+      if (i !== messages.length - 1 || m.role !== 'user') return m;
+      const alreadyHasInstruction = m.content.includes('valid JSON') || m.content.includes('ONLY JSON') || m.content.includes('ONLY with valid JSON');
+      return alreadyHasInstruction ? m : { ...m, content: m.content + JSON_FORMAT_REMINDER };
+    });
 
-  for (let attempt = 1; attempt <= retries; attempt++) {
-    try {
-      const attemptMsgs = attempt === 1 ? msgs : [{
-        ...msgs[msgs.length - 1],
-        content: msgs[msgs.length - 1].content +
-          '\n\nCRITICAL: Output ONLY the JSON object/array. Do NOT write any words or sentences. Do NOT use markdown. Start with { or [. If you cannot comply, return {}.'
-      }];
-      const raw = sanitizeAIResponse(await callClaude(attempt === 1 ? msgs : [attemptMsgs[0]], maxTokens, { temperature }));
-      const parsed = extractJSON(raw);
-      if (parsed !== null) return parsed;
-      console.warn(`[callClaudeJSON] attempt ${attempt}/${retries} — extractJSON failed, retrying`);
-      if (attempt < retries) await sleep(2000);
-    } catch(e) {
-      console.error(`[callClaudeJSON] attempt ${attempt} threw:`, e.message);
-      if (attempt === retries) throw e;
-      await sleep(3000);
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      try {
+        const attemptMsgs = attempt === 1 ? msgs : [{
+          ...msgs[msgs.length - 1],
+          content: msgs[msgs.length - 1].content +
+            '\n\nCRITICAL: Output ONLY the JSON object/array. Do NOT write any words or sentences. Do NOT use markdown. Start with { or [. If you cannot comply, return {}.'
+        }];
+        const raw = sanitizeAIResponse(await callClaude(attempt === 1 ? msgs : [attemptMsgs[0]], maxTokens, { temperature }));
+        const parsed = extractJSON(raw);
+        if (parsed !== null) return parsed;
+        console.warn(`[callClaudeJSON] attempt ${attempt}/${retries} — extractJSON failed, retrying`);
+        if (attempt < retries) await sleep(2000);
+      } catch(e) {
+        console.error(`[callClaudeJSON] attempt ${attempt} threw:`, e.message);
+        if (attempt === retries) throw e;
+        await sleep(3000);
+      }
     }
+    console.error('[callClaudeJSON] all retries exhausted');
+    return null;
+  } finally {
+    aiSemaphore.release();
   }
-  console.error('[callClaudeJSON] all retries exhausted');
-  return null;
 }
 
 // callClaude: Sonnet first → 20s wait → Sonnet again → Haiku → 60s wait → Haiku → throw
@@ -1380,6 +1386,7 @@ async function callClaude(messages, max_tokens=2000, { temperature } = {}) {
       method:'POST',
       headers:{ 'Content-Type':'application/json', 'x-api-key':API_KEY, 'anthropic-version':'2023-06-01' },
       body:JSON.stringify({ model, max_tokens, ...(temperature != null && { temperature }), messages, system: STRICT_SYSTEM_PROMPT }),
+      signal: AbortSignal.timeout(45000),
     });
     const d = await r.json();
     if (d.usage) {
