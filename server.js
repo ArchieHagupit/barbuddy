@@ -397,90 +397,12 @@ app.use(require('./routes/user')({ requireAuth }));
 // ── Bookmarks ─────────────────────────────────────────────────
 app.use(require('./routes/bookmarks')({ requireAuth }));
 
-// ── GET KB state (public — browser caches) ─────────────────
-app.get('/api/kb', async (_req, res) => {
-  const n = Object.values(CONTENT).reduce((a,s) => a+Object.keys(s).length, 0);
-  const pastBarSummary = KB.pastBar.map(p => ({
-    id: p.id, name: p.name, subject: p.subject,
-    year: p.year || 'Unknown',
-    qCount: p.questions?.length || p.qCount || 0,
-    source: p.source || 'upload',
-    uploadedAt: p.uploadedAt,
-    enabled: p.enabled !== false,
-  }));
-  const totalQuestions = pastBarSummary.reduce((a,p) => a + p.qCount, 0);
-
-  // Also get total count from normalized questions table
-  let totalQuestionsDB = null;
-  let subjectQuestionCounts = {};
-  try {
-    const { count } = await supabase
-      .from('questions').select('*', { count: 'exact', head: true });
-    totalQuestionsDB = count;
-    // Per-subject counts
-    for (const subj of VALID_SUBJECTS) {
-      const { count: sc } = await supabase
-        .from('questions').select('*', { count: 'exact', head: true }).eq('subject', subj);
-      if (sc) subjectQuestionCounts[subj] = sc;
-    }
-  } catch(_) { /* non-fatal — table may not exist yet */ }
-
-  res.json({
-    hasSyllabus:    !!(KB.syllabus?.subjects),
-    syllabusTopics: [],  // legacy field (new format uses /api/syllabus/:subject)
-    references:     KB.references.map(r => ({ id:r.id, name:r.name, subject:r.subject, type:r.type, size:r.size, uploadedAt:r.uploadedAt })),
-    pastBar:        pastBarSummary,
-    totalQuestions,
-    totalQuestionsDB,
-    subjectQuestionCounts,
-    contentTopics:  n,
-    genState:       { running:GEN.running, done:GEN.done, total:GEN.total, current:GEN.current, finishedAt:GEN.finishedAt },
-    customRefs:     KB.references.filter(r => r.subject === 'custom').length,
-    customPastBar:  KB.pastBar.filter(p => p.subject === 'custom').length,
-    customQuestions:KB.pastBar.filter(p => p.subject === 'custom').reduce((a,p) => a + (p.questions?.length||p.qCount||0), 0),
-  });
-});
-
-// ── GET pre-generated content for one topic ─────────────────
-app.get('/api/content/:subject/:topic', (req, res) => {
-  const data = CONTENT[req.params.subject]?.[decodeURIComponent(req.params.topic)];
-  if (data) return res.json({ found:true, ...data });
-  res.json({ found:false });
-});
-
-// ── GET full content dump (browser caches on load) ──────────
-app.get('/api/content', (req, res) => {
-  const { subject } = req.query;
-  if (subject && VALID_SUBJECTS.includes(subject) && CONTENT[subject]) {
-    return res.json({ [subject]: CONTENT[subject] });
-  }
-  res.json(CONTENT);
-});
-
-// ── SSE: live generation progress ──────────────────────────
-app.get('/api/gen/progress', (req, res) => {
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  GEN.clients.add(res);
-  sseSend(res, { done:GEN.done, total:GEN.total, current:GEN.current, running:GEN.running, finished:!!GEN.finishedAt&&!GEN.running });
-
-  // Heartbeat every 30s to keep connection alive
-  const heartbeat = setInterval(() => { try { res.write(': heartbeat\n\n'); } catch(e) {} }, 30000);
-
-  // Max 5 minutes — prevents Railway connection pool exhaustion
-  const maxDuration = setTimeout(() => {
-    GEN.clients.delete(res);
-    clearInterval(heartbeat);
-    try { res.end(); } catch(e) {}
-  }, 300000);
-
-  req.on('close', () => {
-    GEN.clients.delete(res);
-    clearInterval(heartbeat);
-    clearTimeout(maxDuration);
-  });
-});
+// ── KB + content routes (KB state, content cache, SSE gen-progress, AI passthrough) ──
+app.use(require('./routes/kb-content')({
+  KB, GEN, VALID_SUBJECTS, API_KEY,
+  getCONTENT: () => CONTENT,
+  sseSend, callClaude,
+}));
 
 function sseSend(client, data) { try { client.write(`data: ${JSON.stringify(data)}\n\n`); } catch(e){} }
 function broadcast() {
@@ -763,19 +685,6 @@ IMPORTANT for essay classification:
   }
   CONTENT[subjKey][topicName] = { lesson:parsed.lesson, mcq:parsed.mcq, essay:parsed.essay, generatedAt:new Date().toISOString() };
 }
-
-// ── ON-DEMAND CONTENT GENERATION (lesson/quiz for uncached topics) ──
-app.post('/api/generate-content', async (req, res) => {
-  if (!API_KEY) return res.status(500).json({ error: 'API key not configured' });
-  const { messages, max_tokens = 4096 } = req.body;
-  if (!messages || !Array.isArray(messages)) return res.status(400).json({ error: 'messages array required' });
-  try {
-    const text = await callClaude(messages, max_tokens);
-    res.json({ content: text });
-  } catch(e) {
-    res.status(500).json({ error: e.message });
-  }
-});
 
 // ── AI QUESTION GENERATION (helper for mock bar) ────────────
 async function generateAIQuestions(needed, subjects, syllabus, references) {
