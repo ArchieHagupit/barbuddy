@@ -69,7 +69,15 @@ module.exports = function createMiscRoutes({
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');
     res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    // Use the version-injected HTML from server.js. Falls back to raw file
+    // if the export isn't available (e.g. misc.js loaded in isolation).
+    try {
+      const { getIndexHtml } = require('../server');
+      res.send(getIndexHtml());
+    } catch(_) {
+      res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
+    }
   });
 
   return router;

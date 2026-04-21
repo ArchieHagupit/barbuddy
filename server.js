@@ -8,6 +8,54 @@ const multer     = require('multer');
 // pdf-parse and mammoth are lazy-loaded in /api/admin/parse-file to speed cold starts
 const crypto     = require('crypto');
 
+// ── App version for cache-busting static assets ──────────────
+// Computed once at server boot. Used to inject ?v=<VERSION> into
+// <script src="/app.js">, <link href="/styles.css">, etc. in index.html.
+// When this changes between deploys, browsers treat the URL as new and
+// bypass their (1yr immutable) cache of the old file.
+//
+// Priority: Railway commit SHA > manually-set APP_VERSION > file-mtime hash
+const APP_VERSION = (() => {
+  const railwaySha = process.env.RAILWAY_GIT_COMMIT_SHA;
+  if (railwaySha) return railwaySha.slice(0, 7);
+  if (process.env.APP_VERSION) return String(process.env.APP_VERSION).slice(0, 20);
+  // Fallback: hash the mtimes of the files we version. Works for local dev
+  // and in any environment where Railway env vars aren't set. Won't change
+  // across restarts if files weren't touched.
+  try {
+    const files = ['public/app.js', 'public/styles.css', 'public/index.html'];
+    const mtimes = files.map(f => {
+      try { return String(fs.statSync(path.join(__dirname, f)).mtimeMs); }
+      catch(_) { return '0'; }
+    }).join(':');
+    return crypto.createHash('sha1').update(mtimes).digest('hex').slice(0, 7);
+  } catch(_) {
+    return 'dev';
+  }
+})();
+console.log('[boot] APP_VERSION =', APP_VERSION);
+
+// Cache the version-injected HTML once at boot (file doesn't change at runtime).
+// The raw file has '__APP_VERSION__' placeholders; this replaces them with the
+// actual version string. Served by both the root-index middleware below and
+// the SPA catchall in routes/misc.js (shared via a cached getter).
+let _cachedIndexHtml = null;
+function getIndexHtml() {
+  if (_cachedIndexHtml !== null) return _cachedIndexHtml;
+  try {
+    const raw = fs.readFileSync(path.join(__dirname, 'public', 'index.html'), 'utf8');
+    _cachedIndexHtml = raw.replace(/__APP_VERSION__/g, APP_VERSION);
+    return _cachedIndexHtml;
+  } catch(e) {
+    console.error('[boot] Failed to load index.html:', e.message);
+    return '<html><body>Server starting...</body></html>';
+  }
+}
+// Expose for routes/misc.js catchall
+module.exports = module.exports || {};
+module.exports.getIndexHtml = getIndexHtml;
+module.exports.APP_VERSION = APP_VERSION;
+
 // ── Semaphore — limits concurrent AI calls globally ─────────
 const { Semaphore } = require('./lib/semaphore');
 const aiSemaphore = new Semaphore(20);
@@ -234,6 +282,14 @@ app.use(express.json({ limit: '2mb' }));
 app.get('/barbuddyemblem.webp', (req, res, next) => {
   res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
   next();
+});
+// Serve index.html with injected APP_VERSION for cache-busting. Must run
+// BEFORE express.static so this handler wins for '/' and '/index.html'.
+// Other paths fall through to static.
+app.get(['/', '/index.html'], (req, res) => {
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.send(getIndexHtml());
 });
 app.use(express.static(path.join(__dirname, 'public'), {
   maxAge: '1y',

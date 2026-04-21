@@ -37,7 +37,7 @@ new PerformanceObserver((list) => {
 }).observe({type: 'layout-shift', buffered: true});
 </script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" defer></script>
-<link rel="stylesheet" href="/styles.css">
+<link rel="stylesheet" href="/styles.css?v=__APP_VERSION__">
 </head>
 <body>
 <div id="bb-loading-screen" style="
@@ -918,7 +918,7 @@ new PerformanceObserver((list) => {
 </div>
 </div>
 
-<script src="/app.js"></script>
+<script src="/app.js?v=__APP_VERSION__"></script>
 
 <!-- PER-USER TAB ACCESS MODAL -->
 <div id="userAccessModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:9999;align-items:center;justify-content:center;">
