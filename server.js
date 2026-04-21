@@ -7,13 +7,10 @@ const fs         = require('fs');
 const multer     = require('multer');
 // pdf-parse and mammoth are lazy-loaded in /api/admin/parse-file to speed cold starts
 const crypto     = require('crypto');
-// ── Rate limiters ────────────────────────────────────────────
 
 // ── Semaphore — limits concurrent AI calls globally ─────────
 const { Semaphore } = require('./lib/semaphore');
 const aiSemaphore = new Semaphore(20);
-
-// ── Per-submission evaluation progress ──────────────────────
 
 const { supabase } = require('./config/supabase');
 
@@ -411,8 +408,6 @@ function broadcast() {
 }
 
 // ── SYLLABUS HELPERS ────────────────────────────────────────
-// countAllTopics moved to lib/syllabus-tree.js
-
 // Recursively force every node to inherit the parent subject key
 function validateAndCleanParsed(parsed) {
   const VALID_KEYS = ['civil','criminal','political','labor','commercial','taxation','remedial','ethics'];

@@ -42,7 +42,7 @@ module.exports = function createAuthRoutes({
       const isFirstUser  = (count || 0) === 0;
       const isAdminEmail = ADMIN_EMAIL && emailLower === ADMIN_EMAIL.toLowerCase();
       const isPrivileged = isFirstUser || !!isAdminEmail;
-      const id = 'u_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+      const id = 'u_' + require('crypto').randomUUID();
       const passwordHash = await bcrypt.hash(password, 10);
       const now = new Date().toISOString();
       const { error: insertErr } = await supabase.from('users').insert([{
@@ -108,7 +108,7 @@ module.exports = function createAuthRoutes({
         const resetRequests = getResetRequests();
         const existing = resetRequests.find(r => r.email === user.email && r.status === 'pending');
         if (!existing) {
-          resetRequests.unshift({ id: 'reset_' + Date.now(), userId: user.id, name: user.name, email: user.email, requestedAt: new Date().toISOString(), status: 'pending' });
+          resetRequests.unshift({ id: 'reset_' + require('crypto').randomUUID(), userId: user.id, name: user.name, email: user.email, requestedAt: new Date().toISOString(), status: 'pending' });
           saveSetting('reset_requests', resetRequests).catch(() => {});
         }
       }
