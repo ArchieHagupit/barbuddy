@@ -654,6 +654,15 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .alac-section-label{font-size:.72rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;}
 .alac-section-content{font-size:.88rem;color:rgba(248,246,241,.85);line-height:1.65;white-space:pre-line;}
 .plain-model-answer{font-size:.88rem;color:rgba(248,246,241,.85);line-height:1.65;white-space:pre-line;}
+/* Writing & Mechanics (non-scoring) — shown below overallFeedback in eval cards */
+.writing-feedback-card{border:1px solid rgba(201,168,76,.45);border-radius:10px;background:rgba(201,168,76,.08);padding:12px 16px;margin:10px 0;}
+.writing-feedback-header{font-size:.78rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--gold-l);margin-bottom:8px;}
+.writing-feedback-subtitle{font-weight:400;text-transform:none;letter-spacing:0;color:var(--muted);font-size:.72rem;}
+.writing-feedback-section{margin-bottom:8px;font-size:.88rem;color:var(--text);}
+.writing-feedback-section strong{font-size:.8rem;color:var(--gold-l);display:block;margin-bottom:4px;}
+.writing-feedback-section ul{margin:0;padding-left:18px;line-height:1.65;}
+.writing-feedback-section li{margin:2px 0;}
+.writing-feedback-overall{font-size:.88rem;color:var(--text);font-style:italic;line-height:1.65;opacity:.9;}
 .essay-box{width:100%;min-height:200px;background:var(--card3);border:1px solid var(--bdr2);border-radius:12px;padding:16px;color:var(--white);font-family:var(--fb);font-size:14px;line-height:1.75;outline:none;resize:vertical;transition:border-color .2s,box-shadow .2s;}
 .essay-box:focus{border-color:rgba(212,168,67,.4);box-shadow:0 0 0 3px rgba(212,168,67,.08);}
 .essay-box:focus{border-color:rgba(201,168,76,.4);}

@@ -326,6 +326,21 @@ NEVER deduct for lacking legal foundation — that belongs in L and A components
 ${GRADE_SCALE}
 
 In your JSON response, all string values must use single quotes for any internal quotation. Example: use 'the court held' not "the court held". Keep each feedback field to one line.
+
+════════════════════════════════════════
+WRITING & MECHANICS FEEDBACK (NON-SCORING)
+════════════════════════════════════════
+
+In addition to scoring, identify spelling errors, grammar issues, and general writing observations. This is SEPARATE from the ALAC score — do not deduct ALAC points for mechanics issues. The purpose is to help the student improve their writing for actual bar exam answers.
+
+Populate writingFeedback:
+- spelling[]: specific misspellings, format "'wrong' should be 'correct'" — empty array if none
+- grammar[]: specific grammar issues (subject-verb agreement, tense, punctuation) — empty array if none
+- overall: one encouraging sentence summarizing writing quality
+
+Keep each spelling/grammar entry under 25 words. Keep overall under 30 words.
+If writing is clean, say so positively in overall and leave arrays empty.
+
 Respond ONLY with valid JSON (no markdown):
 {
   "score": "X/10", "numericScore": 7, "grade": "Excellent|Good|Satisfactory|Needs Improvement|Poor",
@@ -340,6 +355,11 @@ Respond ONLY with valid JSON (no markdown):
   "strengths": ["..."],
   "improvements": ["Consider discussing...", "A stronger answer would also include...", "To earn full marks, address..."],
   "keyMissed": ["A complete answer would address...", "Consider also discussing...", "Strengthening this area: ..."],
+  "writingFeedback": {
+    "spelling": ["'recieved' should be 'received'"],
+    "grammar": ["Subject-verb agreement: 'the parties is' should be 'the parties are'"],
+    "overall": "Clear, well-constructed response with minor mechanics issues noted above."
+  },
   "format": "essay"
 }`;
     } else {
@@ -411,6 +431,20 @@ ${GRADE_SCALE}
 
 In your JSON response, all string values must use single quotes for any internal quotation. Example: use 'the court held' not "the court held". Keep each feedback field to one line.
 IMPORTANT: overallFeedback, keyMissed, strengths, improvements MUST be top-level fields — do NOT nest them inside breakdown.
+
+════════════════════════════════════════
+WRITING & MECHANICS FEEDBACK (NON-SCORING)
+════════════════════════════════════════
+
+In addition to scoring, identify spelling errors, grammar issues, and general writing observations. This is SEPARATE from scoring — do not deduct component points for mechanics issues.
+
+Populate writingFeedback:
+- spelling[]: specific misspellings, format "'wrong' should be 'correct'" — empty array if none
+- grammar[]: specific grammar issues — empty array if none
+- overall: one encouraging sentence summarizing writing quality
+
+Keep each entry under 25 words. Keep overall under 30 words.
+
 Respond ONLY with valid JSON (no markdown):
 {
   "score": "X/10", "numericScore": 0, "grade": "Excellent|Good|Satisfactory|Needs Improvement|Poor",
@@ -424,6 +458,11 @@ Respond ONLY with valid JSON (no markdown):
   "keyMissed": ["A complete answer would address...", "Consider also discussing..."],
   "strengths": ["what the student did well"],
   "improvements": ["Consider discussing...", "A stronger answer would also include..."],
+  "writingFeedback": {
+    "spelling": [],
+    "grammar": [],
+    "overall": "Clear, well-constructed response."
+  },
   "format": "conceptual"
 }`;
     }

@@ -3138,6 +3138,21 @@ function renderErrorCard(ev){
     :'';
   return `<div class="ai-fb-head" style="color:#e07080;flex-wrap:wrap;gap:8px;">⚠️ Evaluation unavailable.${retryBtn}<div style="font-size:11px;color:var(--muted);width:100%;margin-top:2px;">${h(ev.overallFeedback||'Click Retry to re-evaluate.')}</div></div>`;
 }
+// ── Writing & Mechanics card (non-scoring, shared by ALAC + conceptual) ──
+function renderWritingFeedback(ev){
+  const wf=ev&&ev.writingFeedback;
+  if(!wf) return '';
+  const hasSpelling=wf.spelling&&wf.spelling.length;
+  const hasGrammar=wf.grammar&&wf.grammar.length;
+  const hasOverall=!!wf.overall;
+  if(!hasSpelling&&!hasGrammar&&!hasOverall) return '';
+  let html=`<div class="writing-feedback-card"><div class="writing-feedback-header">✍️ Writing &amp; Mechanics <span class="writing-feedback-subtitle">(non-scoring)</span></div>`;
+  if(hasSpelling) html+=`<div class="writing-feedback-section"><strong>Spelling:</strong><ul>${wf.spelling.map(x=>`<li>${h(x)}</li>`).join('')}</ul></div>`;
+  if(hasGrammar) html+=`<div class="writing-feedback-section"><strong>Grammar:</strong><ul>${wf.grammar.map(x=>`<li>${h(x)}</li>`).join('')}</ul></div>`;
+  if(hasOverall) html+=`<div class="writing-feedback-overall">${h(wf.overall)}</div>`;
+  html+=`</div>`;
+  return html;
+}
 // ── Dispatcher ─────────────────────────────────────────────
 function renderEvalCard(ev){
   if(!ev) return '';
@@ -3168,6 +3183,7 @@ function renderDefCard(ev){
       <tbody>${tableRows}<tr class="alac-total-row"><td style="color:${gc};">Total</td><td style="color:${gc};">${h(ev.score||'?/10')}</td><td style="color:var(--muted);font-size:12px;">/10</td><td style="color:rgba(248,246,241,.6);font-size:12px;">${h(overallFeedback)}</td></tr></tbody>
     </table>
     ${keyMissedArr.length?`<p style="margin-top:10px;"><strong>📚 Missed:</strong></p><ul>${keyMissedArr.map(s=>`<li>${h(s)}</li>`).join('')}</ul>`:''}
+    ${renderWritingFeedback(ev)}
     <details style="margin-top:12px;"><summary style="cursor:pointer;color:var(--gold);font-weight:600;font-size:13px;">📖 Model Answer</summary>
     <div style="margin-top:8px;padding:12px;background:rgba(255,255,255,.03);border-radius:9px;">${renderModelAnswer(ev)}</div></details>
   </div>`;
@@ -3331,6 +3347,7 @@ function renderAlacCard(ev){
     ${ev.strengths?.length?`<p style="margin-top:10px;"><strong>✅ Strengths:</strong></p><ul>${ev.strengths.map(s=>`<li>${h(s)}</li>`).join('')}</ul>`:''}
     ${ev.improvements?.length?`<p><strong>⚠️ Improve:</strong></p><ul>${ev.improvements.map(s=>`<li>${h(s)}</li>`).join('')}</ul>`:''}
     ${ev.keyMissed?.length?`<p><strong>📚 Missed:</strong></p><ul>${ev.keyMissed.map(s=>`<li>${h(s)}</li>`).join('')}</ul>`:''}
+    ${renderWritingFeedback(ev)}
     <details style="margin-top:12px;"><summary style="cursor:pointer;color:var(--gold);font-weight:600;font-size:13px;">📖 Model Answer (ALAC Format)</summary>
     <div style="margin-top:8px;padding:12px;background:rgba(255,255,255,.03);border-radius:9px;">${renderModelAnswer(ev)}</div></details>
   </div>`;
@@ -4325,6 +4342,16 @@ function buildResultsHtml(){
       // Score + overall feedback
       card+=`<div style="margin-bottom:8px;"><span style="font-size:15px;font-weight:bold;color:${scoreColor};">${e(qScoreStr)} — ${e(qGrade)}</span></div>`;
       if(_overallFeedback) card+=`<div style="border:1px solid #d0b870;border-radius:6px;padding:12px 16px;margin:8px 0 12px;background:#fffbf0;page-break-inside:avoid;"><div style="font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:.08em;color:#7a6128;margin-bottom:6px;">Overall Feedback</div><div style="font-size:13px;line-height:1.7;color:#333;">${e(_overallFeedback)}</div></div>`;
+
+      // Writing & Mechanics card (non-scoring — below overall feedback)
+      const _wf = s.writingFeedback || null;
+      if(_wf && (_wf.spelling?.length || _wf.grammar?.length || _wf.overall)){
+        card+=`<div style="border:1px solid #c9a84c;border-radius:6px;padding:12px 16px;margin:8px 0 12px;background:#fdf8e8;page-break-inside:avoid;"><div style="font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:.08em;color:#7a6128;margin-bottom:6px;">✍️ Writing &amp; Mechanics <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#8b6914;">(non-scoring)</span></div>`;
+        if(_wf.spelling?.length) card+=`<div style="margin-bottom:6px;"><strong style="font-size:12px;color:#5a3e1b;">Spelling:</strong><ul style="margin:2px 0 0 0;padding-left:18px;font-size:13px;line-height:1.7;color:#333;">${_wf.spelling.map(x=>`<li>${e(x)}</li>`).join('')}</ul></div>`;
+        if(_wf.grammar?.length) card+=`<div style="margin-bottom:6px;"><strong style="font-size:12px;color:#5a3e1b;">Grammar:</strong><ul style="margin:2px 0 0 0;padding-left:18px;font-size:13px;line-height:1.7;color:#333;">${_wf.grammar.map(x=>`<li>${e(x)}</li>`).join('')}</ul></div>`;
+        if(_wf.overall) card+=`<div style="font-size:13px;line-height:1.7;color:#333;font-style:italic;">${e(_wf.overall)}</div>`;
+        card+=`</div>`;
+      }
 
       // ALAC breakdown table
       if(hasAlac){
