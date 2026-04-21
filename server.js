@@ -142,17 +142,7 @@ const DEFAULT_TAB_SETTINGS = {
     custom:     { learn: true, quiz: false, mockbar: true, speeddrill: true },
   },
 };
-function deepMerge(defaults, overrides) {
-  const result = JSON.parse(JSON.stringify(defaults));
-  for (const key of Object.keys(overrides)) {
-    if (overrides[key] !== null && typeof overrides[key] === 'object' && !Array.isArray(overrides[key])) {
-      if (result[key] !== null && typeof result[key] === 'object') {
-        result[key] = deepMerge(result[key], overrides[key]);
-      } else { result[key] = overrides[key]; }
-    } else { result[key] = overrides[key]; }
-  }
-  return result;
-}
+const { deepMerge } = require('./lib/deep-merge');
 let TAB_SETTINGS = JSON.parse(JSON.stringify(DEFAULT_TAB_SETTINGS));
 
 // ── Universal JSON extractor ─────────────────────────────────
