@@ -127,21 +127,7 @@ const KB = {
 const { getQuestionsForSubject, getQuestionsForSubjects } = require('./lib/db-questions');
 
 // Tab visibility settings (admin-controlled)
-const DEFAULT_TAB_SETTINGS = {
-  overview: true,
-  spaced_repetition: true,
-  subjects: {
-    civil:      { learn: true, quiz: true, mockbar: true, speeddrill: true },
-    criminal:   { learn: true, quiz: true, mockbar: true, speeddrill: true },
-    political:  { learn: true, quiz: true, mockbar: true, speeddrill: true },
-    labor:      { learn: true, quiz: true, mockbar: true, speeddrill: true },
-    commercial: { learn: true, quiz: true, mockbar: true, speeddrill: true },
-    taxation:   { learn: true, quiz: true, mockbar: true, speeddrill: true },
-    remedial:   { learn: true, quiz: true, mockbar: true, speeddrill: true },
-    ethics:     { learn: true, quiz: true, mockbar: true, speeddrill: true },
-    custom:     { learn: true, quiz: false, mockbar: true, speeddrill: true },
-  },
-};
+const { DEFAULT_TAB_SETTINGS } = require('./lib/tab-config');
 const { deepMerge } = require('./lib/deep-merge');
 let TAB_SETTINGS = JSON.parse(JSON.stringify(DEFAULT_TAB_SETTINGS));
 
