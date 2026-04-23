@@ -847,8 +847,9 @@ new PerformanceObserver((list) => {
         <h4 style="margin-top:0;">📥 Source Materials</h4>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
           <button class="btn-gold" onclick="document.getElementById('fc-pdf-input').click()" style="font-size:12px;padding:8px 14px;">📄 Upload PDF</button>
-          <button class="btn-og"   onclick="showFlashcardTextSourceModal()" style="font-size:12px;padding:8px 14px;">✏️ Add Text Source</button>
-          <input type="file" id="fc-pdf-input" accept=".pdf,application/pdf" style="display:none;" onchange="uploadFlashcardPdfSource(event)">
+          <button class="btn-og"   onclick="document.getElementById('fc-text-input').click()" style="font-size:12px;padding:8px 14px;">📝 Upload Text Document</button>
+          <input type="file" id="fc-pdf-input"  accept=".pdf,application/pdf" style="display:none;" onchange="uploadFlashcardPdfSource(event)">
+          <input type="file" id="fc-text-input" accept=".txt,.md,.docx,text/plain,text/markdown,application/vnd.openxmlformats-officedocument.wordprocessingml.document" style="display:none;" onchange="uploadFlashcardTextDocument(event)">
         </div>
         <div id="fc-sources-list" style="min-height:60px;">
           <div style="font-size:13px;color:var(--muted);">Loading sources…</div>

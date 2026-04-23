@@ -972,19 +972,61 @@ async function uploadFlashcardPdfSource(evt) {
   }
 }
 
-function showFlashcardTextSourceModal() {
-  const name = prompt('Name for this text source (e.g. "Civil Law — Codal Chapter 1"):');
-  if (!name || !name.trim()) return;
-  const text = prompt('Paste text content here (will be included in flashcard generation):');
-  if (!text || !text.trim()) return;
-  if (text.length > 2_000_000) {
-    showToast('Text source must be under 2MB', 'error');
+async function uploadFlashcardTextDocument(evt) {
+  const file = evt.target.files && evt.target.files[0];
+  if (!file) return;
+  evt.target.value = ''; // allow re-uploading same file
+
+  // Client-side validation — must be .txt, .md, or .docx
+  const name = file.name || 'untitled';
+  const lower = name.toLowerCase();
+  const isValid = lower.endsWith('.txt') || lower.endsWith('.md') || lower.endsWith('.docx');
+  if (!isValid) {
+    showToast('Only .txt, .md, or .docx files are supported', 'error');
     return;
   }
-  addFlashcardTextSource(name.trim(), text);
-}
+  if (file.size > 50 * 1024 * 1024) {
+    showToast('File must be under 50MB', 'error');
+    return;
+  }
+  if (file.size === 0) {
+    showToast('File is empty', 'error');
+    return;
+  }
 
-async function addFlashcardTextSource(name, text) {
+  showToast(`Extracting text from ${name}…`, 'info');
+
+  // Step 1: send file to /api/admin/parse-file to extract text
+  // (existing server endpoint handles .docx via mammoth, .txt/.md via utf-8)
+  let extractedText = '';
+  try {
+    const parseFd = new FormData();
+    parseFd.append('file', file);
+    const parseResp = await fetch('/api/admin/parse-file', {
+      method: 'POST',
+      headers: { 'x-admin-key': window._adminKey || '' },
+      body: parseFd,
+    });
+    const parseData = await parseResp.json();
+    if (!parseResp.ok) throw new Error(parseData.error || 'Text extraction failed');
+    extractedText = (parseData.text || '').trim();
+    if (!extractedText) throw new Error('No text could be extracted from this file');
+  } catch(e) {
+    showToast('Extraction error: ' + e.message, 'error');
+    return;
+  }
+
+  // Safety cap matches server-side text source limit (2MB)
+  const byteLen = new Blob([extractedText]).size;
+  if (byteLen > 2 * 1024 * 1024) {
+    showToast('Extracted text exceeds 2MB limit — try a smaller file', 'error');
+    return;
+  }
+
+  // Derive source name from filename (strip extension)
+  const sourceName = name.replace(/\.(txt|md|docx)$/i, '').trim() || name;
+
+  // Step 2: submit extracted text as a text source
   try {
     const resp = await fetch('/api/admin/flashcards/source/' + encodeURIComponent(_fcAdminSubject), {
       method: 'POST',
@@ -992,11 +1034,11 @@ async function addFlashcardTextSource(name, text) {
         'Content-Type': 'application/json',
         'x-admin-key': window._adminKey || '',
       },
-      body: JSON.stringify({ name, text }),
+      body: JSON.stringify({ name: sourceName, text: extractedText }),
     });
     const data = await resp.json();
     if (!resp.ok) throw new Error(data.error || 'Save failed');
-    showToast('Text source added', 'success');
+    showToast(`Text source added (${_fcFormatBytes(byteLen)})`, 'success');
     await loadFlashcardsAdmin();
   } catch(e) {
     showToast('Save error: ' + e.message, 'error');
