@@ -577,6 +577,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   // as a side effect of eventually visiting Progress). The in-flight promise
   // (window._srDueFetchPromise) lets Progress's Phase 1 await it if needed.
   if (hasSession) checkDueReviews().catch(() => {});
+  if (hasSession) refreshSidebarFlashcardBadge();
   setLoadingMsg('Loading your dashboard...');
   await init();
   // Restore last view or fall back to overview
@@ -2149,6 +2150,7 @@ function renderSubjectTabs(subj, activeMode) {
     { mode:'quiz',       icon:'✏️',  label:'Quiz'        },
     { mode:'mockbar',    icon:'⏱',  label:'Mock Bar'    },
     { mode:'speeddrill', icon:'⚡', label:'Speed Drill' },
+    { mode:'flashcards', icon:'🎴', label:'Flashcards'  },
   ];
   const bar = document.getElementById('subject-tab-bar');
   if (!bar) return;
@@ -2174,7 +2176,7 @@ function switchSubjectTab(subj, mode) {
   // If disabled, auto-pick first enabled
   const ts = window.TAB_SETTINGS?.subjects?.[subj] || {};
   if (ts[mode] === false) {
-    const first = ['learn','quiz','mockbar','speeddrill'].find(m => ts[m] !== false);
+    const first = ['learn','quiz','mockbar','speeddrill','flashcards'].find(m => ts[m] !== false);
     if (first) { switchSubjectTab(subj, first); return; }
   }
   currentMode = mode;
@@ -2212,6 +2214,7 @@ function switchSubjectTab(subj, mode) {
   if (mode === 'quiz')       renderQuizTab(subj, content);
   if (mode === 'mockbar')    renderMockBarTab(subj, content);
   if (mode === 'speeddrill') renderSpeedDrillTab(subj, content);
+  if (mode === 'flashcards') renderFlashcardsTab(subj, content);
 }
 
 function renderLearnTab(subj, container) {
@@ -2474,6 +2477,505 @@ function drillAgain() {
   setTimeout(() => startSubjectSpeedDrill(subj), 300);
 }
 
+// ═══════════════════════════════════════════════════════════
+// FLASHCARDS — Student-facing tab + study session (Session 3b)
+// ═══════════════════════════════════════════════════════════
+
+// Module-level study session state
+let _fcSession = null;
+// Shape when active:
+// {
+//   subject, mode, queue: [card,...], position: int,
+//   ratings: { again: n, hard: n, good: n, easy: n },
+//   startedAt: Date, currentFlipped: boolean, submitting: boolean,
+//   nodeIdFilter: string|null, // for topic mode
+// }
+
+async function renderFlashcardsTab(subj, container) {
+  const subjInfo = SUBJS.find(s => s.key === subj);
+  const subjName = subjInfo?.name || subj;
+
+  container.innerHTML = `
+    <div class="fc-tab-wrap">
+      <div class="fc-tab-header" style="background:linear-gradient(135deg,rgba(201,168,76,.08),rgba(201,168,76,.02));border:1px solid rgba(201,168,76,.25);border-radius:16px;padding:22px;margin-bottom:18px;">
+        <div style="font-size:28px;margin-bottom:8px;">🎴</div>
+        <h2 style="font-family:var(--fd);font-size:24px;font-weight:700;color:var(--gold-l);margin-bottom:6px;">${h(subjName)} Flashcards</h2>
+        <p style="font-size:13px;color:var(--muted);line-height:1.65;max-width:640px;">Study cards using spaced repetition. Rate how well you remembered each card and the system will schedule them for optimal long-term retention.</p>
+      </div>
+      <div id="fc-tab-body"><div style="text-align:center;padding:40px;color:var(--muted);font-size:13px;">Loading…</div></div>
+    </div>
+  `;
+
+  try {
+    const [statsResp, statusResp] = await Promise.all([
+      fetch('/api/flashcards/stats/' + encodeURIComponent(subj), {
+        headers: { 'x-session-token': sessionToken || '' },
+      }),
+      fetch('/api/admin/flashcards/status/' + encodeURIComponent(subj), {
+        headers: { 'x-admin-key': window._adminKey || '' },
+      }).catch(() => null), // non-admins can't call this; it's optional
+    ]);
+
+    const stats = await statsResp.json();
+    if (!statsResp.ok) throw new Error(stats.error || 'Failed to load stats');
+
+    // Try to load topic list (only works for admins OR if we expose a student topic list endpoint later)
+    let topics = [];
+    if (statusResp && statusResp.ok) {
+      const statusData = await statusResp.json();
+      topics = (statusData.topics || []).filter(t => (t.cardCount || 0) > 0);
+    }
+
+    renderFlashcardsTabBody(subj, stats, topics);
+  } catch(e) {
+    const body = document.getElementById('fc-tab-body');
+    if (body) body.innerHTML = `<div style="color:#e07080;padding:20px;text-align:center;">Error loading flashcards: ${h(e.message)}</div>`;
+  }
+}
+
+function renderFlashcardsTabBody(subj, stats, topics) {
+  const body = document.getElementById('fc-tab-body');
+  if (!body) return;
+
+  const total = stats.totalCards || 0;
+  const due = stats.dueNow || 0;
+  const newAvail = stats.newAvailable || 0;
+  const mastered = stats.mastered || 0;
+  const reviewed = stats.reviewed || 0;
+
+  if (total === 0) {
+    body.innerHTML = `
+      <div style="text-align:center;padding:60px 20px;color:var(--muted);">
+        <div style="font-size:48px;margin-bottom:14px;opacity:.6;">📭</div>
+        <div style="font-family:var(--fd);font-size:18px;font-weight:700;color:var(--gold-l);margin-bottom:6px;">No Flashcards Yet</div>
+        <div style="font-size:13px;max-width:380px;margin:0 auto;line-height:1.65;">No flashcards have been imported for this subject yet. Check back soon — the team is actively building the card bank.</div>
+      </div>
+    `;
+    return;
+  }
+
+  const readyToStudy = due + newAvail;
+
+  body.innerHTML = `
+    <!-- Study summary card -->
+    <div class="fc-study-card" style="background:var(--card);border:1px solid var(--bdr2);border-radius:14px;padding:22px;margin-bottom:16px;">
+      <div style="display:flex;gap:24px;flex-wrap:wrap;margin-bottom:18px;">
+        <div class="fc-stat">
+          <div class="fc-stat-num" style="color:#e07080;">${due}</div>
+          <div class="fc-stat-label">Due Now</div>
+        </div>
+        <div class="fc-stat">
+          <div class="fc-stat-num" style="color:var(--gold-l);">${newAvail}</div>
+          <div class="fc-stat-label">New Available</div>
+        </div>
+        <div class="fc-stat">
+          <div class="fc-stat-num" style="color:#2ec4a0;">${mastered}</div>
+          <div class="fc-stat-label">Mastered</div>
+        </div>
+        <div class="fc-stat">
+          <div class="fc-stat-num" style="color:var(--text);">${total}</div>
+          <div class="fc-stat-label">Total</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+        ${readyToStudy > 0
+          ? `<button class="btn-gold" style="font-size:14px;padding:12px 22px;" onclick="startFlashcardStudySession('${h(subj)}', 'due')">🎴 Start Study Session (${readyToStudy} card${readyToStudy!==1?'s':''})</button>`
+          : `<div style="font-size:13px;color:var(--muted);padding:10px 0;">✅ All caught up! No cards due right now. Come back tomorrow.</div>`}
+        ${reviewed > 0 ? `<div style="font-size:11px;color:var(--muted);">You've reviewed ${reviewed} card${reviewed!==1?'s':''} so far.</div>` : ''}
+      </div>
+    </div>
+
+    <!-- Topic browser -->
+    ${topics.length > 0 ? `
+      <div style="margin-top:18px;">
+        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;">Browse by Topic</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;">
+          ${topics.map(t => `
+            <div class="fc-topic-browse" onclick="startFlashcardStudySession('${h(subj)}', 'topic', '${h(t.nodeId)}')" style="background:var(--card2);border:1px solid var(--bdr2);border-radius:10px;padding:12px 14px;cursor:pointer;transition:all .15s;">
+              <div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:3px;">${h(t.title)}</div>
+              <div style="font-size:10px;color:var(--muted);margin-bottom:6px;line-height:1.45;">${h(t.pathLabel || '')}</div>
+              <div style="font-size:11px;color:var(--gold-l);">${t.cardCount} card${t.cardCount!==1?'s':''}</div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    ` : ''}
+  `;
+}
+
+async function startFlashcardStudySession(subj, mode, nodeId) {
+  try {
+    let queue = [];
+    if (mode === 'due') {
+      const resp = await fetch('/api/flashcards/due/' + encodeURIComponent(subj), {
+        headers: { 'x-session-token': sessionToken || '' },
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.error || 'Failed to load due cards');
+      // Mix due + new, due first (backend already sorted them)
+      queue = [...(data.due || []), ...(data.newCards || [])];
+    } else if (mode === 'topic') {
+      const resp = await fetch(
+        '/api/flashcards/topic/' + encodeURIComponent(subj) + '/' + encodeURIComponent(nodeId),
+        { headers: { 'x-session-token': sessionToken || '' } }
+      );
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.error || 'Failed to load topic cards');
+      queue = data.cards || [];
+    }
+
+    if (queue.length === 0) {
+      showToast('No cards to study', 'info');
+      return;
+    }
+
+    _fcSession = {
+      subject: subj,
+      mode,
+      queue,
+      position: 0,
+      ratings: { again: 0, hard: 0, good: 0, easy: 0 },
+      startedAt: new Date(),
+      currentFlipped: false,
+      submitting: false,
+      nodeIdFilter: mode === 'topic' ? nodeId : null,
+    };
+
+    renderFlashcardCardViewer();
+    attachFlashcardKeyboardListener();
+  } catch(e) {
+    showToast('Study session failed: ' + e.message, 'error');
+  }
+}
+
+function renderFlashcardCardViewer() {
+  if (!_fcSession) return;
+  const container = document.getElementById('subject-tab-content');
+  if (!container) return;
+
+  const { queue, position, ratings, currentFlipped } = _fcSession;
+  const card = queue[position];
+  if (!card) {
+    renderFlashcardSessionSummary();
+    return;
+  }
+
+  const typeBadge = {
+    definition: '📖 Definition',
+    elements: '🔢 Elements',
+    distinction: '⚖️ Distinction',
+  }[card.card_type] || card.card_type;
+
+  const progress = Math.round(((position) / queue.length) * 100);
+  const totalRated = ratings.again + ratings.hard + ratings.good + ratings.easy;
+
+  container.innerHTML = `
+    <div class="fc-viewer-wrap">
+      <!-- Progress bar -->
+      <div class="fc-viewer-topbar" style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap;">
+        <div style="display:flex;align-items:center;gap:12px;min-width:0;flex:1;">
+          <div style="font-size:11px;color:var(--muted);white-space:nowrap;">Card ${position+1} of ${queue.length}</div>
+          <div style="flex:1;min-width:80px;max-width:220px;height:4px;background:rgba(255,255,255,.06);border-radius:2px;overflow:hidden;">
+            <div style="height:100%;background:linear-gradient(90deg,var(--gold),var(--gold-l));width:${progress}%;transition:width .3s;"></div>
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;font-size:10px;">
+          <span style="color:#e07080;">${ratings.again}</span>
+          <span style="color:#d4a843;">${ratings.hard}</span>
+          <span style="color:#2ec4a0;">${ratings.good}</span>
+          <span style="color:#5ba8ff;">${ratings.easy}</span>
+        </div>
+        <button class="btn-og" onclick="endFlashcardSession()" style="font-size:11px;padding:5px 10px;">End Session</button>
+      </div>
+
+      <!-- The card -->
+      <div class="fc-card-outer">
+        <div class="fc-card ${currentFlipped ? 'fc-card-flipped' : ''}" onclick="flipFlashcard()">
+          <div class="fc-card-face fc-card-front">
+            <div class="fc-card-type-badge">${typeBadge}</div>
+            <div class="fc-card-content">${h(card.front)}</div>
+            <div class="fc-card-hint">Tap or press Space to flip</div>
+          </div>
+          <div class="fc-card-face fc-card-back">
+            <div class="fc-card-type-badge">${typeBadge}</div>
+            <div class="fc-card-content">${formatFlashcardBack(card.back)}</div>
+            ${card.source_snippet ? `<div class="fc-card-source">📚 ${h(card.source_snippet)}</div>` : ''}
+            <div class="fc-card-path" style="font-size:10px;color:var(--muted);margin-top:8px;opacity:.7;">${h(card.node_path || '')}</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Rating buttons (only shown when flipped) -->
+      <div class="fc-rating-row" style="opacity:${currentFlipped ? 1 : 0.25};pointer-events:${currentFlipped ? 'auto' : 'none'};">
+        <button class="fc-rate-btn fc-rate-again"  onclick="rateFlashcard('again')"  ${_fcSession.submitting?'disabled':''}>
+          <div class="fc-rate-key">1</div>
+          <div class="fc-rate-label">Again</div>
+          <div class="fc-rate-hint">&lt;1 min</div>
+        </button>
+        <button class="fc-rate-btn fc-rate-hard"   onclick="rateFlashcard('hard')"   ${_fcSession.submitting?'disabled':''}>
+          <div class="fc-rate-key">2</div>
+          <div class="fc-rate-label">Hard</div>
+          <div class="fc-rate-hint">${computeRateHint(card, 'hard')}</div>
+        </button>
+        <button class="fc-rate-btn fc-rate-good"   onclick="rateFlashcard('good')"   ${_fcSession.submitting?'disabled':''}>
+          <div class="fc-rate-key">3</div>
+          <div class="fc-rate-label">Good</div>
+          <div class="fc-rate-hint">${computeRateHint(card, 'good')}</div>
+        </button>
+        <button class="fc-rate-btn fc-rate-easy"   onclick="rateFlashcard('easy')"   ${_fcSession.submitting?'disabled':''}>
+          <div class="fc-rate-key">4</div>
+          <div class="fc-rate-label">Easy</div>
+          <div class="fc-rate-hint">${computeRateHint(card, 'easy')}</div>
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+// Format the BACK text — preserve line breaks as <br>, bold numbered lists
+function formatFlashcardBack(text) {
+  const safe = h(String(text || ''));
+  // Bold numbered list prefixes like "1." or "1)"
+  return safe
+    .replace(/\n/g, '<br>')
+    .replace(/(^|<br>)(\s*)(\d+[.)])\s/g, '$1$2<strong>$3</strong> ');
+}
+
+// Rough human-readable preview of the next interval for a rating
+function computeRateHint(card, rating) {
+  const prev = card._reviewState;
+  const prevEase = prev ? Number(prev.easeFactor) || 2.5 : 2.5;
+  const prevInterval = prev ? Number(prev.intervalDays) || 1 : 0;
+
+  let days = 0;
+  if (!prev) {
+    if (rating === 'hard') days = 1;
+    else if (rating === 'good') days = 1;
+    else if (rating === 'easy') days = 4;
+  } else {
+    if (rating === 'hard') days = Math.max(1, Math.round(prevInterval * 1.2));
+    else if (rating === 'good') days = Math.max(1, Math.round(prevInterval * prevEase));
+    else if (rating === 'easy') days = Math.max(1, Math.round(prevInterval * prevEase * 1.3));
+  }
+  if (rating === 'again') return '<1 min';
+  if (days < 1) return '<1 day';
+  if (days === 1) return '1 day';
+  if (days < 30) return days + ' days';
+  if (days < 365) return Math.round(days / 30) + ' mo';
+  return Math.round(days / 365) + ' yr';
+}
+
+function flipFlashcard() {
+  if (!_fcSession) return;
+  _fcSession.currentFlipped = !_fcSession.currentFlipped;
+  renderFlashcardCardViewer();
+}
+
+async function rateFlashcard(rating) {
+  if (!_fcSession || _fcSession.submitting) return;
+  if (!_fcSession.currentFlipped) return; // must flip first
+  const card = _fcSession.queue[_fcSession.position];
+  if (!card) return;
+
+  _fcSession.submitting = true;
+  try {
+    const resp = await fetch('/api/flashcards/review', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-session-token': sessionToken || '',
+      },
+      body: JSON.stringify({ flashcardId: card.id, rating }),
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || 'Review failed');
+
+    _fcSession.ratings[rating] = (_fcSession.ratings[rating] || 0) + 1;
+
+    // If 'again', re-queue this card at the end so the student sees it again this session
+    if (rating === 'again') {
+      _fcSession.queue.push(card);
+    }
+
+    _fcSession.position += 1;
+    _fcSession.currentFlipped = false;
+    _fcSession.submitting = false;
+    renderFlashcardCardViewer();
+  } catch(e) {
+    _fcSession.submitting = false;
+    showToast('Rating failed: ' + e.message, 'error');
+    renderFlashcardCardViewer();
+  }
+}
+
+function renderFlashcardSessionSummary() {
+  if (!_fcSession) return;
+  const container = document.getElementById('subject-tab-content');
+  if (!container) return;
+
+  const { ratings, queue, startedAt, subject } = _fcSession;
+  const total = ratings.again + ratings.hard + ratings.good + ratings.easy;
+  const elapsedMs = Date.now() - startedAt.getTime();
+  const elapsedMin = Math.max(1, Math.round(elapsedMs / 60000));
+  const accuracy = total > 0 ? Math.round(((ratings.good + ratings.easy) / total) * 100) : 0;
+
+  container.innerHTML = `
+    <div class="fc-summary-wrap" style="text-align:center;padding:32px 20px;">
+      <div style="font-size:54px;margin-bottom:12px;">🎉</div>
+      <h2 style="font-family:var(--fd);font-size:26px;font-weight:700;color:var(--gold-l);margin-bottom:6px;">Session Complete!</h2>
+      <p style="font-size:13px;color:var(--muted);margin-bottom:24px;">You reviewed ${total} card${total!==1?'s':''} in ${elapsedMin} minute${elapsedMin!==1?'s':''}.</p>
+
+      <div class="fc-summary-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;max-width:560px;margin:0 auto 24px;">
+        <div class="fc-summary-stat" style="background:rgba(224,112,128,.08);border:1px solid rgba(224,112,128,.2);border-radius:10px;padding:14px;">
+          <div style="font-size:28px;font-weight:700;color:#e07080;">${ratings.again}</div>
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;">Again</div>
+        </div>
+        <div class="fc-summary-stat" style="background:rgba(212,168,67,.08);border:1px solid rgba(212,168,67,.2);border-radius:10px;padding:14px;">
+          <div style="font-size:28px;font-weight:700;color:#d4a843;">${ratings.hard}</div>
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;">Hard</div>
+        </div>
+        <div class="fc-summary-stat" style="background:rgba(46,196,160,.08);border:1px solid rgba(46,196,160,.2);border-radius:10px;padding:14px;">
+          <div style="font-size:28px;font-weight:700;color:#2ec4a0;">${ratings.good}</div>
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;">Good</div>
+        </div>
+        <div class="fc-summary-stat" style="background:rgba(91,168,255,.08);border:1px solid rgba(91,168,255,.2);border-radius:10px;padding:14px;">
+          <div style="font-size:28px;font-weight:700;color:#5ba8ff;">${ratings.easy}</div>
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;">Easy</div>
+        </div>
+      </div>
+
+      <div style="margin-bottom:20px;">
+        <div style="font-size:13px;color:var(--muted);">Accuracy: <strong style="color:var(--text);">${accuracy}%</strong></div>
+      </div>
+
+      <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
+        <button class="btn-gold" onclick="endFlashcardSession()" style="font-size:13px;padding:10px 18px;">🎴 Back to Flashcards</button>
+      </div>
+    </div>
+  `;
+
+  detachFlashcardKeyboardListener();
+  // Refresh sidebar + overview badges asynchronously
+  refreshSidebarFlashcardBadge();
+}
+
+function endFlashcardSession() {
+  const subj = _fcSession?.subject;
+  _fcSession = null;
+  detachFlashcardKeyboardListener();
+  if (subj) {
+    const content = document.getElementById('subject-tab-content');
+    if (content) renderFlashcardsTab(subj, content);
+  }
+  refreshSidebarFlashcardBadge();
+}
+
+// Keyboard shortcuts — only active when viewer is open
+let _fcKeyboardListener = null;
+function attachFlashcardKeyboardListener() {
+  if (_fcKeyboardListener) return;
+  _fcKeyboardListener = (ev) => {
+    if (!_fcSession) return;
+    // Don't swallow keys when typing in inputs/textareas
+    const tag = (ev.target?.tagName || '').toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+    if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
+
+    if (ev.code === 'Space') {
+      ev.preventDefault();
+      flipFlashcard();
+    } else if (_fcSession.currentFlipped) {
+      if (ev.key === '1') { ev.preventDefault(); rateFlashcard('again'); }
+      else if (ev.key === '2') { ev.preventDefault(); rateFlashcard('hard'); }
+      else if (ev.key === '3') { ev.preventDefault(); rateFlashcard('good'); }
+      else if (ev.key === '4') { ev.preventDefault(); rateFlashcard('easy'); }
+    }
+  };
+  document.addEventListener('keydown', _fcKeyboardListener);
+}
+
+function detachFlashcardKeyboardListener() {
+  if (_fcKeyboardListener) {
+    document.removeEventListener('keydown', _fcKeyboardListener);
+    _fcKeyboardListener = null;
+  }
+}
+
+// ── Dashboard widget + sidebar badge ─────────────────────────
+async function renderDashboardFlashcardWidget() {
+  const el = document.getElementById('fc-overview-widget');
+  if (!el) return;
+  try {
+    const resp = await fetch('/api/flashcards/stats-all', {
+      headers: { 'x-session-token': sessionToken || '' },
+    });
+    if (!resp.ok) { el.style.display = 'none'; return; }
+    const data = await resp.json();
+    const totalDue = data.totalDue || 0;
+    const totalMastered = data.totalMastered || 0;
+    const subjectsWithDue = Object.entries(data.bySubject || {})
+      .filter(([_, s]) => (s.dueNow || 0) > 0 || (s.newAvailable || 0) > 0)
+      .sort((a, b) => (b[1].dueNow + b[1].newAvailable) - (a[1].dueNow + a[1].newAvailable));
+
+    if (totalDue === 0 && subjectsWithDue.length === 0) {
+      el.innerHTML = `
+        <div class="fc-widget-empty">
+          <div style="font-size:24px;margin-bottom:4px;opacity:.6;">🎴</div>
+          <div style="font-size:13px;color:var(--muted);">No flashcards due right now. ${totalMastered > 0 ? `You've mastered ${totalMastered} card${totalMastered!==1?'s':''} so far.` : ''}</div>
+        </div>
+      `;
+      return;
+    }
+
+    const topSubjects = subjectsWithDue.slice(0, 4);
+
+    el.innerHTML = `
+      <div class="fc-widget-inner">
+        <div class="fc-widget-header">
+          <div>
+            <div class="fc-widget-title">🎴 Flashcards</div>
+            <div class="fc-widget-sub">${totalDue} card${totalDue!==1?'s':''} due now · ${totalMastered} mastered</div>
+          </div>
+        </div>
+        <div class="fc-widget-chips">
+          ${topSubjects.map(([subj, s]) => {
+            const total = (s.dueNow || 0) + (s.newAvailable || 0);
+            const subjInfo = SUBJS.find(x => x.key === subj);
+            return `<button class="fc-widget-chip" onclick="navToSubject('${h(subj)}', 'flashcards')">
+              <span class="fc-chip-dot" style="background:${subjInfo?.color || '#888'};"></span>
+              <span class="fc-chip-name">${h(subjInfo?.name || subj)}</span>
+              <span class="fc-chip-count">${total}</span>
+            </button>`;
+          }).join('')}
+        </div>
+      </div>
+    `;
+  } catch(e) {
+    el.style.display = 'none';
+  }
+}
+
+async function refreshSidebarFlashcardBadge() {
+  const el = document.getElementById('sidebarFlashcardBadge');
+  if (!el) return;
+  try {
+    const resp = await fetch('/api/flashcards/stats-all', {
+      headers: { 'x-session-token': sessionToken || '' },
+    });
+    if (!resp.ok) { el.style.display = 'none'; return; }
+    const data = await resp.json();
+    const totalDue = data.totalDue || 0;
+    if (totalDue > 0) {
+      el.style.display = '';
+      el.textContent = totalDue > 99 ? '99+' : String(totalDue);
+    } else {
+      el.style.display = 'none';
+    }
+  } catch {
+    el.style.display = 'none';
+  }
+}
+
 function showLockedMessage(subj, mode) {
   const subjInfo = ALL_SUBJS.find(s => s.key === subj);
   showPage('mockbar'); // reuse a blank area
@@ -2623,6 +3125,8 @@ function renderOverview() {
         </div>
       </div>
 
+      <div class="fc-overview-widget" id="fc-overview-widget"></div>
+
       <div class="ov-subjects-label">SUBJECTS</div>
       <div class="ov-subjects-grid">
         ${SUBJS.filter(s => s.key !== 'custom').map(s => {
@@ -2655,6 +3159,8 @@ function renderOverview() {
         }).join('')}
       </div>
     </div>`;
+  renderDashboardFlashcardWidget();
+  refreshSidebarFlashcardBadge();
 }
 const openModal  = id => document.getElementById(id).classList.add('on');
 const closeModal = id => document.getElementById(id).classList.remove('on');
@@ -4985,7 +5491,7 @@ function renderTabControls() {
   const container = document.getElementById('tabToggleList');
   if (!container) return;
   const s = pendingTabSettings || getDefaultTabSettings();
-  const modeLabels = { learn: '📖 Learn', quiz: '✏️ Quiz', mockbar: '⏱ Mock Bar', speeddrill: '⚡ Speed Drill' };
+  const modeLabels = { learn: '📖 Learn', quiz: '✏️ Quiz', mockbar: '⏱ Mock Bar', speeddrill: '⚡ Speed Drill', flashcards: '🎴 Flashcards' };
   let html = '';
   // Global shortcuts
   html += `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
@@ -4995,6 +5501,7 @@ function renderTabControls() {
     <button class="tab-global-btn" onclick="setAllOfMode('quiz',false)">Hide All Quiz</button>
     <button class="tab-global-btn" onclick="setAllOfMode('mockbar',false)">Hide All Mock Bar</button>
     <button class="tab-global-btn" onclick="setAllOfMode('speeddrill',false)">Hide All Speed Drill</button>
+    <button class="tab-global-btn" onclick="setAllOfMode('flashcards',false)">Hide All Flashcards</button>
     <button class="tab-global-btn" onclick="setCustomSubjectToggle(false)" style="background:rgba(0,180,180,.1);border-color:rgba(0,180,180,.3);color:#00b4b4;">Hide All Custom Sub</button>
     <button class="tab-global-btn" onclick="setSpacedRepToggle(true)">🧠 Spaced Rep ON</button>
     <button class="tab-global-btn" onclick="setSpacedRepToggle(false)">🧠 Spaced Rep OFF</button>
@@ -5003,7 +5510,7 @@ function renderTabControls() {
   // Per-subject rows
   SUBJS.forEach(subj => {
     const ss = s.subjects?.[subj.key] || {};
-    const subjModes = ['learn','quiz','mockbar','speeddrill'];
+    const subjModes = ['learn','quiz','mockbar','speeddrill','flashcards'];
     html += `<div class="tab-ctrl-subject-header">
       <span class="tab-ctrl-subject-dot" style="background:${subj.color};"></span>
       <span style="font-size:13px;font-weight:600;">${subj.name}</span>
@@ -5028,7 +5535,7 @@ function renderTabControls() {
     <span style="font-size:13px;font-weight:600;">Custom Subject</span>
   </div>
   <div style="padding-left:16px;margin-bottom:12px;">`;
-  ['learn','quiz','mockbar','speeddrill'].forEach(mode => {
+  ['learn','quiz','mockbar','speeddrill','flashcards'].forEach(mode => {
     const on = cs[mode] !== false;
     html += `<div class="tab-ctrl-row">
       <span style="font-size:12px;min-width:100px;color:var(--muted);">${modeLabels[mode]}</span>
@@ -5799,6 +6306,7 @@ async function onAuthSuccess(token, user) {
   // (window._srDueFetchPromise) lets _renderProgressDashboardInto's Phase 1
   // await it when the user's last view was Progress.
   checkDueReviews().catch(() => {});
+  refreshSidebarFlashcardBadge();
   // Prefetch KB and progress in parallel before rendering
   await Promise.allSettled([
     refreshKBState(),

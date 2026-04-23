@@ -1240,3 +1240,235 @@ button[onclick*="switchSubjectTab(currentSubject,'quiz')"] { display: none !impo
   line-height: 1;
 }
 .fc-import-modal-inner .modal-x:hover { color: var(--text); }
+
+/* ═══════════════════════════════════════════════════════════
+   Flashcards student viewer (Session 3b)
+   ═══════════════════════════════════════════════════════════ */
+
+/* Tab body — stats card */
+.fc-stat { text-align: center; }
+.fc-stat-num { font-size: 28px; font-weight: 700; line-height: 1.1; font-family: var(--fd); }
+.fc-stat-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; margin-top: 4px; }
+
+.fc-topic-browse:hover {
+  border-color: var(--gold-l) !important;
+  background: rgba(201,168,76,.06) !important;
+}
+
+/* Card viewer */
+.fc-viewer-wrap {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 8px 4px 20px;
+}
+
+.fc-card-outer {
+  perspective: 1600px;
+  margin: 10px 0 18px;
+}
+
+.fc-card {
+  position: relative;
+  width: 100%;
+  min-height: 320px;
+  cursor: pointer;
+  transition: transform .55s cubic-bezier(.4,0,.2,1);
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+
+.fc-card-flipped { transform: rotateY(180deg); }
+
+.fc-card-face {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  background: var(--card);
+  border: 1px solid var(--bdr2);
+  border-radius: 16px;
+  padding: 28px 28px 22px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 4px 18px rgba(0,0,0,.25);
+}
+
+.fc-card-front {}
+.fc-card-back {
+  transform: rotateY(180deg);
+  background: linear-gradient(135deg, rgba(201,168,76,.04), rgba(201,168,76,.01)), var(--card);
+  border-color: rgba(201,168,76,.25);
+}
+
+.fc-card-type-badge {
+  font-size: 10px;
+  color: var(--gold-l);
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  font-weight: 700;
+  margin-bottom: 14px;
+  opacity: .85;
+}
+
+.fc-card-content {
+  flex: 1;
+  font-size: 16px;
+  line-height: 1.65;
+  color: var(--text);
+  font-family: var(--fd);
+  overflow-y: auto;
+  max-height: 48vh;
+}
+
+.fc-card-hint {
+  font-size: 10px;
+  color: var(--muted);
+  text-align: center;
+  margin-top: 14px;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  opacity: .55;
+}
+
+.fc-card-source {
+  font-size: 11px;
+  color: var(--muted);
+  padding: 8px 10px;
+  background: rgba(201,168,76,.05);
+  border-left: 2px solid var(--gold-l);
+  border-radius: 4px;
+  margin-top: 12px;
+}
+
+/* Rating buttons */
+.fc-rating-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  transition: opacity .2s;
+}
+
+.fc-rate-btn {
+  border: 1px solid var(--bdr2);
+  background: var(--card2);
+  border-radius: 10px;
+  padding: 12px 8px;
+  cursor: pointer;
+  color: var(--text);
+  text-align: center;
+  transition: all .15s;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.fc-rate-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,.2); }
+.fc-rate-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+.fc-rate-key {
+  font-size: 10px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(255,255,255,.06);
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--fm);
+}
+
+.fc-rate-label { font-size: 13px; font-weight: 700; }
+.fc-rate-hint  { font-size: 10px; color: var(--muted); }
+
+.fc-rate-again { border-color: rgba(224,112,128,.3); }
+.fc-rate-again .fc-rate-label { color: #e07080; }
+.fc-rate-hard  { border-color: rgba(212,168,67,.3); }
+.fc-rate-hard  .fc-rate-label { color: #d4a843; }
+.fc-rate-good  { border-color: rgba(46,196,160,.3); }
+.fc-rate-good  .fc-rate-label { color: #2ec4a0; }
+.fc-rate-easy  { border-color: rgba(91,168,255,.3); }
+.fc-rate-easy  .fc-rate-label { color: #5ba8ff; }
+
+@media (max-width: 540px) {
+  .fc-rating-row { grid-template-columns: repeat(2, 1fr); }
+  .fc-card-content { font-size: 15px; }
+  .fc-card-face { padding: 20px 18px 16px; }
+}
+
+/* Overview widget */
+.fc-overview-widget { margin-bottom: 14px; }
+.fc-widget-inner {
+  background: linear-gradient(135deg, rgba(201,168,76,.06), rgba(201,168,76,.01));
+  border: 1px solid rgba(201,168,76,.22);
+  border-radius: 14px;
+  padding: 16px 18px;
+}
+.fc-widget-empty {
+  text-align: center;
+  padding: 14px;
+  background: rgba(255,255,255,.02);
+  border: 1px solid var(--bdr2);
+  border-radius: 14px;
+}
+.fc-widget-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.fc-widget-title { font-size: 15px; font-weight: 700; color: var(--gold-l); font-family: var(--fd); }
+.fc-widget-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.fc-widget-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.fc-widget-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--bdr2);
+  background: var(--card2);
+  border-radius: 999px;
+  cursor: pointer;
+  color: var(--text);
+  font-size: 12px;
+  transition: all .15s;
+}
+.fc-widget-chip:hover { border-color: var(--gold-l); background: rgba(201,168,76,.08); }
+.fc-chip-dot { width: 8px; height: 8px; border-radius: 50%; }
+.fc-chip-name { font-weight: 500; }
+.fc-chip-count {
+  min-width: 20px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: rgba(201,168,76,.18);
+  color: var(--gold-l);
+  font-size: 10px;
+  font-weight: 700;
+  font-family: var(--fm);
+}
+
+/* Sidebar badge */
+.sb-fc-badge {
+  position: fixed;
+  left: 12px;
+  bottom: 12px;
+  background: #e07080;
+  color: white;
+  border-radius: 10px;
+  padding: 4px 9px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  z-index: 10;
+  box-shadow: 0 2px 8px rgba(224,112,128,.3);
+}
+.sb-fc-badge-inline {
+  display: inline-flex;
+  margin-left: auto;
+  background: #e07080;
+  color: white;
+  border-radius: 10px;
+  padding: 1px 8px;
+  font-size: 10px;
+  font-weight: 700;
+  min-width: 20px;
+  justify-content: center;
+}
+
+/* Session summary */
+.fc-summary-stat { transition: transform .15s; }
+.fc-summary-stat:hover { transform: translateY(-2px); }
