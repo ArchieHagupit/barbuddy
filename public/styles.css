@@ -1340,59 +1340,7 @@ button[onclick*="switchSubjectTab(currentSubject,'quiz')"] { display: none !impo
   margin-top: 12px;
 }
 
-/* Rating buttons */
-.fc-rating-row {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 8px;
-  transition: opacity .2s;
-}
-
-.fc-rate-btn {
-  border: 1px solid var(--bdr2);
-  background: var(--card2);
-  border-radius: 10px;
-  padding: 12px 8px;
-  cursor: pointer;
-  color: var(--text);
-  text-align: center;
-  transition: all .15s;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-}
-
-.fc-rate-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,.2); }
-.fc-rate-btn:disabled { opacity: .5; cursor: not-allowed; }
-
-.fc-rate-key {
-  font-size: 10px;
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  background: rgba(255,255,255,.06);
-  color: var(--muted);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-family: var(--fm);
-}
-
-.fc-rate-label { font-size: 13px; font-weight: 700; }
-.fc-rate-hint  { font-size: 10px; color: var(--muted); }
-
-.fc-rate-again { border-color: rgba(224,112,128,.3); }
-.fc-rate-again .fc-rate-label { color: #e07080; }
-.fc-rate-hard  { border-color: rgba(212,168,67,.3); }
-.fc-rate-hard  .fc-rate-label { color: #d4a843; }
-.fc-rate-good  { border-color: rgba(46,196,160,.3); }
-.fc-rate-good  .fc-rate-label { color: #2ec4a0; }
-.fc-rate-easy  { border-color: rgba(91,168,255,.3); }
-.fc-rate-easy  .fc-rate-label { color: #5ba8ff; }
-
 @media (max-width: 540px) {
-  .fc-rating-row { grid-template-columns: repeat(2, 1fr); }
   .fc-card-content { font-size: 15px; }
   .fc-card-face { padding: 20px 18px 16px; }
 }
@@ -1477,3 +1425,63 @@ button[onclick*="switchSubjectTab(currentSubject,'quiz')"] { display: none !impo
 .fc-topic-leaf { cursor: pointer; transition: background .12s; }
 .fc-topic-leaf:hover { background: rgba(201,168,76,.08); }
 .fc-topic-tree { max-height: 520px; overflow-y: auto; border: 1px solid var(--bdr2); border-radius: 10px; padding: 8px 10px; background: rgba(255,255,255,.01); }
+
+/* Session 4: 3-button nav row for flashcard viewer */
+.fc-nav-row {
+  display: grid;
+  grid-template-columns: 1fr 1.4fr 1fr;
+  gap: 8px;
+}
+
+.fc-nav-btn {
+  border: 1px solid var(--bdr2);
+  background: var(--card2);
+  border-radius: 10px;
+  padding: 12px 8px;
+  cursor: pointer;
+  color: var(--text);
+  text-align: center;
+  transition: all .15s;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.fc-nav-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,.2); }
+.fc-nav-btn:disabled { opacity: .35; cursor: not-allowed; }
+
+.fc-nav-key {
+  font-size: 10px;
+  min-width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(255,255,255,.06);
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--fm);
+  padding: 0 4px;
+}
+
+.fc-nav-label { font-size: 13px; font-weight: 700; }
+
+.fc-nav-done { border-color: rgba(46,196,160,.3); }
+.fc-nav-done .fc-nav-label { color: #2ec4a0; }
+
+.fc-nav-done-active {
+  background: rgba(46,196,160,.12);
+  border-color: rgba(46,196,160,.5);
+}
+.fc-nav-done-active .fc-nav-label { color: #2ec4a0; }
+
+.fc-card-done {
+  /* Subtle visual marker when card is already done */
+  box-shadow: 0 0 0 1px rgba(46,196,160,.3) inset;
+}
+
+@media (max-width: 540px) {
+  .fc-nav-row { grid-template-columns: 1fr 1fr; }
+  .fc-nav-btn:nth-child(2) { grid-column: span 2; order: -1; }
+}
