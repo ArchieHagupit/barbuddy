@@ -822,7 +822,7 @@ new PerformanceObserver((list) => {
       <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
         <div>
           <h3 style="margin-bottom:3px;">🎴 Flashcards</h3>
-          <p style="margin:0;">Upload master source material (PDFs or text) per subject. Generation creates cards for every leaf topic in the syllabus using the uploaded sources. Sources uploaded now — generation wired up in the next update.</p>
+          <p style="margin:0;">Author flashcards in a .txt file using the strict format, then import them here. Download a template pre-filled with every syllabus leaf to start.</p>
         </div>
       </div>
 
@@ -842,17 +842,16 @@ new PerformanceObserver((list) => {
         </div>
       </div>
 
-      <!-- Source upload area -->
+      <!-- Import + Template row -->
       <div class="fc-admin-section">
-        <h4 style="margin-top:0;">📥 Source Materials</h4>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
-          <button class="btn-gold" onclick="document.getElementById('fc-pdf-input').click()" style="font-size:12px;padding:8px 14px;">📄 Upload PDF</button>
-          <button class="btn-og"   onclick="document.getElementById('fc-text-input').click()" style="font-size:12px;padding:8px 14px;">📝 Upload Text Document</button>
-          <input type="file" id="fc-pdf-input"  accept=".pdf,application/pdf" style="display:none;" onchange="uploadFlashcardPdfSource(event)">
-          <input type="file" id="fc-text-input" accept=".txt,.md,.docx,text/plain,text/markdown,application/vnd.openxmlformats-officedocument.wordprocessingml.document" style="display:none;" onchange="uploadFlashcardTextDocument(event)">
+        <h4 style="margin-top:0;">📥 Import &amp; Template</h4>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn-gold" onclick="document.getElementById('fc-txt-input').click()" style="font-size:12px;padding:8px 14px;">📤 Import Flashcards (.txt)</button>
+          <button class="btn-og" onclick="downloadFlashcardTemplate()" style="font-size:12px;padding:8px 14px;">📥 Download Template</button>
+          <input type="file" id="fc-txt-input" accept=".txt,text/plain" style="display:none;" onchange="previewFlashcardTxt(event)">
         </div>
-        <div id="fc-sources-list" style="min-height:60px;">
-          <div style="font-size:13px;color:var(--muted);">Loading sources…</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.6;">
+          The template lists every syllabus leaf for the selected subject as a <code>## TOPIC:</code> header. Fill in cards under each topic using the card format (see the template comments for details), then upload the completed file.
         </div>
       </div>
 
@@ -879,6 +878,35 @@ new PerformanceObserver((list) => {
           </div>
         </div>
         <div id="fc-review-cards" style="max-height:600px;overflow-y:auto;"></div>
+      </div>
+    </div>
+
+    <!-- Flashcard Import Preview Modal -->
+    <div id="fc-import-modal" class="fc-import-modal" style="display:none;">
+      <div class="fc-import-modal-inner">
+        <button class="modal-x" onclick="closeFcImportModal()">✕</button>
+        <h3 style="margin-top:0;">📥 Import Preview</h3>
+        <div id="fc-import-summary" style="font-size:13px;color:var(--muted);margin-bottom:14px;line-height:1.6;"></div>
+        <div id="fc-import-errors" style="display:none;margin-bottom:14px;max-height:200px;overflow-y:auto;padding:10px 12px;background:rgba(224,112,128,.06);border:1px solid rgba(224,112,128,.25);border-radius:10px;font-size:12px;font-family:var(--fm);"></div>
+        <div id="fc-import-cards" style="margin-bottom:16px;max-height:280px;overflow-y:auto;padding:10px 12px;background:rgba(255,255,255,.02);border:1px solid var(--bdr2);border-radius:10px;"></div>
+
+        <div style="margin-bottom:14px;padding:12px 14px;background:rgba(201,168,76,.04);border:1px solid rgba(201,168,76,.2);border-radius:10px;">
+          <div style="font-size:12px;font-weight:700;color:var(--gold-l);margin-bottom:8px;text-transform:uppercase;letter-spacing:.06em;">Import mode</div>
+          <label style="display:block;margin-bottom:6px;cursor:pointer;">
+            <input type="radio" name="fc-import-mode" value="append" checked> <strong>Append</strong> — add imported cards alongside any existing cards. (Recommended for building up the bank.)
+          </label>
+          <label style="display:block;margin-bottom:6px;cursor:pointer;">
+            <input type="radio" name="fc-import-mode" value="replace_per_topic"> <strong>Replace per topic</strong> — for each topic in the file, delete existing cards for that topic then insert. Topics NOT in the file are untouched.
+          </label>
+          <label style="display:block;cursor:pointer;">
+            <input type="radio" name="fc-import-mode" value="full_replace"> <strong>Full replace</strong> — ⚠️ delete ALL existing cards for this subject, then insert. Destructive.
+          </label>
+        </div>
+
+        <div style="display:flex;gap:8px;justify-content:flex-end;">
+          <button class="btn-og" onclick="closeFcImportModal()" style="font-size:12px;padding:8px 16px;">Cancel</button>
+          <button class="btn-gold" id="fc-import-commit-btn" onclick="commitFlashcardImport()" style="font-size:12px;padding:8px 20px;">✅ Commit Import</button>
+        </div>
       </div>
     </div>
 

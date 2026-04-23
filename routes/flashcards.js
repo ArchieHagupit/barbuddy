@@ -1,60 +1,43 @@
-// Flashcards routes — manual card authoring (Session 2.2).
+// Flashcards routes — Session 2.2: .txt import-based authoring.
 //
-// Scope:
-//   - Admin uploads subject-level source material as committee reference
-//     (PDF or text). Sources are NOT fed to any AI — purely for human
-//     reviewer use while writing cards manually.
-//   - Status endpoint lists syllabus leaf topics + card counts.
-//   - Admin creates, edits, and deletes flashcards manually via the UI.
-//   - Manually-authored cards are auto-published (enabled=true).
+// Model: admin authors flashcards in a .txt file using a strict format,
+// uploads it for preview, then commits to the DB. No AI generation.
+// No PDF source upload — if committee needs reference PDFs they keep them
+// local to their own machine.
 //
-// No AI generation — that was Sessions 2/2.0 and 2.1, removed in 2.2
-// after real-world testing showed AI output quality wasn't worth the
-// review overhead or API cost for bar exam content.
+// Routes:
+//   GET  /api/admin/flashcards/status/:subject         — leaf topics + card counts
+//   GET  /api/admin/flashcards/template/:subject       — download pre-filled .txt skeleton
+//   POST /api/admin/flashcards/import/:subject         — upload .txt, parse, return preview
+//   POST /api/admin/flashcards/import/:subject/commit  — commit previewed cards
+//   GET  /api/admin/flashcards/cards/:subject/:nodeId  — list cards for a topic
+//   PATCH /api/admin/flashcards/card/:cardId           — edit one card in-app
+//   DELETE /api/admin/flashcards/card/:cardId          — delete one card
 //
 // Usage in server.js:
-//   app.use(require('./routes/flashcards')({
-//     requireAuth, adminOnly, SYLLABUS_FLASHCARD_DIR, KB,
-//   }));
+//   app.use(require('./routes/flashcards')({ requireAuth, adminOnly, KB }));
 
 const express = require('express');
-const fs = require('fs');
-const path = require('path');
 const multer = require('multer');
 const { supabase } = require('../config/supabase');
 const { getAllSubjectsWithSections } = require('../lib/syllabus-tree');
+const { parseFlashcardTxt } = require('../lib/flashcard-parser');
 
-module.exports = function createFlashcardRoutes({
-  requireAuth, adminOnly, SYLLABUS_FLASHCARD_DIR, KB,
-}) {
+module.exports = function createFlashcardRoutes({ requireAuth, adminOnly, KB }) {
   const router = express.Router();
 
-  // Multer disk-storage factory for subject source PDFs.
-  // Captures SYLLABUS_FLASHCARD_DIR via closure (same pattern as syllabus router).
-  function makeFlashcardSourceUpload() {
-    const storage = multer.diskStorage({
-      destination: (_req, _file, cb) => cb(null, SYLLABUS_FLASHCARD_DIR),
-      filename: (req, file, cb) => {
-        const sourceId = 'src_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
-        const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
-        req._generatedSourceId = sourceId;
-        cb(null, sourceId + '_' + safeName);
-      },
-    });
-    return multer({
-      storage,
-      fileFilter: (_req, file, cb) => {
-        if (file.mimetype === 'application/pdf' || file.originalname.toLowerCase().endsWith('.pdf')) cb(null, true);
-        else cb(new Error('Only PDF files are allowed'));
-      },
-      limits: { fileSize: 50 * 1024 * 1024 },
-    });
-  }
+  // In-memory upload — file stays in req.file.buffer. No disk writes.
+  const txtUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB
+    fileFilter: (_req, file, cb) => {
+      const name = (file.originalname || '').toLowerCase();
+      if (name.endsWith('.txt') || file.mimetype === 'text/plain') cb(null, true);
+      else cb(new Error('Only .txt files are allowed'));
+    },
+  });
 
-  // Walk a subject's syllabus sections and yield only LEAF topics
-  // (nodes with type !== 'section' that have no non-empty children).
-  // Each leaf gets a pathLabel of the form "I. Obligations > A. General > 1. Kinds"
-  // built by joining ancestor label+title pairs with " > ".
+  // Walk syllabus and yield only leaf topics with pathLabel.
   function collectLeafTopics(sections) {
     const leaves = [];
     function fmt(node) {
@@ -67,155 +50,30 @@ module.exports = function createFlashcardRoutes({
       for (const node of (nodes || [])) {
         const nextAncestry = ancestry.concat(fmt(node));
         const children = node.children || [];
-        const hasChildren = children.some(c => c); // non-empty slot count
-        if (node.type === 'section') {
-          // sections are never leaves — always recurse
-          walk(children, nextAncestry);
-        } else if (hasChildren) {
-          walk(children, nextAncestry);
-        } else {
-          // leaf
-          leaves.push({
-            nodeId: node.id,
-            title: node.title || node.label || '',
-            pathLabel: nextAncestry.join(' > '),
-          });
-        }
+        const hasChildren = children.some(c => c);
+        if (node.type === 'section') walk(children, nextAncestry);
+        else if (hasChildren) walk(children, nextAncestry);
+        else leaves.push({
+          nodeId: node.id,
+          title: node.title || node.label || '',
+          pathLabel: nextAncestry.join(' > '),
+        });
       }
     }
     walk(sections || [], []);
     return leaves;
   }
 
-  // ── Route 1: Upload source (PDF multipart OR text JSON) ──────
-  router.post('/api/admin/flashcards/source/:subject', adminOnly, (req, res) => {
-    const subj = req.params.subject;
-    if (!getAllSubjectsWithSections().includes(subj)) {
-      return res.status(400).json({ error: 'Invalid subject' });
-    }
-
-    const ctype = String(req.headers['content-type'] || '');
-
-    // ── Path A: JSON body → text source ──
-    if (ctype.includes('application/json')) {
-      const { name, text } = req.body || {};
-      if (!name || !String(name).trim()) return res.status(400).json({ error: 'name required' });
-      if (!text || !String(text).trim()) return res.status(400).json({ error: 'text required' });
-      const textStr = String(text);
-      const bytes = Buffer.byteLength(textStr, 'utf8');
-      if (bytes > 2 * 1024 * 1024) {
-        return res.status(413).json({ error: 'Text source must be under 2MB' });
-      }
-      const id = 'src_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
-      const row = {
-        id,
-        subject: subj,
-        source_type: 'text',
-        name: String(name).trim().slice(0, 300),
-        file_id: null,
-        text_content: textStr,
-        size_bytes: bytes,
-        uploaded_by: req.userId || 'admin',
-      };
-      supabase.from('flashcard_sources').insert(row).select('id, subject, source_type, name, file_id, size_bytes, uploaded_at, uploaded_by').single()
-        .then(({ data, error }) => {
-          if (error) return res.status(500).json({ error: error.message });
-          res.json({ source: data });
-        })
-        .catch(e => res.status(500).json({ error: e.message }));
-      return;
-    }
-
-    // ── Path B: multipart/form-data → PDF source ──
-    makeFlashcardSourceUpload().single('pdf')(req, res, async (err) => {
-      if (err) return res.status(400).json({ error: err.message });
-      if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
-      try {
-        const id = req._generatedSourceId || ('src_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6));
-        const row = {
-          id,
-          subject: subj,
-          source_type: 'pdf',
-          name: req.file.originalname,
-          file_id: req.file.filename,
-          text_content: null,
-          size_bytes: req.file.size,
-          uploaded_by: req.userId || 'admin',
-        };
-        const { data, error } = await supabase
-          .from('flashcard_sources')
-          .insert(row)
-          .select('id, subject, source_type, name, file_id, size_bytes, uploaded_at, uploaded_by')
-          .single();
-        if (error) {
-          try { fs.unlinkSync(req.file.path); } catch(_) {}
-          return res.status(500).json({ error: error.message });
-        }
-        res.json({ source: data });
-      } catch(e) {
-        try { fs.unlinkSync(req.file.path); } catch(_) {}
-        res.status(500).json({ error: e.message });
-      }
-    });
-  });
-
-  // ── Route 2: List sources for subject ───────────────────────
-  router.get('/api/admin/flashcards/sources/:subject', adminOnly, async (req, res) => {
-    try {
-      const subj = req.params.subject;
-      if (!getAllSubjectsWithSections().includes(subj)) {
-        return res.status(400).json({ error: 'Invalid subject' });
-      }
-      const { data, error } = await supabase
-        .from('flashcard_sources')
-        .select('id, subject, source_type, name, file_id, size_bytes, uploaded_at, uploaded_by')
-        .eq('subject', subj)
-        .order('uploaded_at', { ascending: false });
-      if (error) return res.status(500).json({ error: error.message });
-      res.json({ sources: data || [] });
-    } catch(e) { res.status(500).json({ error: e.message }); }
-  });
-
-  // ── Route 3: Delete one source (PDF file + row) ─────────────
-  // Does NOT delete any generated flashcards — card deletion is an
-  // explicit admin action in a later session.
-  router.delete('/api/admin/flashcards/source/:sourceId', adminOnly, async (req, res) => {
-    try {
-      const { sourceId } = req.params;
-      const { data: existing, error: fetchErr } = await supabase
-        .from('flashcard_sources')
-        .select('id, source_type, file_id')
-        .eq('id', sourceId)
-        .maybeSingle();
-      if (fetchErr) return res.status(500).json({ error: fetchErr.message });
-      if (!existing) return res.status(404).json({ error: 'Source not found' });
-
-      if (existing.source_type === 'pdf' && existing.file_id) {
-        const filePath = path.join(SYLLABUS_FLASHCARD_DIR, existing.file_id);
-        try { if (fs.existsSync(filePath)) fs.unlinkSync(filePath); } catch(_) {}
-      }
-
-      const { error: delErr } = await supabase.from('flashcard_sources').delete().eq('id', sourceId);
-      if (delErr) return res.status(500).json({ error: delErr.message });
-      res.json({ ok: true });
-    } catch(e) { res.status(500).json({ error: e.message }); }
-  });
-
-  // ── Route 4: Status — syllabus leaf topics + per-topic counts ──
-  // Session 1: pendingCount/approvedCount always 0 (no cards yet).
-  // Session 2 uses this as the "what to generate" worklist.
+  // ── Route 1: Status — leaf topics + card counts ─────────────
   router.get('/api/admin/flashcards/status/:subject', adminOnly, async (req, res) => {
     try {
       const subj = req.params.subject;
       if (!getAllSubjectsWithSections().includes(subj)) {
         return res.status(400).json({ error: 'Invalid subject' });
       }
-
       const sections = KB.syllabus?.subjects?.[subj]?.sections || [];
       const leaves = collectLeafTopics(sections);
 
-      // Aggregate card counts per node in one query (Session 1 returns 0s
-      // since the table is empty, but the query is wired for Session 2).
       let byNode = {};
       try {
         const { data: cards } = await supabase
@@ -228,100 +86,188 @@ module.exports = function createFlashcardRoutes({
           else           byNode[c.node_id].pending  += 1;
         }
       } catch(_) {
-        // Swallow — if the table doesn't exist yet (migrations not run),
-        // just return zero counts. Admin will see sources UI either way.
         byNode = {};
       }
 
-      // Sources list (same shape as Route 2 but inlined to avoid second request).
-      const { data: sources, error: srcErr } = await supabase
-        .from('flashcard_sources')
-        .select('id, subject, source_type, name, file_id, size_bytes, uploaded_at, uploaded_by')
-        .eq('subject', subj)
-        .order('uploaded_at', { ascending: false });
-      if (srcErr) return res.status(500).json({ error: srcErr.message });
-
-      let totalGenerated = 0, totalApproved = 0;
+      let totalCards = 0;
       const topics = leaves.map(l => {
         const counts = byNode[l.nodeId] || { pending: 0, approved: 0 };
-        totalGenerated += counts.pending + counts.approved;
-        totalApproved  += counts.approved;
+        const t = counts.pending + counts.approved;
+        totalCards += t;
         return {
           nodeId: l.nodeId,
           title: l.title,
           pathLabel: l.pathLabel,
-          pendingCount: counts.pending,
-          approvedCount: counts.approved,
+          cardCount: t,
         };
       });
 
       res.json({
         subject: subj,
-        sources: sources || [],
         topics,
         totalSyllabusTopics: topics.length,
-        totalGenerated,
-        totalApproved,
+        totalCards,
       });
     } catch(e) { res.status(500).json({ error: e.message }); }
   });
 
-  // ── Route 5: Create a card manually (auto-published) ────────
-  // Session 2.2: manually-authored cards go straight to enabled=true.
-  // Body: { subject, node_id, node_path, card_type, front, back, source_snippet? }
-  router.post('/api/admin/flashcards/card', adminOnly, async (req, res) => {
-    try {
-      const {
-        subject,
-        node_id,
-        node_path,
-        card_type,
-        front,
-        back,
-        source_snippet,
-      } = req.body || {};
+  // ── Route 2: Download pre-filled .txt template ──────────────
+  router.get('/api/admin/flashcards/template/:subject', adminOnly, (req, res) => {
+    const subj = req.params.subject;
+    if (!getAllSubjectsWithSections().includes(subj)) {
+      return res.status(400).json({ error: 'Invalid subject' });
+    }
+    const sections = KB.syllabus?.subjects?.[subj]?.sections || [];
+    const leaves = collectLeafTopics(sections);
 
-      if (!subject || !getAllSubjectsWithSections().includes(subject)) {
+    const lines = [];
+    lines.push(`# SUBJECT: ${subj}`);
+    lines.push(`# `);
+    lines.push(`# Flashcards template for ${subj.toUpperCase()} — ${leaves.length} leaf topics.`);
+    lines.push(`# Fill in cards under each topic. Lines starting with a single # or // are comments.`);
+    lines.push(`# `);
+    lines.push(`# Format per card (separator is three hyphens on its own line):`);
+    lines.push(`#`);
+    lines.push(`#   ---`);
+    lines.push(`#   TYPE: definition | elements | distinction`);
+    lines.push(`#   FRONT: <question>`);
+    lines.push(`#   BACK: <answer, can span multiple lines>`);
+    lines.push(`#   SOURCE: <optional citation, single line>`);
+    lines.push(`#`);
+    lines.push(`# Delete the "## TOPIC:" blocks you don't need. Keep the "# SUBJECT:" line at the top.`);
+    lines.push(``);
+
+    for (const leaf of leaves) {
+      lines.push(`## TOPIC: ${leaf.pathLabel}`);
+      lines.push(``);
+      lines.push(`# (add cards here — uncomment and edit the example below)`);
+      lines.push(`# ---`);
+      lines.push(`# TYPE: definition`);
+      lines.push(`# FRONT: `);
+      lines.push(`# BACK: `);
+      lines.push(`# SOURCE: `);
+      lines.push(``);
+    }
+
+    const filename = `flashcards-${subj}-template.txt`;
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(lines.join('\n'));
+  });
+
+  // ── Route 3: Import — upload .txt, parse, return preview ────
+  // Does NOT write to DB. Returns { cards, errors, stats } for user review.
+  router.post('/api/admin/flashcards/import/:subject', adminOnly, (req, res) => {
+    const subj = req.params.subject;
+    if (!getAllSubjectsWithSections().includes(subj)) {
+      return res.status(400).json({ error: 'Invalid subject' });
+    }
+    txtUpload.single('txt')(req, res, (err) => {
+      if (err) return res.status(400).json({ error: err.message });
+      if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+      try {
+        const text = req.file.buffer.toString('utf-8');
+        const sections = KB.syllabus?.subjects?.[subj]?.sections || [];
+        const leaves = collectLeafTopics(sections);
+        const result = parseFlashcardTxt(text, leaves, subj);
+        res.json({
+          subject: subj,
+          filename: req.file.originalname,
+          sizeBytes: req.file.size,
+          ...result,
+        });
+      } catch(e) {
+        res.status(500).json({ error: e.message });
+      }
+    });
+  });
+
+  // ── Route 4: Commit previewed cards to DB ───────────────────
+  // Body: { cards: [...], mode: "append" | "replace_per_topic" | "full_replace" }
+  router.post('/api/admin/flashcards/import/:subject/commit', adminOnly, async (req, res) => {
+    try {
+      const subj = req.params.subject;
+      if (!getAllSubjectsWithSections().includes(subj)) {
         return res.status(400).json({ error: 'Invalid subject' });
       }
-      if (!node_id || typeof node_id !== 'string') {
-        return res.status(400).json({ error: 'node_id required' });
+      const { cards, mode } = req.body || {};
+      if (!Array.isArray(cards) || cards.length === 0) {
+        return res.status(400).json({ error: 'cards array is required and non-empty' });
       }
-      if (!['definition', 'elements', 'distinction'].includes(card_type)) {
-        return res.status(400).json({ error: "card_type must be one of: definition, elements, distinction" });
+      const validModes = ['append', 'replace_per_topic', 'full_replace'];
+      if (!validModes.includes(mode)) {
+        return res.status(400).json({ error: `mode must be one of: ${validModes.join(', ')}` });
       }
-      const frontStr = String(front || '').trim();
-      const backStr  = String(back  || '').trim();
-      if (!frontStr) return res.status(400).json({ error: 'front required' });
-      if (!backStr)  return res.status(400).json({ error: 'back required' });
-      if (frontStr.length > 2000) return res.status(400).json({ error: 'front exceeds 2000 chars' });
-      if (backStr.length  > 5000) return res.status(400).json({ error: 'back exceeds 5000 chars' });
 
+      // Pre-flight: delete based on mode
+      let deletedCount = 0;
+      if (mode === 'full_replace') {
+        const { data: existingAll } = await supabase
+          .from('flashcards').select('id').eq('subject', subj);
+        if (existingAll && existingAll.length) {
+          await supabase.from('flashcards').delete().eq('subject', subj);
+          deletedCount = existingAll.length;
+        }
+      } else if (mode === 'replace_per_topic') {
+        const touchedNodes = Array.from(new Set(cards.map(c => c.nodeId)));
+        if (touchedNodes.length) {
+          const { data: existingPerTopic } = await supabase
+            .from('flashcards').select('id')
+            .eq('subject', subj)
+            .in('node_id', touchedNodes);
+          if (existingPerTopic && existingPerTopic.length) {
+            await supabase.from('flashcards').delete()
+              .eq('subject', subj)
+              .in('node_id', touchedNodes);
+            deletedCount = existingPerTopic.length;
+          }
+        }
+      }
+
+      // Build insert rows
       const nowIso = new Date().toISOString();
-      const row = {
+      const batchId = 'import_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+      const rows = cards.map(c => ({
         id: 'fc_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
-        subject,
-        node_id: String(node_id),
-        node_path: String(node_path || '').slice(0, 1000),
-        card_type,
-        front: frontStr,
-        back: backStr,
-        source_snippet: source_snippet ? String(source_snippet).trim().slice(0, 2000) : null,
+        subject: subj,
+        node_id: String(c.nodeId),
+        node_path: String(c.nodePath || '').slice(0, 1000),
+        card_type: String(c.card_type).toLowerCase(),
+        front: String(c.front).trim().slice(0, 2000),
+        back: String(c.back).trim().slice(0, 5000),
+        source_snippet: c.source_snippet ? String(c.source_snippet).trim().slice(0, 2000) : null,
         source_ids: [],
-        generation_batch_id: 'manual',
+        generation_batch_id: batchId,
         enabled: true,
         approved_at: nowIso,
         approved_by: req.userId || 'admin',
-      };
+      }));
 
-      const { data, error } = await supabase
-        .from('flashcards').insert(row).select().single();
-      if (error) return res.status(500).json({ error: error.message });
-      res.json({ card: data });
+      // Batch insert in chunks of 500 for Supabase safety
+      let inserted = 0;
+      const insertErrors = [];
+      for (let i = 0; i < rows.length; i += 500) {
+        const chunk = rows.slice(i, i + 500);
+        const { data, error } = await supabase.from('flashcards').insert(chunk).select('id');
+        if (error) {
+          insertErrors.push({ chunkStart: i, message: error.message });
+        } else {
+          inserted += (data || []).length;
+        }
+      }
+
+      res.json({
+        ok: insertErrors.length === 0,
+        mode,
+        inserted,
+        deleted: deletedCount,
+        batchId,
+        insertErrors,
+      });
     } catch(e) { res.status(500).json({ error: e.message }); }
   });
 
-  // ── Route 8: List cards for one topic (admin review view) ──
+  // ── Route 5: List cards for one topic (admin manage view) ──
   router.get('/api/admin/flashcards/cards/:subject/:nodeId', adminOnly, async (req, res) => {
     try {
       const { subject, nodeId } = req.params;
@@ -339,24 +285,22 @@ module.exports = function createFlashcardRoutes({
     } catch(e) { res.status(500).json({ error: e.message }); }
   });
 
-  // ── Route 9: Update one card (approve / edit) ────────────────
+  // ── Route 6: Update (edit) a card ──────────────────────────
   router.patch('/api/admin/flashcards/card/:cardId', adminOnly, async (req, res) => {
     try {
       const { cardId } = req.params;
-      const { front, back, enabled, card_type } = req.body || {};
+      const { front, back, card_type, source_snippet, enabled } = req.body || {};
       const updates = { last_edited_at: new Date().toISOString() };
       if (typeof front === 'string')   updates.front   = front.trim().slice(0, 2000);
       if (typeof back  === 'string')   updates.back    = back.trim().slice(0, 5000);
       if (card_type && ['definition','elements','distinction'].includes(card_type)) {
         updates.card_type = card_type;
       }
-      if (typeof enabled === 'boolean') {
-        updates.enabled = enabled;
-        if (enabled) {
-          updates.approved_at = new Date().toISOString();
-          updates.approved_by = req.userId || 'admin';
-        }
+      if (typeof source_snippet === 'string') {
+        updates.source_snippet = source_snippet.trim().slice(0, 2000) || null;
       }
+      if (typeof enabled === 'boolean') updates.enabled = enabled;
+
       const { data, error } = await supabase
         .from('flashcards').update(updates).eq('id', cardId)
         .select().maybeSingle();
@@ -366,7 +310,7 @@ module.exports = function createFlashcardRoutes({
     } catch(e) { res.status(500).json({ error: e.message }); }
   });
 
-  // ── Route 10: Delete (reject) a card ─────────────────────────
+  // ── Route 7: Delete a card ──────────────────────────────────
   router.delete('/api/admin/flashcards/card/:cardId', adminOnly, async (req, res) => {
     try {
       const { error } = await supabase.from('flashcards').delete().eq('id', req.params.cardId);

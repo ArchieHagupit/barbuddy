@@ -802,7 +802,6 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .admin-panel{background:var(--card);border:1px solid var(--bdr2);border-radius:16px;padding:20px;}
 .fc-admin-section{padding:12px 14px;border:1px solid var(--bdr2);border-radius:10px;background:rgba(255,255,255,.02);}
 .fc-admin-section h4{font-size:.92rem;color:var(--gold-l);margin-bottom:10px;}
-.fc-source-row{display:flex;align-items:center;gap:12px;padding:10px 12px;margin-bottom:6px;border:1px solid var(--bdr2);border-radius:8px;background:rgba(0,0,0,.15);}
 .fc-topic-row{display:flex;align-items:center;gap:12px;padding:8px 12px;border-bottom:1px solid var(--bdr2);}
 .fc-topic-row:last-child{border-bottom:none;}
 .admin-panel h3{font-family:var(--fd);font-size:18px;font-weight:700;color:var(--gold-l);margin-bottom:5px;}
@@ -1215,10 +1214,29 @@ button[onclick*="switchSubjectTab(currentSubject,'quiz')"] { display: none !impo
 .fc-topic-row-clickable{cursor:pointer;transition:background .12s ease;}
 .fc-topic-row-clickable:hover{background:rgba(201,168,76,.08);}
 
-/* Manual card authoring form */
-.fc-add-card-form textarea{font-family:inherit;}
-.fc-add-card-form textarea:focus,
-.fc-add-card-form select:focus{
-  outline:none;
-  border-color:var(--gold-l);
+/* Flashcard import preview modal (Session 2.2) */
+.fc-import-modal {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.72);
+  z-index: 9999;
+  display: flex; align-items: center; justify-content: center;
+  padding: 16px;
 }
+.fc-import-modal-inner {
+  width: 100%; max-width: 680px;
+  max-height: 90vh;
+  overflow-y: auto;
+  padding: 24px 28px;
+  background: var(--bg);
+  border: 1px solid var(--gold-l);
+  border-radius: 14px;
+  box-shadow: 0 12px 40px rgba(0,0,0,.5);
+  position: relative;
+}
+.fc-import-modal-inner .modal-x {
+  position: absolute; top: 12px; right: 14px;
+  background: none; border: none;
+  color: var(--muted); font-size: 18px; cursor: pointer;
+  line-height: 1;
+}
+.fc-import-modal-inner .modal-x:hover { color: var(--text); }

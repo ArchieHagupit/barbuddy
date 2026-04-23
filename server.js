@@ -163,8 +163,6 @@ const UPLOADS_DIR = process.env.PERSISTENT_STORAGE_PATH
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 const SYLLABUS_PDFS_DIR = path.join(UPLOADS_DIR, 'syllabus-pdfs');
 if (!fs.existsSync(SYLLABUS_PDFS_DIR)) fs.mkdirSync(SYLLABUS_PDFS_DIR, { recursive: true });
-const SYLLABUS_FLASHCARD_DIR = path.join(UPLOADS_DIR, 'flashcard-sources');
-if (!fs.existsSync(SYLLABUS_FLASHCARD_DIR)) fs.mkdirSync(SYLLABUS_FLASHCARD_DIR, { recursive: true });
 
 // Knowledge Base — syllabus + references + past bar
 const KB = {
@@ -544,10 +542,8 @@ app.use(require('./routes/syllabus')({
   ADMIN_KEY, verifySession, KB, SYLLABUS_PDFS_DIR,
 }));
 
-// ── Flashcards routes (Session 2.2: manual authoring, no AI) ──
-app.use(require('./routes/flashcards')({
-  requireAuth, adminOnly, SYLLABUS_FLASHCARD_DIR, KB,
-}));
+// ── Flashcards routes (Session 2.2: .txt import authoring, no AI, no PDF) ──
+app.use(require('./routes/flashcards')({ requireAuth, adminOnly, KB }));
 
 // ── Admin KB management (references, wipe, diagnostic) ──
 app.use(require('./routes/admin-kb')({

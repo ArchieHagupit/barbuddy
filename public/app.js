@@ -869,56 +869,34 @@ function autoUnlockAdminUI() {
   showAdminTab('overview');
 }
 
-// ── Admin Flashcards tab ─────────────────────────────────────
+// ── Admin Flashcards tab (Session 2.2: .txt import authoring) ──
 let _fcAdminSubject = 'civil';
-let _fcSourcesCache = [];
 let _fcTopicsCache  = [];
+let _fcImportCards  = null; // cards array from last preview (for commit)
 
 async function loadFlashcardsAdmin() {
   const subj = (document.getElementById('fc-subject-select')?.value) || _fcAdminSubject;
   _fcAdminSubject = subj;
-  const listEl    = document.getElementById('fc-sources-list');
-  const topicsEl  = document.getElementById('fc-topics-list');
-  const sumEl     = document.getElementById('fc-topic-summary');
-  if (listEl)   listEl.innerHTML   = '<div style="font-size:13px;color:var(--muted);">Loading sources…</div>';
+  const topicsEl = document.getElementById('fc-topics-list');
+  const sumEl    = document.getElementById('fc-topic-summary');
   if (topicsEl) topicsEl.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted);font-size:13px;">Loading topics…</div>';
 
   try {
     const resp = await fetch('/api/admin/flashcards/status/' + encodeURIComponent(subj), {
       headers: { 'x-admin-key': window._adminKey || '' }
     });
-    if (!resp.ok) throw new Error('Failed to load flashcard status');
     const data = await resp.json();
-    _fcSourcesCache = data.sources || [];
-    _fcTopicsCache  = data.topics  || [];
-    renderFlashcardSources();
+    if (!resp.ok) throw new Error(data.error || 'Load failed');
+    _fcTopicsCache = data.topics || [];
     renderFlashcardTopics();
-    if (sumEl) sumEl.textContent = `${data.totalSyllabusTopics || 0} leaf topics · ${_fcSourcesCache.length} source${_fcSourcesCache.length !== 1 ? 's' : ''} uploaded · ${data.totalGenerated || 0} cards generated · ${data.totalApproved || 0} approved`;
+    if (sumEl) {
+      const n = data.totalSyllabusTopics || 0;
+      const c = data.totalCards || 0;
+      sumEl.textContent = `${n} leaf topic${n !== 1 ? 's' : ''} · ${c} total card${c !== 1 ? 's' : ''}`;
+    }
   } catch(e) {
-    if (listEl)   listEl.innerHTML   = `<div style="color:#e07080;">Error: ${h(e.message)}</div>`;
-    if (topicsEl) topicsEl.innerHTML = `<div style="color:#e07080;padding:20px;">Error loading topics.</div>`;
+    if (topicsEl) topicsEl.innerHTML = `<div style="color:#e07080;padding:20px;">Error: ${h(e.message)}</div>`;
   }
-}
-
-function renderFlashcardSources() {
-  const el = document.getElementById('fc-sources-list');
-  if (!el) return;
-  if (!_fcSourcesCache.length) {
-    el.innerHTML = '<div style="font-size:13px;color:var(--muted);padding:12px;border:1px dashed var(--bdr2);border-radius:8px;text-align:center;">No sources uploaded yet. Upload a PDF or add text to begin.</div>';
-    return;
-  }
-  el.innerHTML = _fcSourcesCache.map(s => {
-    const icon  = s.source_type === 'pdf' ? '📄' : '✏️';
-    const size  = s.size_bytes ? ` · ${_fcFormatBytes(s.size_bytes)}` : '';
-    const date  = s.uploaded_at ? ` · ${new Date(s.uploaded_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}` : '';
-    return `<div class="fc-source-row">
-      <div style="flex:1;min-width:0;">
-        <div style="font-weight:600;font-size:13px;">${icon} ${h(s.name)}</div>
-        <div style="font-size:11px;color:var(--muted);">${h(String(s.source_type).toUpperCase())}${size}${date}</div>
-      </div>
-      <button class="btn-og" onclick="deleteFlashcardSource('${h(s.id)}')" style="font-size:11px;padding:5px 10px;">Delete</button>
-    </div>`;
-  }).join('');
 }
 
 function renderFlashcardTopics() {
@@ -929,13 +907,13 @@ function renderFlashcardTopics() {
     return;
   }
   el.innerHTML = _fcTopicsCache.map(t => {
-    const total = (t.pendingCount || 0) + (t.approvedCount || 0);
-    const status = total > 0
-      ? `<span style="color:#2ec4a0;">✓ ${total} card${total !== 1 ? 's' : ''}</span>`
-      : `<span style="color:var(--muted);">no cards yet — click to add</span>`;
+    const count = t.cardCount || 0;
+    const status = count > 0
+      ? `<span style="color:#2ec4a0;">✓ ${count} card${count !== 1 ? 's' : ''}</span>`
+      : `<span style="color:var(--muted);">no cards yet</span>`;
     const titleEsc = h(t.title).replace(/'/g, "&#39;");
     const pathEsc  = h(t.pathLabel || '').replace(/'/g, "&#39;");
-    return `<div class="fc-topic-row fc-topic-row-clickable" onclick="openAddCardForm('${h(t.nodeId)}','${titleEsc}','${pathEsc}')">
+    return `<div class="fc-topic-row fc-topic-row-clickable" onclick="openCardReview('${h(t.nodeId)}','${titleEsc}','${pathEsc}')">
       <div style="flex:1;min-width:0;">
         <div style="font-weight:600;font-size:12px;">${h(t.title)}</div>
         <div style="font-size:10px;color:var(--muted);">${h(t.pathLabel || '')}</div>
@@ -945,186 +923,7 @@ function renderFlashcardTopics() {
   }).join('');
 }
 
-async function uploadFlashcardPdfSource(evt) {
-  const file = evt.target.files && evt.target.files[0];
-  if (!file) return;
-  evt.target.value = ''; // allow re-uploading same file
-  if (file.size > 50 * 1024 * 1024) {
-    showToast('PDF must be under 50MB', 'error');
-    return;
-  }
-  const fd = new FormData();
-  fd.append('pdf', file);
-  showToast(`Uploading ${file.name}…`, 'info');
-  try {
-    const resp = await fetch('/api/admin/flashcards/source/' + encodeURIComponent(_fcAdminSubject), {
-      method: 'POST',
-      headers: { 'x-admin-key': window._adminKey || '' },
-      body: fd,
-    });
-    const data = await resp.json();
-    if (!resp.ok) throw new Error(data.error || 'Upload failed');
-    showToast('Source uploaded', 'success');
-    await loadFlashcardsAdmin();
-  } catch(e) {
-    showToast('Upload error: ' + e.message, 'error');
-  }
-}
-
-async function uploadFlashcardTextDocument(evt) {
-  const file = evt.target.files && evt.target.files[0];
-  if (!file) return;
-  evt.target.value = ''; // allow re-uploading same file
-
-  // Client-side validation — must be .txt, .md, or .docx
-  const name = file.name || 'untitled';
-  const lower = name.toLowerCase();
-  const isValid = lower.endsWith('.txt') || lower.endsWith('.md') || lower.endsWith('.docx');
-  if (!isValid) {
-    showToast('Only .txt, .md, or .docx files are supported', 'error');
-    return;
-  }
-  if (file.size > 50 * 1024 * 1024) {
-    showToast('File must be under 50MB', 'error');
-    return;
-  }
-  if (file.size === 0) {
-    showToast('File is empty', 'error');
-    return;
-  }
-
-  showToast(`Extracting text from ${name}…`, 'info');
-
-  // Step 1: send file to /api/admin/parse-file to extract text
-  // (existing server endpoint handles .docx via mammoth, .txt/.md via utf-8)
-  let extractedText = '';
-  try {
-    const parseFd = new FormData();
-    parseFd.append('file', file);
-    const parseResp = await fetch('/api/admin/parse-file', {
-      method: 'POST',
-      headers: { 'x-admin-key': window._adminKey || '' },
-      body: parseFd,
-    });
-    const parseData = await parseResp.json();
-    if (!parseResp.ok) throw new Error(parseData.error || 'Text extraction failed');
-    extractedText = (parseData.text || '').trim();
-    if (!extractedText) throw new Error('No text could be extracted from this file');
-  } catch(e) {
-    showToast('Extraction error: ' + e.message, 'error');
-    return;
-  }
-
-  // Safety cap matches server-side text source limit (2MB)
-  const byteLen = new Blob([extractedText]).size;
-  if (byteLen > 2 * 1024 * 1024) {
-    showToast('Extracted text exceeds 2MB limit — try a smaller file', 'error');
-    return;
-  }
-
-  // Derive source name from filename (strip extension)
-  const sourceName = name.replace(/\.(txt|md|docx)$/i, '').trim() || name;
-
-  // Step 2: submit extracted text as a text source
-  try {
-    const resp = await fetch('/api/admin/flashcards/source/' + encodeURIComponent(_fcAdminSubject), {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-admin-key': window._adminKey || '',
-      },
-      body: JSON.stringify({ name: sourceName, text: extractedText }),
-    });
-    const data = await resp.json();
-    if (!resp.ok) throw new Error(data.error || 'Save failed');
-    showToast(`Text source added (${_fcFormatBytes(byteLen)})`, 'success');
-    await loadFlashcardsAdmin();
-  } catch(e) {
-    showToast('Save error: ' + e.message, 'error');
-  }
-}
-
-async function deleteFlashcardSource(sourceId) {
-  if (!confirm('Remove this source? Generated cards will NOT be deleted.')) return;
-  try {
-    const resp = await fetch('/api/admin/flashcards/source/' + encodeURIComponent(sourceId), {
-      method: 'DELETE',
-      headers: { 'x-admin-key': window._adminKey || '' },
-    });
-    if (!resp.ok) {
-      const data = await resp.json().catch(() => ({}));
-      throw new Error(data.error || 'Delete failed');
-    }
-    showToast('Source removed', 'success');
-    await loadFlashcardsAdmin();
-  } catch(e) {
-    showToast('Delete error: ' + e.message, 'error');
-  }
-}
-
-function _fcFormatBytes(n) {
-  if (n < 1024) return n + ' B';
-  if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
-  return (n / 1024 / 1024).toFixed(1) + ' MB';
-}
-
-// ── Manual card authoring (Session 2.2) ──────────────────────
-function openAddCardForm(nodeId, topicTitle, pathLabel) {
-  // Reuse the manage panel — the add form sits at the top.
-  openCardReview(nodeId, topicTitle, pathLabel);
-  // Focus the front textarea after the panel loads
-  setTimeout(() => {
-    const el = document.getElementById('fc-new-card-front');
-    if (el) el.focus();
-  }, 400);
-}
-
-async function submitNewCard() {
-  const front = document.getElementById('fc-new-card-front')?.value?.trim() || '';
-  const back  = document.getElementById('fc-new-card-back')?.value?.trim() || '';
-  const source_snippet = document.getElementById('fc-new-card-source')?.value?.trim() || '';
-  const card_type = document.getElementById('fc-new-card-type')?.value || 'definition';
-
-  if (!front || !back) {
-    showToast('Front and back are required', 'error');
-    return;
-  }
-
-  const subject = _fcAdminSubject;
-  const nodeId  = _fcReviewNodeId;
-  if (!subject || !nodeId) {
-    showToast('No topic selected', 'error');
-    return;
-  }
-  const topic = (_fcTopicsCache || []).find(t => t.nodeId === nodeId);
-  const node_path = topic?.pathLabel || '';
-
-  try {
-    const resp = await fetch('/api/admin/flashcards/card', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-admin-key': window._adminKey || '' },
-      body: JSON.stringify({
-        subject, node_id: nodeId, node_path,
-        card_type, front, back,
-        source_snippet: source_snippet || undefined,
-      }),
-    });
-    const data = await resp.json();
-    if (!resp.ok) throw new Error(data.error || 'Save failed');
-
-    document.getElementById('fc-new-card-front').value = '';
-    document.getElementById('fc-new-card-back').value = '';
-    document.getElementById('fc-new-card-source').value = '';
-
-    _fcReviewCards.unshift(data.card);
-    renderCardReview();
-    showToast('Card added', 'success');
-  } catch(e) {
-    showToast('Add failed: ' + e.message, 'error');
-  }
-}
-
-// ── Card review panel ───────────────────────────────────────
+// ── Card review panel (list/edit/delete — no inline add form) ───
 let _fcReviewCards  = [];
 let _fcReviewNodeId = null;
 
@@ -1157,42 +956,11 @@ async function openCardReview(nodeId, topicTitle, pathLabel) {
 function renderCardReview() {
   const listEl = document.getElementById('fc-review-cards');
   if (!listEl) return;
-
-  const addFormHtml = `
-    <div class="fc-add-card-form" style="border:1px solid var(--gold-l);border-radius:10px;padding:14px;margin-bottom:14px;background:rgba(201,168,76,.06);">
-      <div style="font-weight:600;font-size:12px;margin-bottom:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--gold-l);">➕ Add New Card</div>
-      <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center;">
-        <label style="font-size:11px;color:var(--muted);">Type:</label>
-        <select id="fc-new-card-type" style="font-size:12px;padding:4px 8px;background:rgba(0,0,0,.3);border:1px solid var(--bdr2);border-radius:6px;color:var(--white);">
-          <option value="definition">📖 Definition</option>
-          <option value="elements">🔢 Elements</option>
-          <option value="distinction">⚖️ Distinction</option>
-        </select>
-      </div>
-      <div style="margin-bottom:8px;">
-        <div style="font-size:10px;color:var(--muted);margin-bottom:2px;">FRONT (question / prompt)</div>
-        <textarea id="fc-new-card-front" rows="2" placeholder="e.g., What is the definition of hearsay evidence?" style="width:100%;font-size:13px;padding:6px 8px;background:rgba(0,0,0,.2);border:1px solid var(--bdr2);border-radius:6px;color:var(--white);resize:vertical;box-sizing:border-box;"></textarea>
-      </div>
-      <div style="margin-bottom:8px;">
-        <div style="font-size:10px;color:var(--muted);margin-bottom:2px;">BACK (answer)</div>
-        <textarea id="fc-new-card-back" rows="4" placeholder="e.g., A statement other than one made by the declarant while testifying at trial, offered to prove the truth of the matter asserted. (Rule 130, Sec. 37)" style="width:100%;font-size:13px;padding:6px 8px;background:rgba(0,0,0,.2);border:1px solid var(--bdr2);border-radius:6px;color:var(--white);resize:vertical;box-sizing:border-box;"></textarea>
-      </div>
-      <div style="margin-bottom:8px;">
-        <div style="font-size:10px;color:var(--muted);margin-bottom:2px;">SOURCE (optional — cite the rule or case)</div>
-        <textarea id="fc-new-card-source" rows="1" placeholder="e.g., Rule 130, Section 37, Revised Rules of Evidence" style="width:100%;font-size:12px;padding:6px 8px;background:rgba(0,0,0,.2);border:1px solid var(--bdr2);border-radius:6px;color:var(--white);resize:vertical;box-sizing:border-box;"></textarea>
-      </div>
-      <div style="display:flex;justify-content:flex-end;">
-        <button class="btn-gold" onclick="submitNewCard()" style="font-size:12px;padding:6px 14px;">💾 Save Card</button>
-      </div>
-    </div>
-  `;
-
   if (!_fcReviewCards.length) {
-    listEl.innerHTML = addFormHtml + '<div style="text-align:center;padding:20px;color:var(--muted);font-size:12px;">No cards for this topic yet. Add one above.</div>';
+    listEl.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted);font-size:12px;">No cards for this topic yet. Import a .txt file to add cards.</div>';
     return;
   }
-
-  const cardsHtml = _fcReviewCards.map(c => {
+  listEl.innerHTML = _fcReviewCards.map(c => {
     const typeBadge = {
       definition:  '📖 Definition',
       elements:    '🔢 Elements',
@@ -1217,8 +985,6 @@ function renderCardReview() {
       </div>
     </div>`;
   }).join('');
-
-  listEl.innerHTML = addFormHtml + cardsHtml;
 }
 
 async function saveReviewCard(cardId) {
@@ -1263,6 +1029,180 @@ function closeCardReview() {
   _fcReviewCards  = [];
   _fcReviewNodeId = null;
   loadFlashcardsAdmin(); // refresh status counts
+}
+
+// ── Flashcard .txt import (Session 2.2) ──────────────────────
+async function downloadFlashcardTemplate() {
+  const subj = _fcAdminSubject || document.getElementById('fc-subject-select')?.value;
+  if (!subj) { showToast('Select a subject first', 'error'); return; }
+  try {
+    const url = '/api/admin/flashcards/template/' + encodeURIComponent(subj);
+    const resp = await fetch(url, { headers: { 'x-admin-key': window._adminKey || '' } });
+    if (!resp.ok) throw new Error('Template fetch failed: ' + resp.status);
+    const blob = await resp.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `flashcards-${subj}-template.txt`;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  } catch(e) {
+    showToast('Template error: ' + e.message, 'error');
+  }
+}
+
+async function previewFlashcardTxt(event) {
+  const file = event.target.files?.[0];
+  event.target.value = ''; // allow re-upload of same file
+  if (!file) return;
+  const subj = _fcAdminSubject;
+  if (!subj) { showToast('Select a subject first', 'error'); return; }
+
+  const fd = new FormData();
+  fd.append('txt', file);
+
+  showToast('Uploading and parsing…', 'info');
+  try {
+    const resp = await fetch('/api/admin/flashcards/import/' + encodeURIComponent(subj), {
+      method: 'POST',
+      headers: { 'x-admin-key': window._adminKey || '' },
+      body: fd,
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || 'Parse failed');
+
+    _fcImportCards = data.cards || [];
+    openFcImportModal(data);
+  } catch(e) {
+    showToast('Import parse failed: ' + e.message, 'error');
+  }
+}
+
+function openFcImportModal(preview) {
+  const modal = document.getElementById('fc-import-modal');
+  if (!modal) return;
+
+  const summaryEl = document.getElementById('fc-import-summary');
+  const errorsEl = document.getElementById('fc-import-errors');
+  const cardsEl = document.getElementById('fc-import-cards');
+  const commitBtn = document.getElementById('fc-import-commit-btn');
+
+  const hasFatal = (preview.errors || []).some(e => e.severity === 'fatal');
+  const warningCount = (preview.errors || []).filter(e => e.severity === 'warning').length;
+  const errorCount = (preview.errors || []).filter(e => e.severity === 'error').length;
+  const fatalCount = (preview.errors || []).filter(e => e.severity === 'fatal').length;
+
+  summaryEl.innerHTML = `
+    <div><strong>${h(preview.filename)}</strong> (${_fcFmtBytes(preview.sizeBytes)})</div>
+    <div style="margin-top:6px;">
+      ${preview.stats.totalCards} valid card${preview.stats.totalCards !== 1 ? 's' : ''} ready to import ·
+      ${preview.stats.topicsCovered} topic${preview.stats.topicsCovered !== 1 ? 's' : ''} matched ·
+      ${preview.stats.topicsUnmatched > 0 ? `<span style="color:#e07080;">${preview.stats.topicsUnmatched} topic path${preview.stats.topicsUnmatched !== 1 ? 's' : ''} unmatched</span>` : '0 unmatched'}
+    </div>
+    ${fatalCount > 0 ? `<div style="color:#e07080;margin-top:6px;"><strong>⚠ ${fatalCount} fatal error${fatalCount !== 1 ? 's' : ''}</strong> — fix and re-upload.</div>` : ''}
+    ${errorCount > 0 ? `<div style="color:#d4a843;margin-top:4px;">⚠ ${errorCount} error${errorCount !== 1 ? 's' : ''} (affected cards are skipped).</div>` : ''}
+    ${warningCount > 0 ? `<div style="color:var(--muted);margin-top:4px;">${warningCount} warning${warningCount !== 1 ? 's' : ''}.</div>` : ''}
+  `;
+
+  if ((preview.errors || []).length) {
+    errorsEl.style.display = '';
+    errorsEl.innerHTML = preview.errors.map(e => {
+      const color = e.severity === 'fatal' ? '#e07080' : e.severity === 'error' ? '#d4a843' : 'var(--muted)';
+      const label = e.severity === 'fatal' ? 'FATAL' : e.severity.toUpperCase();
+      return `<div style="margin-bottom:4px;"><span style="color:${color};font-weight:700;">[${label}]</span> <span style="color:var(--muted);">line ${e.line}:</span> ${h(e.message)}</div>`;
+    }).join('');
+  } else {
+    errorsEl.style.display = 'none';
+    errorsEl.innerHTML = '';
+  }
+
+  if (_fcImportCards && _fcImportCards.length) {
+    const byTopic = {};
+    for (const c of _fcImportCards) {
+      if (!byTopic[c.nodeId]) byTopic[c.nodeId] = { path: c.nodePath, cards: [] };
+      byTopic[c.nodeId].cards.push(c);
+    }
+    cardsEl.innerHTML = Object.entries(byTopic).map(([nodeId, grp]) => `
+      <div style="margin-bottom:10px;">
+        <div style="font-size:11px;font-weight:700;color:var(--gold-l);margin-bottom:3px;">${h(grp.path)} <span style="color:var(--muted);font-weight:400;">(${grp.cards.length})</span></div>
+        ${grp.cards.map(c => `<div style="font-size:11px;color:var(--muted);margin-left:10px;margin-bottom:2px;">• <span style="color:var(--white);">${h(c.card_type)}</span>: ${h(c.front.slice(0, 80))}${c.front.length > 80 ? '…' : ''}</div>`).join('')}
+      </div>
+    `).join('');
+  } else {
+    cardsEl.innerHTML = '<div style="color:var(--muted);text-align:center;padding:20px;font-size:12px;">No valid cards found.</div>';
+  }
+
+  if (hasFatal || !preview.stats.totalCards) {
+    commitBtn.disabled = true;
+    commitBtn.style.opacity = '0.4';
+    commitBtn.style.cursor = 'not-allowed';
+  } else {
+    commitBtn.disabled = false;
+    commitBtn.style.opacity = '';
+    commitBtn.style.cursor = '';
+  }
+
+  modal.style.display = 'flex';
+}
+
+function closeFcImportModal() {
+  const modal = document.getElementById('fc-import-modal');
+  if (modal) modal.style.display = 'none';
+  _fcImportCards = null;
+}
+
+async function commitFlashcardImport() {
+  if (!_fcImportCards || !_fcImportCards.length) {
+    showToast('No cards to import', 'error');
+    return;
+  }
+  const subj = _fcAdminSubject;
+  const modeEl = document.querySelector('input[name="fc-import-mode"]:checked');
+  const mode = modeEl ? modeEl.value : 'append';
+
+  // Confirm destructive modes
+  if (mode === 'full_replace') {
+    if (!confirm(`⚠️ FULL REPLACE will delete ALL existing flashcards for ${subj} and import ${_fcImportCards.length} new cards. Continue?`)) return;
+  } else if (mode === 'replace_per_topic') {
+    const touchedTopics = new Set(_fcImportCards.map(c => c.nodeId)).size;
+    if (!confirm(`Replace cards for ${touchedTopics} topic${touchedTopics !== 1 ? 's' : ''} in this file (delete existing, insert new)? Topics not in the file are untouched.`)) return;
+  }
+
+  const btn = document.getElementById('fc-import-commit-btn');
+  btn.disabled = true;
+  btn.textContent = 'Importing…';
+  try {
+    const resp = await fetch('/api/admin/flashcards/import/' + encodeURIComponent(subj) + '/commit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-admin-key': window._adminKey || '' },
+      body: JSON.stringify({ cards: _fcImportCards, mode }),
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || 'Commit failed');
+
+    if (data.insertErrors && data.insertErrors.length) {
+      showToast(`Imported ${data.inserted} (${data.insertErrors.length} chunk failures)`, 'info');
+    } else {
+      const extras = [];
+      if (data.deleted) extras.push(`${data.deleted} deleted`);
+      showToast(`Imported ${data.inserted} card${data.inserted !== 1 ? 's' : ''}${extras.length ? ' · ' + extras.join(' · ') : ''}`, 'success');
+    }
+    closeFcImportModal();
+    loadFlashcardsAdmin(); // refresh topic card counts
+  } catch(e) {
+    showToast('Commit failed: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '✅ Commit Import';
+  }
+}
+
+// Minimal byte formatter for preview modal
+function _fcFmtBytes(n) {
+  if (!n && n !== 0) return '';
+  if (n < 1024) return n + ' B';
+  if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+  return (n / (1024 * 1024)).toFixed(2) + ' MB';
 }
 
 // ── Bar Exam Countdown ─────────────────────────────────────────
