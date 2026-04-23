@@ -342,6 +342,29 @@ module.exports = function createFlashcardStudyRoutes({ requireAuth }) {
     } catch(e) { res.status(500).json({ error: e.message }); }
   });
 
+  // ── Route 5a: Per-topic card counts for a subject (public to students) ──
+  // Returns a map of nodeId → count of enabled cards. Used by the student
+  // flashcards tab to decorate the hierarchical topic tree.
+  router.get('/api/flashcards/topic-counts/:subject', requireAuth, async (req, res) => {
+    try {
+      const subject = req.params.subject;
+      if (!VALID_SUBJECTS.includes(subject)) {
+        return res.status(400).json({ error: 'Invalid subject' });
+      }
+      const { data, error } = await supabase
+        .from('flashcards')
+        .select('node_id')
+        .eq('subject', subject)
+        .eq('enabled', true);
+      if (error) return res.status(500).json({ error: error.message });
+      const counts = {};
+      for (const row of (data || [])) {
+        counts[row.node_id] = (counts[row.node_id] || 0) + 1;
+      }
+      res.json({ subject, counts });
+    } catch(e) { res.status(500).json({ error: e.message }); }
+  });
+
   // ── Route 5: Cross-subject aggregate ─────────────────────────
   router.get('/api/flashcards/stats-all', requireAuth, async (req, res) => {
     try {

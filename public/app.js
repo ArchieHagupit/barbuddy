@@ -577,7 +577,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   // as a side effect of eventually visiting Progress). The in-flight promise
   // (window._srDueFetchPromise) lets Progress's Phase 1 await it if needed.
   if (hasSession) checkDueReviews().catch(() => {});
-  if (hasSession) refreshSidebarFlashcardBadge();
+  if (hasSession) refreshSidebarFlashcardBadge(true); // Force-warm cache on login
   setLoadingMsg('Loading your dashboard...');
   await init();
   // Restore last view or fall back to overview
@@ -2481,6 +2481,11 @@ function drillAgain() {
 // FLASHCARDS — Student-facing tab + study session (Session 3b)
 // ═══════════════════════════════════════════════════════════
 
+// Cached flashcard stats (populated at login + refreshed after each session).
+// Enables synchronous render of the Overview widget instead of waiting on fetch.
+let _fcStatsAllCache = null;
+let _fcStatsAllPromise = null; // in-flight promise to dedupe concurrent fetches
+
 // Module-level study session state
 let _fcSession = null;
 // Shape when active:
@@ -2495,6 +2500,7 @@ async function renderFlashcardsTab(subj, container) {
   const subjInfo = SUBJS.find(s => s.key === subj);
   const subjName = subjInfo?.name || subj;
 
+  // STEP 1 — Paint shell immediately (header + two placeholder slots)
   container.innerHTML = `
     <div class="fc-tab-wrap">
       <div class="fc-tab-header" style="background:linear-gradient(135deg,rgba(201,168,76,.08),rgba(201,168,76,.02));border:1px solid rgba(201,168,76,.25);border-radius:16px;padding:22px;margin-bottom:18px;">
@@ -2502,62 +2508,87 @@ async function renderFlashcardsTab(subj, container) {
         <h2 style="font-family:var(--fd);font-size:24px;font-weight:700;color:var(--gold-l);margin-bottom:6px;">${h(subjName)} Flashcards</h2>
         <p style="font-size:13px;color:var(--muted);line-height:1.65;max-width:640px;">Study cards using spaced repetition. Rate how well you remembered each card and the system will schedule them for optimal long-term retention.</p>
       </div>
-      <div id="fc-tab-body"><div style="text-align:center;padding:40px;color:var(--muted);font-size:13px;">Loading…</div></div>
+      <div id="fc-stats-slot">
+        <div class="fc-skeleton-stats" style="background:var(--card);border:1px solid var(--bdr2);border-radius:14px;padding:22px;margin-bottom:16px;height:140px;opacity:.5;"></div>
+      </div>
+      <div id="fc-topics-slot">
+        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin:18px 0 10px;">Browse by Topic</div>
+        <div style="color:var(--muted);font-size:12px;padding:14px;text-align:center;">Loading topic structure…</div>
+      </div>
     </div>
   `;
 
+  // STEP 2 — Load stats in parallel with syllabus + per-topic counts.
+  // Each piece renders INDEPENDENTLY as soon as its data arrives.
+  loadAndRenderFlashcardStats(subj);
+  loadAndRenderFlashcardTopics(subj);
+}
+
+async function loadAndRenderFlashcardStats(subj) {
+  const slot = document.getElementById('fc-stats-slot');
+  if (!slot) return;
   try {
-    const [statsResp, statusResp] = await Promise.all([
-      fetch('/api/flashcards/stats/' + encodeURIComponent(subj), {
-        headers: { 'x-session-token': sessionToken || '' },
-      }),
-      fetch('/api/admin/flashcards/status/' + encodeURIComponent(subj), {
-        headers: { 'x-admin-key': window._adminKey || '' },
-      }).catch(() => null), // non-admins can't call this; it's optional
-    ]);
-
-    const stats = await statsResp.json();
-    if (!statsResp.ok) throw new Error(stats.error || 'Failed to load stats');
-
-    // Try to load topic list (only works for admins OR if we expose a student topic list endpoint later)
-    let topics = [];
-    if (statusResp && statusResp.ok) {
-      const statusData = await statusResp.json();
-      topics = (statusData.topics || []).filter(t => (t.cardCount || 0) > 0);
-    }
-
-    renderFlashcardsTabBody(subj, stats, topics);
+    const resp = await fetch('/api/flashcards/stats/' + encodeURIComponent(subj), {
+      headers: { 'x-session-token': sessionToken || '' },
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || 'Failed to load stats');
+    renderFlashcardStatsCard(slot, subj, data);
   } catch(e) {
-    const body = document.getElementById('fc-tab-body');
-    if (body) body.innerHTML = `<div style="color:#e07080;padding:20px;text-align:center;">Error loading flashcards: ${h(e.message)}</div>`;
+    slot.innerHTML = `<div style="color:#e07080;padding:14px;font-size:12px;">Error loading stats: ${h(e.message)}</div>`;
   }
 }
 
-function renderFlashcardsTabBody(subj, stats, topics) {
-  const body = document.getElementById('fc-tab-body');
-  if (!body) return;
+async function loadAndRenderFlashcardTopics(subj) {
+  const slot = document.getElementById('fc-topics-slot');
+  if (!slot) return;
+  try {
+    // Fetch syllabus (public) + per-topic card counts in parallel
+    const [syllResp, countsResp] = await Promise.all([
+      loadSubjectSyllabus(subj), // returns { sections } — already cached by loadSubjectSyllabus
+      fetch('/api/flashcards/topic-counts/' + encodeURIComponent(subj), {
+        headers: { 'x-session-token': sessionToken || '' },
+      }).then(r => r.ok ? r.json() : { counts: {} }).catch(() => ({ counts: {} })),
+    ]);
 
+    const sections = syllResp?.sections || [];
+    const countsByNodeId = countsResp?.counts || {};
+
+    if (!sections.length) {
+      slot.innerHTML = '';
+      return; // no topics at all — nothing to show
+    }
+
+    renderFlashcardTopicTree(slot, subj, sections, countsByNodeId);
+  } catch(e) {
+    slot.innerHTML = `<div style="color:#e07080;padding:14px;font-size:12px;">Error loading topics: ${h(e.message)}</div>`;
+  }
+}
+
+// Paint the stats card — called by loadAndRenderFlashcardStats once data arrives.
+function renderFlashcardStatsCard(slot, subj, stats) {
   const total = stats.totalCards || 0;
   const due = stats.dueNow || 0;
   const newAvail = stats.newAvailable || 0;
   const mastered = stats.mastered || 0;
   const reviewed = stats.reviewed || 0;
+  const readyToStudy = due + newAvail;
 
   if (total === 0) {
-    body.innerHTML = `
-      <div style="text-align:center;padding:60px 20px;color:var(--muted);">
-        <div style="font-size:48px;margin-bottom:14px;opacity:.6;">📭</div>
-        <div style="font-family:var(--fd);font-size:18px;font-weight:700;color:var(--gold-l);margin-bottom:6px;">No Flashcards Yet</div>
-        <div style="font-size:13px;max-width:380px;margin:0 auto;line-height:1.65;">No flashcards have been imported for this subject yet. Check back soon — the team is actively building the card bank.</div>
+    slot.innerHTML = `
+      <div style="text-align:center;padding:40px 20px;color:var(--muted);background:var(--card);border:1px solid var(--bdr2);border-radius:14px;">
+        <div style="font-size:40px;margin-bottom:10px;opacity:.6;">📭</div>
+        <div style="font-family:var(--fd);font-size:16px;font-weight:700;color:var(--gold-l);margin-bottom:4px;">No Flashcards Yet</div>
+        <div style="font-size:12px;max-width:360px;margin:0 auto;line-height:1.6;">No cards have been imported for this subject yet.</div>
       </div>
     `;
+    // Also clear the topics slot since there's no point showing it
+    const topicsSlot = document.getElementById('fc-topics-slot');
+    if (topicsSlot) topicsSlot.innerHTML = '';
     return;
   }
 
-  const readyToStudy = due + newAvail;
-
-  body.innerHTML = `
-    <!-- Study summary card -->
+  slot.innerHTML = `
     <div class="fc-study-card" style="background:var(--card);border:1px solid var(--bdr2);border-radius:14px;padding:22px;margin-bottom:16px;">
       <div style="display:flex;gap:24px;flex-wrap:wrap;margin-bottom:18px;">
         <div class="fc-stat">
@@ -2584,23 +2615,134 @@ function renderFlashcardsTabBody(subj, stats, topics) {
         ${reviewed > 0 ? `<div style="font-size:11px;color:var(--muted);">You've reviewed ${reviewed} card${reviewed!==1?'s':''} so far.</div>` : ''}
       </div>
     </div>
-
-    <!-- Topic browser -->
-    ${topics.length > 0 ? `
-      <div style="margin-top:18px;">
-        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;">Browse by Topic</div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;">
-          ${topics.map(t => `
-            <div class="fc-topic-browse" onclick="startFlashcardStudySession('${h(subj)}', 'topic', '${h(t.nodeId)}')" style="background:var(--card2);border:1px solid var(--bdr2);border-radius:10px;padding:12px 14px;cursor:pointer;transition:all .15s;">
-              <div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:3px;">${h(t.title)}</div>
-              <div style="font-size:10px;color:var(--muted);margin-bottom:6px;line-height:1.45;">${h(t.pathLabel || '')}</div>
-              <div style="font-size:11px;color:var(--gold-l);">${t.cardCount} card${t.cardCount!==1?'s':''}</div>
-            </div>
-          `).join('')}
-        </div>
-      </div>
-    ` : ''}
   `;
+}
+
+// Render the hierarchical topic tree for the Flashcards tab.
+// Visual convention matches the Learn tab (Roman-numeral section headers,
+// collapsible groups, clickable leaves) but filters to ONLY topics that
+// have at least one enabled card.
+function renderFlashcardTopicTree(container, subj, sections, countsByNodeId) {
+  // Recursively filter: keep only nodes whose subtree contains at least one leaf with cards.
+  function prune(nodes) {
+    const out = [];
+    for (const node of (nodes || [])) {
+      const children = node.children || [];
+      const hasChildren = children.some(c => c);
+      if (node.type === 'section' || hasChildren) {
+        // Internal node — recurse and keep if any child survives
+        const kept = prune(children);
+        if (kept.length > 0) {
+          out.push({ ...node, children: kept });
+        }
+      } else {
+        // Leaf — keep only if it has cards
+        if ((countsByNodeId[node.id] || 0) > 0) {
+          out.push(node);
+        }
+      }
+    }
+    return out;
+  }
+
+  const filtered = prune(sections);
+
+  if (!filtered.length) {
+    container.innerHTML = `
+      <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin:18px 0 10px;">Browse by Topic</div>
+      <div style="padding:24px;text-align:center;color:var(--muted);font-size:12px;background:var(--card2);border:1px solid var(--bdr2);border-radius:10px;">
+        No topics have flashcards yet. Use the due-queue button above to study cards as they get imported.
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = `
+    <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin:18px 0 10px;">Browse by Topic</div>
+    <div class="fc-topic-tree" id="fc-topic-tree-${h(subj)}"></div>
+  `;
+
+  const treeEl = container.querySelector('.fc-topic-tree');
+  renderFlashcardTreeNodes(filtered, treeEl, subj, countsByNodeId, 0);
+}
+
+function renderFlashcardTreeNodes(nodes, container, subj, counts, depth) {
+  for (const node of nodes) {
+    const children = node.children || [];
+    const displayName = node.title || node.name || '';
+
+    if (node.type === 'section') {
+      // Roman numeral section header — expandable, non-clickable
+      const headerEl = document.createElement('div');
+      headerEl.className = 'tl-section-header';
+      const arrowEl = document.createElement('span');
+      arrowEl.className = 'tl-expand-arrow open';
+      arrowEl.textContent = '▶';
+      const nameEl = document.createElement('span');
+      nameEl.className = 'tl-section-name';
+      nameEl.textContent = (node.label ? node.label + '. ' : '') + displayName;
+      headerEl.appendChild(arrowEl);
+      headerEl.appendChild(nameEl);
+      const bodyEl = document.createElement('div');
+      bodyEl.className = 'tl-group-body open';
+      headerEl.addEventListener('click', () => {
+        arrowEl.classList.toggle('open');
+        bodyEl.classList.toggle('open');
+      });
+      container.appendChild(headerEl);
+      container.appendChild(bodyEl);
+      if (children.length) renderFlashcardTreeNodes(children, bodyEl, subj, counts, depth + 1);
+
+    } else if (children.length > 0) {
+      // Group — expandable, non-clickable
+      const groupEl = document.createElement('div');
+      groupEl.className = 'tl-group';
+      const headerEl = document.createElement('div');
+      headerEl.className = 'tl-group-header';
+      const arrowEl = document.createElement('span');
+      arrowEl.className = 'tl-expand-arrow open';
+      arrowEl.textContent = '▶';
+      const nameEl = document.createElement('span');
+      nameEl.className = 'tl-group-name';
+      nameEl.textContent = (node.label ? node.label + '. ' : '') + displayName;
+      headerEl.appendChild(arrowEl);
+      headerEl.appendChild(nameEl);
+      const bodyEl = document.createElement('div');
+      bodyEl.className = 'tl-group-body open';
+      headerEl.addEventListener('click', () => {
+        arrowEl.classList.toggle('open');
+        bodyEl.classList.toggle('open');
+      });
+      groupEl.appendChild(headerEl);
+      groupEl.appendChild(bodyEl);
+      container.appendChild(groupEl);
+      renderFlashcardTreeNodes(children, bodyEl, subj, counts, depth + 1);
+
+    } else {
+      // Leaf — clickable, opens topic study session
+      const count = counts[node.id] || 0;
+      const topicEl = document.createElement('div');
+      topicEl.className = 'tl-topic fc-topic-leaf';
+      topicEl.setAttribute('data-node-id', node.id || '');
+      const checkEl = document.createElement('span');
+      checkEl.className = 'tl-topic-check';
+      checkEl.textContent = '🎴';
+      const nameEl = document.createElement('span');
+      nameEl.className = 'tl-topic-name';
+      nameEl.textContent = (node.label ? node.label + '. ' : '') + displayName;
+      const badgeEl = document.createElement('span');
+      badgeEl.className = 'tl-cached-badge';
+      badgeEl.style.cssText = 'background:rgba(201,168,76,.12);border-color:rgba(201,168,76,.25);color:var(--gold-l);';
+      badgeEl.textContent = count + ' card' + (count !== 1 ? 's' : '');
+      topicEl.appendChild(checkEl);
+      topicEl.appendChild(nameEl);
+      topicEl.appendChild(badgeEl);
+      topicEl.addEventListener('click', () => {
+        if (node.id) startFlashcardStudySession(subj, 'topic', node.id);
+      });
+      container.appendChild(topicEl);
+    }
+  }
 }
 
 async function startFlashcardStudySession(subj, mode, nodeId) {
@@ -2856,18 +2998,21 @@ function renderFlashcardSessionSummary() {
 
   detachFlashcardKeyboardListener();
   // Refresh sidebar + overview badges asynchronously
-  refreshSidebarFlashcardBadge();
+  _fcStatsAllCache = null;
+  refreshSidebarFlashcardBadge(true);
 }
 
 function endFlashcardSession() {
   const subj = _fcSession?.subject;
   _fcSession = null;
   detachFlashcardKeyboardListener();
+  // Session ended → stats likely changed → invalidate cache.
+  _fcStatsAllCache = null;
   if (subj) {
     const content = document.getElementById('subject-tab-content');
     if (content) renderFlashcardsTab(subj, content);
   }
-  refreshSidebarFlashcardBadge();
+  refreshSidebarFlashcardBadge(true);
 }
 
 // Keyboard shortcuts — only active when viewer is open
@@ -2905,65 +3050,99 @@ function detachFlashcardKeyboardListener() {
 async function renderDashboardFlashcardWidget() {
   const el = document.getElementById('fc-overview-widget');
   if (!el) return;
+
+  // If we have cached stats, paint synchronously first.
+  if (_fcStatsAllCache) {
+    _paintFlashcardOverviewWidget(el, _fcStatsAllCache);
+    // Quietly refresh in background so numbers stay fresh on next visit.
+    fetchFlashcardStatsAll(true).then(d => { if (d) _paintFlashcardOverviewWidget(el, d); });
+    return;
+  }
+
+  // No cache yet — fetch, then paint.
   try {
-    const resp = await fetch('/api/flashcards/stats-all', {
-      headers: { 'x-session-token': sessionToken || '' },
-    });
-    if (!resp.ok) { el.style.display = 'none'; return; }
-    const data = await resp.json();
-    const totalDue = data.totalDue || 0;
-    const totalMastered = data.totalMastered || 0;
-    const subjectsWithDue = Object.entries(data.bySubject || {})
-      .filter(([_, s]) => (s.dueNow || 0) > 0 || (s.newAvailable || 0) > 0)
-      .sort((a, b) => (b[1].dueNow + b[1].newAvailable) - (a[1].dueNow + a[1].newAvailable));
-
-    if (totalDue === 0 && subjectsWithDue.length === 0) {
-      el.innerHTML = `
-        <div class="fc-widget-empty">
-          <div style="font-size:24px;margin-bottom:4px;opacity:.6;">🎴</div>
-          <div style="font-size:13px;color:var(--muted);">No flashcards due right now. ${totalMastered > 0 ? `You've mastered ${totalMastered} card${totalMastered!==1?'s':''} so far.` : ''}</div>
-        </div>
-      `;
-      return;
-    }
-
-    const topSubjects = subjectsWithDue.slice(0, 4);
-
-    el.innerHTML = `
-      <div class="fc-widget-inner">
-        <div class="fc-widget-header">
-          <div>
-            <div class="fc-widget-title">🎴 Flashcards</div>
-            <div class="fc-widget-sub">${totalDue} card${totalDue!==1?'s':''} due now · ${totalMastered} mastered</div>
-          </div>
-        </div>
-        <div class="fc-widget-chips">
-          ${topSubjects.map(([subj, s]) => {
-            const total = (s.dueNow || 0) + (s.newAvailable || 0);
-            const subjInfo = SUBJS.find(x => x.key === subj);
-            return `<button class="fc-widget-chip" onclick="navToSubject('${h(subj)}', 'flashcards')">
-              <span class="fc-chip-dot" style="background:${subjInfo?.color || '#888'};"></span>
-              <span class="fc-chip-name">${h(subjInfo?.name || subj)}</span>
-              <span class="fc-chip-count">${total}</span>
-            </button>`;
-          }).join('')}
-        </div>
-      </div>
-    `;
-  } catch(e) {
+    const data = await fetchFlashcardStatsAll();
+    if (!data) { el.style.display = 'none'; return; }
+    _paintFlashcardOverviewWidget(el, data);
+  } catch {
     el.style.display = 'none';
   }
 }
 
-async function refreshSidebarFlashcardBadge() {
+// Pure render function — separated so we can call it from both the cache-hit
+// and the cache-miss paths without duplicating markup.
+function _paintFlashcardOverviewWidget(el, data) {
+  el.style.display = '';
+  const totalDue = data.totalDue || 0;
+  const totalMastered = data.totalMastered || 0;
+  const subjectsWithDue = Object.entries(data.bySubject || {})
+    .filter(([_, s]) => (s.dueNow || 0) > 0 || (s.newAvailable || 0) > 0)
+    .sort((a, b) => (b[1].dueNow + b[1].newAvailable) - (a[1].dueNow + a[1].newAvailable));
+
+  if (totalDue === 0 && subjectsWithDue.length === 0) {
+    el.innerHTML = `
+      <div class="fc-widget-empty">
+        <div style="font-size:24px;margin-bottom:4px;opacity:.6;">🎴</div>
+        <div style="font-size:13px;color:var(--muted);">No flashcards due right now. ${totalMastered > 0 ? `You've mastered ${totalMastered} card${totalMastered!==1?'s':''} so far.` : ''}</div>
+      </div>
+    `;
+    return;
+  }
+
+  const topSubjects = subjectsWithDue.slice(0, 4);
+
+  el.innerHTML = `
+    <div class="fc-widget-inner">
+      <div class="fc-widget-header">
+        <div>
+          <div class="fc-widget-title">🎴 Flashcards</div>
+          <div class="fc-widget-sub">${totalDue} card${totalDue!==1?'s':''} due now · ${totalMastered} mastered</div>
+        </div>
+      </div>
+      <div class="fc-widget-chips">
+        ${topSubjects.map(([subj, s]) => {
+          const total = (s.dueNow || 0) + (s.newAvailable || 0);
+          const subjInfo = SUBJS.find(x => x.key === subj);
+          return `<button class="fc-widget-chip" onclick="navToSubject('${h(subj)}', 'flashcards')">
+            <span class="fc-chip-dot" style="background:${subjInfo?.color || '#888'};"></span>
+            <span class="fc-chip-name">${h(subjInfo?.name || subj)}</span>
+            <span class="fc-chip-count">${total}</span>
+          </button>`;
+        }).join('')}
+      </div>
+    </div>
+  `;
+}
+
+// Fetch /api/flashcards/stats-all once, cache the result, dedupe concurrent requests.
+// Pass force=true to bypass cache (e.g., after a study session).
+async function fetchFlashcardStatsAll(force = false) {
+  if (!force && _fcStatsAllCache) return _fcStatsAllCache;
+  if (_fcStatsAllPromise) return _fcStatsAllPromise;
+  _fcStatsAllPromise = (async () => {
+    try {
+      const resp = await fetch('/api/flashcards/stats-all', {
+        headers: { 'x-session-token': sessionToken || '' },
+      });
+      if (!resp.ok) return null;
+      const data = await resp.json();
+      _fcStatsAllCache = data;
+      return data;
+    } catch {
+      return null;
+    } finally {
+      _fcStatsAllPromise = null;
+    }
+  })();
+  return _fcStatsAllPromise;
+}
+
+async function refreshSidebarFlashcardBadge(force = false) {
   const el = document.getElementById('sidebarFlashcardBadge');
   if (!el) return;
   try {
-    const resp = await fetch('/api/flashcards/stats-all', {
-      headers: { 'x-session-token': sessionToken || '' },
-    });
-    if (!resp.ok) { el.style.display = 'none'; return; }
-    const data = await resp.json();
+    const data = await fetchFlashcardStatsAll(force);
+    if (!data) { el.style.display = 'none'; return; }
     const totalDue = data.totalDue || 0;
     if (totalDue > 0) {
       el.style.display = '';
@@ -6306,7 +6485,7 @@ async function onAuthSuccess(token, user) {
   // (window._srDueFetchPromise) lets _renderProgressDashboardInto's Phase 1
   // await it when the user's last view was Progress.
   checkDueReviews().catch(() => {});
-  refreshSidebarFlashcardBadge();
+  refreshSidebarFlashcardBadge(true); // Force-warm cache on login
   // Prefetch KB and progress in parallel before rendering
   await Promise.allSettled([
     refreshKBState(),

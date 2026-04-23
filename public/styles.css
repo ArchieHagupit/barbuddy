@@ -1472,3 +1472,8 @@ button[onclick*="switchSubjectTab(currentSubject,'quiz')"] { display: none !impo
 /* Session summary */
 .fc-summary-stat { transition: transform .15s; }
 .fc-summary-stat:hover { transform: translateY(-2px); }
+
+/* Flashcard topic tree — reuses Learn tab .tl-* classes but needs a hover distinction */
+.fc-topic-leaf { cursor: pointer; transition: background .12s; }
+.fc-topic-leaf:hover { background: rgba(201,168,76,.08); }
+.fc-topic-tree { max-height: 520px; overflow-y: auto; border: 1px solid var(--bdr2); border-radius: 10px; padding: 8px 10px; background: rgba(255,255,255,.01); }
