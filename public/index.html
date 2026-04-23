@@ -861,14 +861,47 @@ new PerformanceObserver((list) => {
         <h4 style="margin-top:0;">📚 Syllabus Topics</h4>
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
           <div id="fc-topic-summary" style="font-size:12px;color:var(--muted);">—</div>
-          <button class="btn-gold" id="fc-generate-btn" disabled title="Coming in next update" style="font-size:12px;padding:8px 14px;opacity:.55;cursor:not-allowed;">⚡ Generate Flashcards (coming soon)</button>
+          <button class="btn-gold" id="fc-generate-btn" onclick="startFlashcardGeneration()" style="font-size:12px;padding:8px 14px;">⚡ Generate Flashcards</button>
         </div>
         <div id="fc-topics-list" style="max-height:480px;overflow-y:auto;border:1px solid var(--bdr2);border-radius:10px;">
           <div style="text-align:center;padding:40px;color:var(--muted);font-size:13px;">Loading topics…</div>
         </div>
       </div>
+
+      <!-- Card review panel (hidden until topic clicked) -->
+      <div id="fc-review-panel" class="fc-review-panel" style="display:none;margin-top:18px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:10px;flex-wrap:wrap;">
+          <div style="min-width:0;flex:1;">
+            <h4 id="fc-review-title" style="margin:0;">Reviewing cards</h4>
+            <div id="fc-review-subtitle" style="font-size:11px;color:var(--muted);margin-top:2px;"></div>
+          </div>
+          <div style="display:flex;gap:8px;">
+            <button class="btn-gold" id="fc-approve-all-btn" onclick="approveAllPendingCards()" style="font-size:12px;padding:6px 12px;">✓ Approve All Pending</button>
+            <button class="btn-og" onclick="closeCardReview()" style="font-size:12px;padding:6px 12px;">Close</button>
+          </div>
+        </div>
+        <div id="fc-review-cards" style="max-height:600px;overflow-y:auto;"></div>
+      </div>
     </div>
 
+  </div>
+</div>
+
+<!-- Flashcard generation progress modal -->
+<div id="fc-gen-modal" class="fc-gen-modal" style="display:none;">
+  <div class="fc-gen-modal-inner">
+    <h3 style="margin-top:0;">⚡ Generating Flashcards</h3>
+    <div id="fc-gen-subject-label" style="font-size:13px;color:var(--muted);margin-bottom:12px;">—</div>
+    <div class="fc-gen-progress-wrap">
+      <div class="fc-gen-progress-bar" id="fc-gen-progress-bar" style="width:0%;"></div>
+    </div>
+    <div id="fc-gen-progress-text" style="font-size:13px;margin-top:10px;">Preparing…</div>
+    <div id="fc-gen-current" style="font-size:11px;color:var(--muted);margin-top:4px;min-height:14px;"></div>
+    <div id="fc-gen-stats" style="font-size:11px;color:var(--muted);margin-top:8px;"></div>
+    <div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end;">
+      <button class="btn-og" id="fc-gen-cancel-btn" onclick="cancelFlashcardGeneration()" style="font-size:12px;">Cancel</button>
+      <button class="btn-gold" id="fc-gen-close-btn" onclick="closeFlashcardGenModal()" style="font-size:12px;display:none;">Close</button>
+    </div>
   </div>
 </div>
 

@@ -22,7 +22,9 @@ function createAuthMiddleware({ verifySession, mapUser, adminKey }) {
 
   async function adminOnly(req, res, next) {
     try {
-      const key = req.headers['x-admin-key'] || req.body?.adminKey;
+      // req.query.k allows EventSource (browser SSE) to authenticate — it
+      // cannot set custom headers. Only used by SSE routes in practice.
+      const key = req.headers['x-admin-key'] || req.body?.adminKey || req.query?.k;
       if (key && key === adminKey) return next();
       const token = req.headers['x-session-token'];
       if (token) {
