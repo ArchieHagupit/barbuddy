@@ -451,6 +451,7 @@ new PerformanceObserver((list) => {
       <button onclick="showAdminTab('questions')"  id="adminTab-questions"  class="admin-tab-btn">📝 Questions</button>
       <button onclick="showAdminTab('sources')"    id="adminTab-sources"    class="admin-tab-btn">🗂 Sources</button>
       <button onclick="showAdminTab('insights')"   id="adminTab-insights"   class="admin-tab-btn">💡 Insights</button>
+      <button onclick="showAdminTab('flashcards')" id="adminTab-flashcards" class="admin-tab-btn">🎴 Flashcards</button>
     </div>
     <!-- OVERVIEW TAB -->
     <div id="adminOverviewPanel">
@@ -813,6 +814,57 @@ new PerformanceObserver((list) => {
       <div id="improveInsights" style="margin-top:24px;display:none;">
         <h4 style="font-family:var(--fd);font-size:15px;font-weight:700;color:var(--gold-l);margin:0 0 12px;">Top 10 Most Common Improve Items</h4>
         <div id="improveInsightsList"></div>
+      </div>
+    </div>
+
+    <!-- FLASHCARDS -->
+    <div class="admin-panel" id="adminFlashcardsPanel" style="display:none;margin-bottom:18px;">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
+        <div>
+          <h3 style="margin-bottom:3px;">🎴 Flashcards</h3>
+          <p style="margin:0;">Upload master source material (PDFs or text) per subject. Generation creates cards for every leaf topic in the syllabus using the uploaded sources. Sources uploaded now — generation wired up in the next update.</p>
+        </div>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
+        <div>
+          <label class="form-label">SUBJECT</label>
+          <select id="fc-subject-select" class="form-input" style="min-width:200px;" onchange="loadFlashcardsAdmin()">
+            <option value="civil">Civil Law</option>
+            <option value="criminal">Criminal Law</option>
+            <option value="political">Political Law</option>
+            <option value="labor">Labor Law &amp; Social Leg.</option>
+            <option value="commercial">Commercial Law</option>
+            <option value="taxation">Taxation</option>
+            <option value="remedial">Remedial Law</option>
+            <option value="ethics">Legal &amp; Judicial Ethics</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Source upload area -->
+      <div class="fc-admin-section">
+        <h4 style="margin-top:0;">📥 Source Materials</h4>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+          <button class="btn-gold" onclick="document.getElementById('fc-pdf-input').click()" style="font-size:12px;padding:8px 14px;">📄 Upload PDF</button>
+          <button class="btn-og"   onclick="showFlashcardTextSourceModal()" style="font-size:12px;padding:8px 14px;">✏️ Add Text Source</button>
+          <input type="file" id="fc-pdf-input" accept=".pdf,application/pdf" style="display:none;" onchange="uploadFlashcardPdfSource(event)">
+        </div>
+        <div id="fc-sources-list" style="min-height:60px;">
+          <div style="font-size:13px;color:var(--muted);">Loading sources…</div>
+        </div>
+      </div>
+
+      <!-- Topics table -->
+      <div class="fc-admin-section" style="margin-top:18px;">
+        <h4 style="margin-top:0;">📚 Syllabus Topics</h4>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+          <div id="fc-topic-summary" style="font-size:12px;color:var(--muted);">—</div>
+          <button class="btn-gold" id="fc-generate-btn" disabled title="Coming in next update" style="font-size:12px;padding:8px 14px;opacity:.55;cursor:not-allowed;">⚡ Generate Flashcards (coming soon)</button>
+        </div>
+        <div id="fc-topics-list" style="max-height:480px;overflow-y:auto;border:1px solid var(--bdr2);border-radius:10px;">
+          <div style="text-align:center;padding:40px;color:var(--muted);font-size:13px;">Loading topics…</div>
+        </div>
       </div>
     </div>
 

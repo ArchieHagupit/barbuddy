@@ -815,6 +815,7 @@ function showAdminTab(tabName) {
     questions: 'adminQuestionsPanel',
     sources:   'adminSourcesPanel',
     insights:  'adminInsightsPanel',
+    flashcards:'adminFlashcardsPanel',
   };
   Object.values(panelMap).forEach(id => {
     const el = document.getElementById(id);
@@ -833,6 +834,7 @@ function showAdminTab(tabName) {
   if (tabName === 'kb')        refreshAdminKB();
   if (tabName === 'tabaccess') initTabControls();
   if (tabName === 'insights')  loadImproveItems();
+  if (tabName === 'flashcards') loadFlashcardsAdmin();
   if (tabName === 'overview') {
     updateSyllabusStatus();
     const sovGrid = document.getElementById('subjectOverviewGrid');
@@ -865,6 +867,164 @@ function autoUnlockAdminUI() {
     if (btn) btn.textContent = s.registrationOpen ? 'Close Registration' : 'Open Registration';
   }).catch(() => {});
   showAdminTab('overview');
+}
+
+// ── Admin Flashcards tab ─────────────────────────────────────
+let _fcAdminSubject = 'civil';
+let _fcSourcesCache = [];
+let _fcTopicsCache  = [];
+
+async function loadFlashcardsAdmin() {
+  const subj = (document.getElementById('fc-subject-select')?.value) || _fcAdminSubject;
+  _fcAdminSubject = subj;
+  const listEl    = document.getElementById('fc-sources-list');
+  const topicsEl  = document.getElementById('fc-topics-list');
+  const sumEl     = document.getElementById('fc-topic-summary');
+  if (listEl)   listEl.innerHTML   = '<div style="font-size:13px;color:var(--muted);">Loading sources…</div>';
+  if (topicsEl) topicsEl.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted);font-size:13px;">Loading topics…</div>';
+
+  try {
+    const resp = await fetch('/api/admin/flashcards/status/' + encodeURIComponent(subj), {
+      headers: { 'x-admin-key': window._adminKey || '' }
+    });
+    if (!resp.ok) throw new Error('Failed to load flashcard status');
+    const data = await resp.json();
+    _fcSourcesCache = data.sources || [];
+    _fcTopicsCache  = data.topics  || [];
+    renderFlashcardSources();
+    renderFlashcardTopics();
+    if (sumEl) sumEl.textContent = `${data.totalSyllabusTopics || 0} leaf topics · ${_fcSourcesCache.length} source${_fcSourcesCache.length !== 1 ? 's' : ''} uploaded · ${data.totalGenerated || 0} cards generated · ${data.totalApproved || 0} approved`;
+  } catch(e) {
+    if (listEl)   listEl.innerHTML   = `<div style="color:#e07080;">Error: ${h(e.message)}</div>`;
+    if (topicsEl) topicsEl.innerHTML = `<div style="color:#e07080;padding:20px;">Error loading topics.</div>`;
+  }
+}
+
+function renderFlashcardSources() {
+  const el = document.getElementById('fc-sources-list');
+  if (!el) return;
+  if (!_fcSourcesCache.length) {
+    el.innerHTML = '<div style="font-size:13px;color:var(--muted);padding:12px;border:1px dashed var(--bdr2);border-radius:8px;text-align:center;">No sources uploaded yet. Upload a PDF or add text to begin.</div>';
+    return;
+  }
+  el.innerHTML = _fcSourcesCache.map(s => {
+    const icon  = s.source_type === 'pdf' ? '📄' : '✏️';
+    const size  = s.size_bytes ? ` · ${_fcFormatBytes(s.size_bytes)}` : '';
+    const date  = s.uploaded_at ? ` · ${new Date(s.uploaded_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}` : '';
+    return `<div class="fc-source-row">
+      <div style="flex:1;min-width:0;">
+        <div style="font-weight:600;font-size:13px;">${icon} ${h(s.name)}</div>
+        <div style="font-size:11px;color:var(--muted);">${h(String(s.source_type).toUpperCase())}${size}${date}</div>
+      </div>
+      <button class="btn-og" onclick="deleteFlashcardSource('${h(s.id)}')" style="font-size:11px;padding:5px 10px;">Delete</button>
+    </div>`;
+  }).join('');
+}
+
+function renderFlashcardTopics() {
+  const el = document.getElementById('fc-topics-list');
+  if (!el) return;
+  if (!_fcTopicsCache.length) {
+    el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted);font-size:13px;">No leaf topics found in this subject\'s syllabus. Add topics in the Syllabus Builder first.</div>';
+    return;
+  }
+  el.innerHTML = _fcTopicsCache.map(t => {
+    const pending  = t.pendingCount  || 0;
+    const approved = t.approvedCount || 0;
+    const status   = approved > 0
+      ? `<span style="color:#2ec4a0;">✓ ${approved} approved</span>`
+      : pending > 0
+        ? `<span style="color:#d4a843;">⏳ ${pending} pending review</span>`
+        : `<span style="color:var(--muted);">not generated</span>`;
+    return `<div class="fc-topic-row">
+      <div style="flex:1;min-width:0;">
+        <div style="font-weight:600;font-size:12px;">${h(t.title)}</div>
+        <div style="font-size:10px;color:var(--muted);">${h(t.pathLabel || '')}</div>
+      </div>
+      <div style="font-size:11px;white-space:nowrap;margin-left:12px;">${status}</div>
+    </div>`;
+  }).join('');
+}
+
+async function uploadFlashcardPdfSource(evt) {
+  const file = evt.target.files && evt.target.files[0];
+  if (!file) return;
+  evt.target.value = ''; // allow re-uploading same file
+  if (file.size > 50 * 1024 * 1024) {
+    showToast('PDF must be under 50MB', 'error');
+    return;
+  }
+  const fd = new FormData();
+  fd.append('pdf', file);
+  showToast(`Uploading ${file.name}…`, 'info');
+  try {
+    const resp = await fetch('/api/admin/flashcards/source/' + encodeURIComponent(_fcAdminSubject), {
+      method: 'POST',
+      headers: { 'x-admin-key': window._adminKey || '' },
+      body: fd,
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || 'Upload failed');
+    showToast('Source uploaded', 'success');
+    await loadFlashcardsAdmin();
+  } catch(e) {
+    showToast('Upload error: ' + e.message, 'error');
+  }
+}
+
+function showFlashcardTextSourceModal() {
+  const name = prompt('Name for this text source (e.g. "Civil Law — Codal Chapter 1"):');
+  if (!name || !name.trim()) return;
+  const text = prompt('Paste text content here (will be included in flashcard generation):');
+  if (!text || !text.trim()) return;
+  if (text.length > 2_000_000) {
+    showToast('Text source must be under 2MB', 'error');
+    return;
+  }
+  addFlashcardTextSource(name.trim(), text);
+}
+
+async function addFlashcardTextSource(name, text) {
+  try {
+    const resp = await fetch('/api/admin/flashcards/source/' + encodeURIComponent(_fcAdminSubject), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-admin-key': window._adminKey || '',
+      },
+      body: JSON.stringify({ name, text }),
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || 'Save failed');
+    showToast('Text source added', 'success');
+    await loadFlashcardsAdmin();
+  } catch(e) {
+    showToast('Save error: ' + e.message, 'error');
+  }
+}
+
+async function deleteFlashcardSource(sourceId) {
+  if (!confirm('Remove this source? Generated cards will NOT be deleted.')) return;
+  try {
+    const resp = await fetch('/api/admin/flashcards/source/' + encodeURIComponent(sourceId), {
+      method: 'DELETE',
+      headers: { 'x-admin-key': window._adminKey || '' },
+    });
+    if (!resp.ok) {
+      const data = await resp.json().catch(() => ({}));
+      throw new Error(data.error || 'Delete failed');
+    }
+    showToast('Source removed', 'success');
+    await loadFlashcardsAdmin();
+  } catch(e) {
+    showToast('Delete error: ' + e.message, 'error');
+  }
+}
+
+function _fcFormatBytes(n) {
+  if (n < 1024) return n + ' B';
+  if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+  return (n / 1024 / 1024).toFixed(1) + ' MB';
 }
 
 // ── Bar Exam Countdown ─────────────────────────────────────────
