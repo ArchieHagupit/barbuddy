@@ -545,6 +545,9 @@ app.use(require('./routes/syllabus')({
 // ── Flashcards routes (Session 2.2: .txt import authoring, no AI, no PDF) ──
 app.use(require('./routes/flashcards')({ requireAuth, adminOnly, KB }));
 
+// ── Flashcards student routes (Session 3a: SM-2 review engine) ──
+app.use(require('./routes/flashcard-study')({ requireAuth }));
+
 // ── Admin KB management (references, wipe, diagnostic) ──
 app.use(require('./routes/admin-kb')({
   adminOnly, KB,
