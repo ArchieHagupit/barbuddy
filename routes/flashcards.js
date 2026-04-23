@@ -1,11 +1,16 @@
-// Flashcards routes — Session 1 foundation (admin-only source upload + status).
+// Flashcards routes — manual card authoring (Session 2.2).
 //
-// Scope for Session 1:
-//   - Admin uploads subject-level source material (PDF or text).
-//   - Status endpoint lists leaf topics + card counts (counts are 0 until Session 2).
+// Scope:
+//   - Admin uploads subject-level source material as committee reference
+//     (PDF or text). Sources are NOT fed to any AI — purely for human
+//     reviewer use while writing cards manually.
+//   - Status endpoint lists syllabus leaf topics + card counts.
+//   - Admin creates, edits, and deletes flashcards manually via the UI.
+//   - Manually-authored cards are auto-published (enabled=true).
 //
-// No AI generation yet — that's Session 2. No student endpoints yet — that's Session 3.
-// No changes to existing subsystems (eval, scoring, SR, questions).
+// No AI generation — that was Sessions 2/2.0 and 2.1, removed in 2.2
+// after real-world testing showed AI output quality wasn't worth the
+// review overhead or API cost for bar exam content.
 //
 // Usage in server.js:
 //   app.use(require('./routes/flashcards')({
@@ -18,26 +23,11 @@ const path = require('path');
 const multer = require('multer');
 const { supabase } = require('../config/supabase');
 const { getAllSubjectsWithSections } = require('../lib/syllabus-tree');
-const createFlashcardGen = require('../lib/flashcard-gen');
 
 module.exports = function createFlashcardRoutes({
   requireAuth, adminOnly, SYLLABUS_FLASHCARD_DIR, KB,
-  API_KEY, aiSemaphore, extractJSON, sanitizeAIResponse,
 }) {
   const router = express.Router();
-
-  // Create generation engine (Session 2). Safe no-op if AI deps are missing:
-  // the engine is only invoked via /generate routes, which require them.
-  const flashcardGen = createFlashcardGen({
-    API_KEY, KB, aiSemaphore, SYLLABUS_FLASHCARD_DIR,
-    extractJSON, sanitizeAIResponse,
-  });
-
-  // Per-run state for SSE progress + cancellation.
-  // Stored on global so the generator's cancel check (lib/flashcard-gen.js)
-  // can see the same map without a second ref.
-  if (!global._flashcardGenRuns) global._flashcardGenRuns = {};
-  const runs = global._flashcardGenRuns;
 
   // Multer disk-storage factory for subject source PDFs.
   // Captures SYLLABUS_FLASHCARD_DIR via closure (same pattern as syllabus router).
@@ -276,123 +266,59 @@ module.exports = function createFlashcardRoutes({
     } catch(e) { res.status(500).json({ error: e.message }); }
   });
 
-  // Broadcast helper — sends SSE data to all clients of a run
-  function broadcastRun(state, data) {
-    for (const client of state.clients) {
-      try { client.write(`data: ${JSON.stringify(data)}\n\n`); } catch(_) {}
-    }
-  }
+  // ── Route 5: Create a card manually (auto-published) ────────
+  // Session 2.2: manually-authored cards go straight to enabled=true.
+  // Body: { subject, node_id, node_path, card_type, front, back, source_snippet? }
+  router.post('/api/admin/flashcards/card', adminOnly, async (req, res) => {
+    try {
+      const {
+        subject,
+        node_id,
+        node_path,
+        card_type,
+        front,
+        back,
+        source_snippet,
+      } = req.body || {};
 
-  // ── Route 5: Start generation (fire-and-forget) ─────────────
-  router.post('/api/admin/flashcards/generate/:subject', adminOnly, async (req, res) => {
-    const subj = req.params.subject;
-    if (!getAllSubjectsWithSections().includes(subj)) {
-      return res.status(400).json({ error: 'Invalid subject' });
-    }
-    if (!API_KEY) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not configured' });
-    // Guard: only one active run per subject at a time
-    const existing = Object.values(runs).find(r => r.subject === subj && r.status === 'running');
-    if (existing) {
-      return res.status(409).json({ error: 'Generation already running for this subject', runId: existing.runId });
-    }
-    const runId = 'run_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
-    const state = {
-      runId,
-      subject: subj,
-      status: 'running',
-      startedAt: new Date().toISOString(),
-      finishedAt: null,
-      progress: { phase: 'starting' },
-      error: null,
-      cancelled: false,
-      clients: new Set(),
-    };
-    runs[runId] = state;
-
-    // Return runId immediately — client opens SSE stream next.
-    res.json({ runId, subject: subj });
-
-    // Run in background
-    (async () => {
-      try {
-        const result = await flashcardGen.runGeneration({
-          subject: subj,
-          runId,
-          onProgress: (p) => {
-            state.progress = p;
-            broadcastRun(state, p);
-          },
-        });
-        state.status = result.cancelled ? 'cancelled' : 'done';
-        state.finishedAt = new Date().toISOString();
-        state.progress = { phase: state.status, ...result };
-        broadcastRun(state, state.progress);
-      } catch(e) {
-        console.error(`[flashcards/generate] Run ${runId} failed:`, e.message);
-        state.status = 'error';
-        state.error = e.message;
-        state.finishedAt = new Date().toISOString();
-        state.progress = { phase: 'error', error: e.message };
-        broadcastRun(state, state.progress);
+      if (!subject || !getAllSubjectsWithSections().includes(subject)) {
+        return res.status(400).json({ error: 'Invalid subject' });
       }
-      // Clean up run state after 1 hour
-      setTimeout(() => { delete runs[runId]; }, 60 * 60 * 1000);
-    })();
-  });
+      if (!node_id || typeof node_id !== 'string') {
+        return res.status(400).json({ error: 'node_id required' });
+      }
+      if (!['definition', 'elements', 'distinction'].includes(card_type)) {
+        return res.status(400).json({ error: "card_type must be one of: definition, elements, distinction" });
+      }
+      const frontStr = String(front || '').trim();
+      const backStr  = String(back  || '').trim();
+      if (!frontStr) return res.status(400).json({ error: 'front required' });
+      if (!backStr)  return res.status(400).json({ error: 'back required' });
+      if (frontStr.length > 2000) return res.status(400).json({ error: 'front exceeds 2000 chars' });
+      if (backStr.length  > 5000) return res.status(400).json({ error: 'back exceeds 5000 chars' });
 
-  // ── Route 6: SSE progress stream ────────────────────────────
-  // Accepts admin key via header OR ?k= query param (EventSource can't
-  // send custom headers, so the browser passes it in the URL).
-  router.get('/api/admin/flashcards/generate/progress/:runId', adminOnly, (req, res) => {
-    const { runId } = req.params;
-    const state = runs[runId];
-    if (!state) return res.status(404).json({ error: 'Run not found or expired' });
+      const nowIso = new Date().toISOString();
+      const row = {
+        id: 'fc_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
+        subject,
+        node_id: String(node_id),
+        node_path: String(node_path || '').slice(0, 1000),
+        card_type,
+        front: frontStr,
+        back: backStr,
+        source_snippet: source_snippet ? String(source_snippet).trim().slice(0, 2000) : null,
+        source_ids: [],
+        generation_batch_id: 'manual',
+        enabled: true,
+        approved_at: nowIso,
+        approved_by: req.userId || 'admin',
+      };
 
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-    // Disable proxy buffering (important for Railway/nginx intermediaries)
-    res.setHeader('X-Accel-Buffering', 'no');
-    state.clients.add(res);
-
-    // Send current state immediately
-    try { res.write(`data: ${JSON.stringify(state.progress)}\n\n`); } catch(_) {}
-
-    // If already finished, close after a beat
-    if (state.status !== 'running') {
-      setTimeout(() => {
-        state.clients.delete(res);
-        try { res.end(); } catch(_) {}
-      }, 100);
-      return;
-    }
-
-    const heartbeat = setInterval(() => {
-      try { res.write(': heartbeat\n\n'); } catch(_) {}
-    }, 30000);
-
-    // 5-min max SSE connection (client reconnects automatically if needed)
-    const maxDuration = setTimeout(() => {
-      state.clients.delete(res);
-      clearInterval(heartbeat);
-      try { res.end(); } catch(_) {}
-    }, 300000);
-
-    req.on('close', () => {
-      state.clients.delete(res);
-      clearInterval(heartbeat);
-      clearTimeout(maxDuration);
-    });
-  });
-
-  // ── Route 7: Cancel an in-flight run ────────────────────────
-  router.post('/api/admin/flashcards/generate/cancel/:runId', adminOnly, (req, res) => {
-    const { runId } = req.params;
-    const state = runs[runId];
-    if (!state) return res.status(404).json({ error: 'Run not found' });
-    if (state.status !== 'running') return res.status(400).json({ error: 'Run not active' });
-    state.cancelled = true;
-    res.json({ ok: true });
+      const { data, error } = await supabase
+        .from('flashcards').insert(row).select().single();
+      if (error) return res.status(500).json({ error: error.message });
+      res.json({ card: data });
+    } catch(e) { res.status(500).json({ error: e.message }); }
   });
 
   // ── Route 8: List cards for one topic (admin review view) ──
@@ -446,22 +372,6 @@ module.exports = function createFlashcardRoutes({
       const { error } = await supabase.from('flashcards').delete().eq('id', req.params.cardId);
       if (error) return res.status(500).json({ error: error.message });
       res.json({ ok: true });
-    } catch(e) { res.status(500).json({ error: e.message }); }
-  });
-
-  // ── Route 11: Bulk-approve all pending cards for a topic ────
-  router.post('/api/admin/flashcards/approve-all/:nodeId', adminOnly, async (req, res) => {
-    try {
-      const { nodeId } = req.params;
-      const nowIso = new Date().toISOString();
-      const { data, error } = await supabase
-        .from('flashcards')
-        .update({ enabled: true, approved_at: nowIso, approved_by: req.userId || 'admin' })
-        .eq('node_id', nodeId)
-        .eq('enabled', false)
-        .select('id');
-      if (error) return res.status(500).json({ error: error.message });
-      res.json({ approved: (data || []).length });
     } catch(e) { res.status(500).json({ error: e.message }); }
   });
 

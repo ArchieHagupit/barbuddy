@@ -1196,7 +1196,7 @@ select.form-input{cursor:pointer;}
 #stab-quiz { display: none !important; }
 button[onclick*="switchSubjectTab(currentSubject,'quiz')"] { display: none !important; }
 
-/* ── Flashcard review + generation (Session 2) ── */
+/* ── Flashcard review + manual authoring (Session 2.2) ── */
 .fc-review-panel{
   border:1px solid var(--gold-l);
   border-radius:12px;
@@ -1215,26 +1215,10 @@ button[onclick*="switchSubjectTab(currentSubject,'quiz')"] { display: none !impo
 .fc-topic-row-clickable{cursor:pointer;transition:background .12s ease;}
 .fc-topic-row-clickable:hover{background:rgba(201,168,76,.08);}
 
-.fc-gen-modal{
-  position:fixed;inset:0;
-  background:rgba(0,0,0,.7);
-  z-index:9999;
-  display:flex;align-items:center;justify-content:center;
-}
-.fc-gen-modal-inner{
-  width:92%;max-width:520px;
-  padding:24px;
-  background:var(--card);
-  border:1px solid var(--gold-l);
-  border-radius:14px;
-  box-shadow:0 12px 40px rgba(0,0,0,.5);
-}
-.fc-gen-progress-wrap{
-  width:100%;height:10px;
-  background:rgba(0,0,0,.35);
-  border-radius:5px;overflow:hidden;
-}
-.fc-gen-progress-bar{
-  height:100%;background:var(--gold-l);
-  transition:width .3s ease;
+/* Manual card authoring form */
+.fc-add-card-form textarea{font-family:inherit;}
+.fc-add-card-form textarea:focus,
+.fc-add-card-form select:focus{
+  outline:none;
+  border-color:var(--gold-l);
 }

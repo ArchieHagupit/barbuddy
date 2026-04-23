@@ -544,10 +544,9 @@ app.use(require('./routes/syllabus')({
   ADMIN_KEY, verifySession, KB, SYLLABUS_PDFS_DIR,
 }));
 
-// ── Flashcards routes (Session 2: sources + status + generation + review) ──
+// ── Flashcards routes (Session 2.2: manual authoring, no AI) ──
 app.use(require('./routes/flashcards')({
   requireAuth, adminOnly, SYLLABUS_FLASHCARD_DIR, KB,
-  API_KEY, aiSemaphore, extractJSON, sanitizeAIResponse,
 }));
 
 // ── Admin KB management (references, wipe, diagnostic) ──

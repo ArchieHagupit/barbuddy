@@ -929,20 +929,13 @@ function renderFlashcardTopics() {
     return;
   }
   el.innerHTML = _fcTopicsCache.map(t => {
-    const pending  = t.pendingCount  || 0;
-    const approved = t.approvedCount || 0;
-    const status   = approved > 0
-      ? `<span style="color:#2ec4a0;">✓ ${approved} approved</span>`
-      : pending > 0
-        ? `<span style="color:#d4a843;">⏳ ${pending} pending review</span>`
-        : `<span style="color:var(--muted);">not generated</span>`;
-    const clickable = (pending + approved) > 0;
+    const total = (t.pendingCount || 0) + (t.approvedCount || 0);
+    const status = total > 0
+      ? `<span style="color:#2ec4a0;">✓ ${total} card${total !== 1 ? 's' : ''}</span>`
+      : `<span style="color:var(--muted);">no cards yet — click to add</span>`;
     const titleEsc = h(t.title).replace(/'/g, "&#39;");
     const pathEsc  = h(t.pathLabel || '').replace(/'/g, "&#39;");
-    const onclick  = clickable
-      ? ` onclick="openCardReview('${h(t.nodeId)}','${titleEsc}','${pathEsc}')"`
-      : '';
-    return `<div class="fc-topic-row${clickable ? ' fc-topic-row-clickable' : ''}"${onclick}>
+    return `<div class="fc-topic-row fc-topic-row-clickable" onclick="openAddCardForm('${h(t.nodeId)}','${titleEsc}','${pathEsc}')">
       <div style="flex:1;min-width:0;">
         <div style="font-weight:600;font-size:12px;">${h(t.title)}</div>
         <div style="font-size:10px;color:var(--muted);">${h(t.pathLabel || '')}</div>
@@ -1075,117 +1068,59 @@ function _fcFormatBytes(n) {
   return (n / 1024 / 1024).toFixed(1) + ' MB';
 }
 
-// ── Flashcard generation (Session 2) ─────────────────────────
-let _fcGenRunId       = null;
-let _fcGenEventSource = null;
+// ── Manual card authoring (Session 2.2) ──────────────────────
+function openAddCardForm(nodeId, topicTitle, pathLabel) {
+  // Reuse the manage panel — the add form sits at the top.
+  openCardReview(nodeId, topicTitle, pathLabel);
+  // Focus the front textarea after the panel loads
+  setTimeout(() => {
+    const el = document.getElementById('fc-new-card-front');
+    if (el) el.focus();
+  }, 400);
+}
 
-async function startFlashcardGeneration() {
-  const subj = _fcAdminSubject;
-  if (!confirm(`Generate flashcards for all topics in ${subj}? This may take 15-30 minutes depending on subject size. You can leave this page — progress continues in the background.`)) return;
+async function submitNewCard() {
+  const front = document.getElementById('fc-new-card-front')?.value?.trim() || '';
+  const back  = document.getElementById('fc-new-card-back')?.value?.trim() || '';
+  const source_snippet = document.getElementById('fc-new-card-source')?.value?.trim() || '';
+  const card_type = document.getElementById('fc-new-card-type')?.value || 'definition';
+
+  if (!front || !back) {
+    showToast('Front and back are required', 'error');
+    return;
+  }
+
+  const subject = _fcAdminSubject;
+  const nodeId  = _fcReviewNodeId;
+  if (!subject || !nodeId) {
+    showToast('No topic selected', 'error');
+    return;
+  }
+  const topic = (_fcTopicsCache || []).find(t => t.nodeId === nodeId);
+  const node_path = topic?.pathLabel || '';
 
   try {
-    const resp = await fetch('/api/admin/flashcards/generate/' + encodeURIComponent(subj), {
+    const resp = await fetch('/api/admin/flashcards/card', {
       method: 'POST',
-      headers: { 'x-admin-key': window._adminKey || '' },
+      headers: { 'Content-Type': 'application/json', 'x-admin-key': window._adminKey || '' },
+      body: JSON.stringify({
+        subject, node_id: nodeId, node_path,
+        card_type, front, back,
+        source_snippet: source_snippet || undefined,
+      }),
     });
     const data = await resp.json();
-    if (!resp.ok) throw new Error(data.error || 'Start failed');
-    _fcGenRunId = data.runId;
-    openFlashcardGenModal(subj);
-    subscribeFlashcardGenProgress(data.runId);
+    if (!resp.ok) throw new Error(data.error || 'Save failed');
+
+    document.getElementById('fc-new-card-front').value = '';
+    document.getElementById('fc-new-card-back').value = '';
+    document.getElementById('fc-new-card-source').value = '';
+
+    _fcReviewCards.unshift(data.card);
+    renderCardReview();
+    showToast('Card added', 'success');
   } catch(e) {
-    showToast('Generation start failed: ' + e.message, 'error');
-  }
-}
-
-function openFlashcardGenModal(subj) {
-  document.getElementById('fc-gen-subject-label').textContent = `Subject: ${subj}`;
-  document.getElementById('fc-gen-progress-bar').style.width = '0%';
-  document.getElementById('fc-gen-progress-text').textContent = 'Preparing…';
-  document.getElementById('fc-gen-current').textContent = '';
-  document.getElementById('fc-gen-stats').textContent = '';
-  document.getElementById('fc-gen-cancel-btn').style.display = '';
-  document.getElementById('fc-gen-close-btn').style.display = 'none';
-  document.getElementById('fc-gen-modal').style.display = 'flex';
-}
-
-function closeFlashcardGenModal() {
-  document.getElementById('fc-gen-modal').style.display = 'none';
-  if (_fcGenEventSource) { _fcGenEventSource.close(); _fcGenEventSource = null; }
-  loadFlashcardsAdmin(); // refresh status counts
-}
-
-function subscribeFlashcardGenProgress(runId) {
-  if (_fcGenEventSource) _fcGenEventSource.close();
-  // EventSource can't set custom headers, so the admin key rides as ?k=.
-  // The adminOnly middleware accepts req.query.k for this reason.
-  const url = '/api/admin/flashcards/generate/progress/' + encodeURIComponent(runId)
-            + '?k=' + encodeURIComponent(window._adminKey || '');
-  _fcGenEventSource = new EventSource(url);
-
-  _fcGenEventSource.onmessage = (ev) => {
-    try {
-      const p = JSON.parse(ev.data);
-      renderFlashcardGenProgress(p);
-    } catch(_) {}
-  };
-  _fcGenEventSource.onerror = () => {
-    // EventSource auto-retries. Log and keep the UI in place.
-    console.warn('[fc-gen] SSE disconnected, retrying…');
-  };
-}
-
-function renderFlashcardGenProgress(p) {
-  const textEl    = document.getElementById('fc-gen-progress-text');
-  const currentEl = document.getElementById('fc-gen-current');
-  const statsEl   = document.getElementById('fc-gen-stats');
-  const barEl     = document.getElementById('fc-gen-progress-bar');
-  const cancelBtn = document.getElementById('fc-gen-cancel-btn');
-  const closeBtn  = document.getElementById('fc-gen-close-btn');
-  if (!textEl) return;
-
-  if (p.phase === 'loading_sources') {
-    textEl.textContent = 'Loading source materials…';
-  } else if (p.phase === 'generating') {
-    const total = p.totalTopics || 1;
-    const done  = p.doneTopics  || 0;
-    const pct   = Math.round((done / total) * 100);
-    barEl.style.width = pct + '%';
-    textEl.textContent = `${done} / ${total} topics (${pct}%)`;
-    currentEl.textContent = p.current ? `→ ${p.current}` : '';
-    statsEl.textContent = `${p.cardsSoFar || 0} cards generated · ${p.skippedTopics || 0} topics skipped${p.cached ? ' · prompt cache active' : ''}`;
-  } else if (p.phase === 'done') {
-    barEl.style.width = '100%';
-    textEl.textContent = `✓ Generation complete`;
-    currentEl.textContent = '';
-    const topicsWithCards = (p.doneTopics || 0) - (p.skippedTopics || 0);
-    statsEl.textContent  = `${p.cardsSoFar || 0} cards generated across ${topicsWithCards} topics · ${p.skippedTopics || 0} topics skipped`;
-    cancelBtn.style.display = 'none';
-    closeBtn.style.display  = '';
-  } else if (p.phase === 'cancelled') {
-    textEl.textContent = 'Cancelled';
-    currentEl.textContent = '';
-    cancelBtn.style.display = 'none';
-    closeBtn.style.display  = '';
-  } else if (p.phase === 'error') {
-    textEl.textContent = '✗ Error: ' + (p.error || 'Unknown');
-    currentEl.textContent = '';
-    cancelBtn.style.display = 'none';
-    closeBtn.style.display  = '';
-  }
-}
-
-async function cancelFlashcardGeneration() {
-  if (!_fcGenRunId) return;
-  if (!confirm('Cancel this generation run? Already-generated cards will remain.')) return;
-  try {
-    await fetch('/api/admin/flashcards/generate/cancel/' + encodeURIComponent(_fcGenRunId), {
-      method: 'POST',
-      headers: { 'x-admin-key': window._adminKey || '' },
-    });
-    showToast('Cancelling…', 'info');
-  } catch(e) {
-    showToast('Cancel error: ' + e.message, 'error');
+    showToast('Add failed: ' + e.message, 'error');
   }
 }
 
@@ -1200,7 +1135,7 @@ async function openCardReview(nodeId, topicTitle, pathLabel) {
   const subEl   = document.getElementById('fc-review-subtitle');
   const listEl  = document.getElementById('fc-review-cards');
   if (panel)   panel.style.display = '';
-  if (titleEl) titleEl.textContent = 'Reviewing: ' + topicTitle;
+  if (titleEl) titleEl.textContent = 'Managing cards for: ' + topicTitle;
   if (subEl)   subEl.textContent   = pathLabel;
   if (listEl)  listEl.innerHTML    = '<div style="text-align:center;padding:40px;color:var(--muted);">Loading cards…</div>';
 
@@ -1222,26 +1157,50 @@ async function openCardReview(nodeId, topicTitle, pathLabel) {
 function renderCardReview() {
   const listEl = document.getElementById('fc-review-cards');
   if (!listEl) return;
+
+  const addFormHtml = `
+    <div class="fc-add-card-form" style="border:1px solid var(--gold-l);border-radius:10px;padding:14px;margin-bottom:14px;background:rgba(201,168,76,.06);">
+      <div style="font-weight:600;font-size:12px;margin-bottom:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--gold-l);">➕ Add New Card</div>
+      <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center;">
+        <label style="font-size:11px;color:var(--muted);">Type:</label>
+        <select id="fc-new-card-type" style="font-size:12px;padding:4px 8px;background:rgba(0,0,0,.3);border:1px solid var(--bdr2);border-radius:6px;color:var(--white);">
+          <option value="definition">📖 Definition</option>
+          <option value="elements">🔢 Elements</option>
+          <option value="distinction">⚖️ Distinction</option>
+        </select>
+      </div>
+      <div style="margin-bottom:8px;">
+        <div style="font-size:10px;color:var(--muted);margin-bottom:2px;">FRONT (question / prompt)</div>
+        <textarea id="fc-new-card-front" rows="2" placeholder="e.g., What is the definition of hearsay evidence?" style="width:100%;font-size:13px;padding:6px 8px;background:rgba(0,0,0,.2);border:1px solid var(--bdr2);border-radius:6px;color:var(--white);resize:vertical;box-sizing:border-box;"></textarea>
+      </div>
+      <div style="margin-bottom:8px;">
+        <div style="font-size:10px;color:var(--muted);margin-bottom:2px;">BACK (answer)</div>
+        <textarea id="fc-new-card-back" rows="4" placeholder="e.g., A statement other than one made by the declarant while testifying at trial, offered to prove the truth of the matter asserted. (Rule 130, Sec. 37)" style="width:100%;font-size:13px;padding:6px 8px;background:rgba(0,0,0,.2);border:1px solid var(--bdr2);border-radius:6px;color:var(--white);resize:vertical;box-sizing:border-box;"></textarea>
+      </div>
+      <div style="margin-bottom:8px;">
+        <div style="font-size:10px;color:var(--muted);margin-bottom:2px;">SOURCE (optional — cite the rule or case)</div>
+        <textarea id="fc-new-card-source" rows="1" placeholder="e.g., Rule 130, Section 37, Revised Rules of Evidence" style="width:100%;font-size:12px;padding:6px 8px;background:rgba(0,0,0,.2);border:1px solid var(--bdr2);border-radius:6px;color:var(--white);resize:vertical;box-sizing:border-box;"></textarea>
+      </div>
+      <div style="display:flex;justify-content:flex-end;">
+        <button class="btn-gold" onclick="submitNewCard()" style="font-size:12px;padding:6px 14px;">💾 Save Card</button>
+      </div>
+    </div>
+  `;
+
   if (!_fcReviewCards.length) {
-    listEl.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted);">No cards for this topic.</div>';
+    listEl.innerHTML = addFormHtml + '<div style="text-align:center;padding:20px;color:var(--muted);font-size:12px;">No cards for this topic yet. Add one above.</div>';
     return;
   }
-  listEl.innerHTML = _fcReviewCards.map(c => {
+
+  const cardsHtml = _fcReviewCards.map(c => {
     const typeBadge = {
       definition:  '📖 Definition',
       elements:    '🔢 Elements',
       distinction: '⚖️ Distinction',
     }[c.card_type] || c.card_type;
-    const statusBadge = c.enabled
-      ? `<span style="color:#2ec4a0;font-size:10px;">✓ APPROVED</span>`
-      : `<span style="color:#d4a843;font-size:10px;">⏳ PENDING</span>`;
-    const approveOrSave = !c.enabled
-      ? `<button class="btn-gold" style="font-size:11px;padding:5px 10px;" onclick="approveReviewCard('${h(c.id)}')">✓ Save &amp; Approve</button>`
-      : `<button class="btn-og"   style="font-size:11px;padding:5px 10px;" onclick="saveReviewCard('${h(c.id)}')">💾 Save</button>`;
     return `<div class="fc-review-card" data-card-id="${h(c.id)}">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
         <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;">${typeBadge}</div>
-        <div>${statusBadge}</div>
       </div>
       <div style="margin-bottom:8px;">
         <div style="font-size:10px;color:var(--muted);margin-bottom:2px;">FRONT</div>
@@ -1249,15 +1208,17 @@ function renderCardReview() {
       </div>
       <div style="margin-bottom:8px;">
         <div style="font-size:10px;color:var(--muted);margin-bottom:2px;">BACK</div>
-        <textarea class="fc-review-back"  rows="4" style="width:100%;font-size:13px;padding:6px 8px;background:rgba(0,0,0,.2);border:1px solid var(--bdr2);border-radius:6px;color:var(--white);resize:vertical;box-sizing:border-box;">${h(c.back)}</textarea>
+        <textarea class="fc-review-back" rows="4" style="width:100%;font-size:13px;padding:6px 8px;background:rgba(0,0,0,.2);border:1px solid var(--bdr2);border-radius:6px;color:var(--white);resize:vertical;box-sizing:border-box;">${h(c.back)}</textarea>
       </div>
       ${c.source_snippet ? `<div style="font-size:10px;color:var(--muted);margin-bottom:8px;padding:6px 8px;background:rgba(201,168,76,.06);border-left:2px solid var(--gold-l);">SOURCE: ${h(c.source_snippet)}</div>` : ''}
       <div style="display:flex;gap:6px;justify-content:flex-end;">
-        ${approveOrSave}
-        <button class="btn-og" style="font-size:11px;padding:5px 10px;background:rgba(224,112,128,.15);" onclick="rejectReviewCard('${h(c.id)}')">✗ Reject</button>
+        <button class="btn-og" style="font-size:11px;padding:5px 10px;" onclick="saveReviewCard('${h(c.id)}')">💾 Save Edits</button>
+        <button class="btn-og" style="font-size:11px;padding:5px 10px;background:rgba(224,112,128,.15);" onclick="rejectReviewCard('${h(c.id)}')">🗑️ Delete</button>
       </div>
     </div>`;
   }).join('');
+
+  listEl.innerHTML = addFormHtml + cardsHtml;
 }
 
 async function saveReviewCard(cardId) {
@@ -1280,60 +1241,19 @@ async function saveReviewCard(cardId) {
   }
 }
 
-async function approveReviewCard(cardId) {
-  const card = document.querySelector(`[data-card-id="${cardId}"]`);
-  if (!card) return;
-  const front = card.querySelector('.fc-review-front').value;
-  const back  = card.querySelector('.fc-review-back').value;
-  try {
-    const resp = await fetch('/api/admin/flashcards/card/' + encodeURIComponent(cardId), {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', 'x-admin-key': window._adminKey || '' },
-      body: JSON.stringify({ front, back, enabled: true }),
-    });
-    if (!resp.ok) throw new Error('Approve failed');
-    showToast('Approved', 'success');
-    const c = _fcReviewCards.find(x => x.id === cardId);
-    if (c) { c.front = front; c.back = back; c.enabled = true; }
-    renderCardReview();
-  } catch(e) {
-    showToast('Approve error: ' + e.message, 'error');
-  }
-}
-
 async function rejectReviewCard(cardId) {
-  if (!confirm('Reject this card? This cannot be undone.')) return;
+  if (!confirm('Delete this card? This cannot be undone.')) return;
   try {
     const resp = await fetch('/api/admin/flashcards/card/' + encodeURIComponent(cardId), {
       method: 'DELETE',
       headers: { 'x-admin-key': window._adminKey || '' },
     });
-    if (!resp.ok) throw new Error('Reject failed');
-    showToast('Rejected', 'success');
+    if (!resp.ok) throw new Error('Delete failed');
+    showToast('Deleted', 'success');
     _fcReviewCards = _fcReviewCards.filter(c => c.id !== cardId);
     renderCardReview();
   } catch(e) {
-    showToast('Reject error: ' + e.message, 'error');
-  }
-}
-
-async function approveAllPendingCards() {
-  if (!_fcReviewNodeId) return;
-  const pendingCount = _fcReviewCards.filter(c => !c.enabled).length;
-  if (!pendingCount) { showToast('No pending cards', 'info'); return; }
-  if (!confirm(`Approve all ${pendingCount} pending cards for this topic?`)) return;
-  try {
-    const resp = await fetch('/api/admin/flashcards/approve-all/' + encodeURIComponent(_fcReviewNodeId), {
-      method: 'POST',
-      headers: { 'x-admin-key': window._adminKey || '' },
-    });
-    const data = await resp.json();
-    if (!resp.ok) throw new Error(data.error || 'Approve-all failed');
-    showToast(`Approved ${data.approved} cards`, 'success');
-    _fcReviewCards.forEach(c => { if (!c.enabled) c.enabled = true; });
-    renderCardReview();
-  } catch(e) {
-    showToast('Approve-all error: ' + e.message, 'error');
+    showToast('Delete error: ' + e.message, 'error');
   }
 }
 
