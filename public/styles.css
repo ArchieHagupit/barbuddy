@@ -1389,32 +1389,12 @@ button[onclick*="switchSubjectTab(currentSubject,'quiz')"] { display: none !impo
   font-family: var(--fm);
 }
 
-/* Sidebar badge */
-.sb-fc-badge {
-  position: fixed;
-  left: 12px;
-  bottom: 12px;
-  background: #e07080;
-  color: white;
-  border-radius: 10px;
-  padding: 4px 9px;
-  font-size: 11px;
-  font-weight: 700;
-  cursor: pointer;
-  z-index: 10;
-  box-shadow: 0 2px 8px rgba(224,112,128,.3);
-}
+/* Sidebar flashcard badge — hidden per user preference.
+   Kept as a no-op in case we want to re-enable later; flipping
+   display:none back to the original values restores it. */
+.sb-fc-badge,
 .sb-fc-badge-inline {
-  display: inline-flex;
-  margin-left: auto;
-  background: #e07080;
-  color: white;
-  border-radius: 10px;
-  padding: 1px 8px;
-  font-size: 10px;
-  font-weight: 700;
-  min-width: 20px;
-  justify-content: center;
+  display: none !important;
 }
 
 /* Session summary */
