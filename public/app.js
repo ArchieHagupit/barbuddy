@@ -2616,24 +2616,28 @@ function paintFlashcardsTabFromBundle(subj) {
 // collapsible groups, clickable leaves) but filters to ONLY topics that
 // have at least one enabled card.
 function renderFlashcardTopicTree(container, subj, sections, countsByNodeId) {
-  // Recursively filter: keep only nodes whose subtree contains at least one leaf with cards.
+  // Recursively filter: keep nodes that either (a) have cards attached
+  // directly OR (b) have at least one surviving descendant with cards.
+  // CRITICAL: A node can have BOTH its own cards AND children. We must
+  // check the node's own count regardless of whether its children survive.
   function prune(nodes) {
     const out = [];
     for (const node of (nodes || [])) {
       const children = node.children || [];
-      const hasChildren = children.some(c => c);
-      if (node.type === 'section' || hasChildren) {
-        // Internal node — recurse and keep if any child survives
-        const kept = prune(children);
-        if (kept.length > 0) {
-          out.push({ ...node, children: kept });
+      const selfCount = countsByNodeId[node.id] || 0;
+      const keptChildren = prune(children);
+
+      if (node.type === 'section') {
+        // Section headers are kept only if any descendant survives.
+        if (keptChildren.length > 0) {
+          out.push({ ...node, children: keptChildren });
         }
-      } else {
-        // Leaf — keep only if it has cards
-        if ((countsByNodeId[node.id] || 0) > 0) {
-          out.push(node);
-        }
+      } else if (keptChildren.length > 0 || selfCount > 0) {
+        // Non-section node: keep if EITHER the node has own cards
+        // OR it has surviving child descendants.
+        out.push({ ...node, children: keptChildren });
       }
+      // else: drop the node
     }
     return out;
   }
@@ -2687,7 +2691,11 @@ function renderFlashcardTreeNodes(nodes, container, subj, counts, depth) {
       if (children.length) renderFlashcardTreeNodes(children, bodyEl, subj, counts, depth + 1);
 
     } else if (children.length > 0) {
-      // Group — expandable, non-clickable
+      // Has children — render as expandable group.
+      // If THIS node also has its own cards, we add a clickable "Study this group's cards"
+      // row at the top of the expanded body.
+      const selfCount = counts[node.id] || 0;
+
       const groupEl = document.createElement('div');
       groupEl.className = 'tl-group';
       const headerEl = document.createElement('div');
@@ -2700,20 +2708,53 @@ function renderFlashcardTreeNodes(nodes, container, subj, counts, depth) {
       nameEl.textContent = (node.label ? node.label + '. ' : '') + displayName;
       headerEl.appendChild(arrowEl);
       headerEl.appendChild(nameEl);
+
+      // If the group node itself has cards, show a small badge on the header
+      if (selfCount > 0) {
+        const selfBadge = document.createElement('span');
+        selfBadge.className = 'tl-cached-badge';
+        selfBadge.style.cssText = 'background:rgba(201,168,76,.12);border-color:rgba(201,168,76,.25);color:var(--gold-l);margin-left:6px;';
+        selfBadge.textContent = selfCount + ' card' + (selfCount !== 1 ? 's' : '');
+        headerEl.appendChild(selfBadge);
+      }
+
       const bodyEl = document.createElement('div');
       bodyEl.className = 'tl-group-body open';
-      headerEl.addEventListener('click', () => {
+      headerEl.addEventListener('click', (ev) => {
+        ev.stopPropagation();
         arrowEl.classList.toggle('open');
         bodyEl.classList.toggle('open');
       });
       groupEl.appendChild(headerEl);
       groupEl.appendChild(bodyEl);
       container.appendChild(groupEl);
+
+      // If this node has its own cards, prepend a clickable "Study these" row
+      if (selfCount > 0) {
+        const selfStudyEl = document.createElement('div');
+        selfStudyEl.className = 'tl-topic fc-topic-leaf';
+        selfStudyEl.style.cssText = 'font-style:italic;opacity:.9;';
+        const selfCheckEl = document.createElement('span');
+        selfCheckEl.className = 'tl-topic-check';
+        selfCheckEl.textContent = '🎴';
+        const selfNameEl = document.createElement('span');
+        selfNameEl.className = 'tl-topic-name';
+        selfNameEl.textContent = '▸ Study cards for "' + displayName + '"';
+        selfStudyEl.appendChild(selfCheckEl);
+        selfStudyEl.appendChild(selfNameEl);
+        selfStudyEl.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          if (node.id) startFlashcardStudySession(subj, 'topic', node.id);
+        });
+        bodyEl.appendChild(selfStudyEl);
+      }
+
       renderFlashcardTreeNodes(children, bodyEl, subj, counts, depth + 1);
 
     } else {
-      // Leaf — clickable, opens topic study session
-      const count = counts[node.id] || 0;
+      // Pure leaf (no children) — clickable row that starts a topic session.
+      const selfCount = counts[node.id] || 0;
+      if (selfCount === 0) continue; // defensive: prune should have excluded this
       const topicEl = document.createElement('div');
       topicEl.className = 'tl-topic fc-topic-leaf';
       topicEl.setAttribute('data-node-id', node.id || '');
@@ -2726,7 +2767,7 @@ function renderFlashcardTreeNodes(nodes, container, subj, counts, depth) {
       const badgeEl = document.createElement('span');
       badgeEl.className = 'tl-cached-badge';
       badgeEl.style.cssText = 'background:rgba(201,168,76,.12);border-color:rgba(201,168,76,.25);color:var(--gold-l);';
-      badgeEl.textContent = count + ' card' + (count !== 1 ? 's' : '');
+      badgeEl.textContent = selfCount + ' card' + (selfCount !== 1 ? 's' : '');
       topicEl.appendChild(checkEl);
       topicEl.appendChild(nameEl);
       topicEl.appendChild(badgeEl);
