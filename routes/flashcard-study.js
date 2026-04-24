@@ -25,6 +25,24 @@ const { supabase } = require('../config/supabase');
 
 const VALID_SUBJECTS = ['civil','criminal','political','labor','commercial','taxation','remedial','ethics'];
 
+// Paginated select helper — Supabase defaults to a 1000-row cap per
+// request unless .range() is used. For queries that can legitimately
+// return more rows (e.g., all enabled cards across 8 subjects), this
+// wrapper fetches in chunks of 1000 until the result set is exhausted.
+async function fetchAllPaginated(queryBuilder, { pageSize = 1000, maxPages = 50 } = {}) {
+  const all = [];
+  for (let page = 0; page < maxPages; page++) {
+    const from = page * pageSize;
+    const to = from + pageSize - 1;
+    const { data, error } = await queryBuilder.range(from, to);
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    all.push(...data);
+    if (data.length < pageSize) break; // short page = end of results
+  }
+  return all;
+}
+
 module.exports = function createFlashcardStudyRoutes({ requireAuth }) {
   const router = express.Router();
 
@@ -38,13 +56,22 @@ module.exports = function createFlashcardStudyRoutes({ requireAuth }) {
   // Called once on login; cached client-side. Invalidated after mark-done.
   router.get('/api/flashcards/bundle', requireAuth, async (req, res) => {
     try {
-      // Load all enabled cards across all bar subjects
-      const { data: allCards, error: cErr } = await supabase
-        .from('flashcards')
-        .select('id, subject, node_id')
-        .eq('enabled', true)
-        .in('subject', VALID_SUBJECTS);
-      if (cErr) return res.status(500).json({ error: cErr.message });
+      // Load ALL enabled cards across all bar subjects.
+      // Uses paginated fetch because cross-subject totals can exceed
+      // Supabase's default 1000-row cap (this was the root cause of
+      // Session 4's "missing cards" bug).
+      let allCards = [];
+      try {
+        allCards = await fetchAllPaginated(
+          supabase
+            .from('flashcards')
+            .select('id, subject, node_id')
+            .eq('enabled', true)
+            .in('subject', VALID_SUBJECTS)
+        );
+      } catch(e) {
+        return res.status(500).json({ error: e.message });
+      }
 
       // Build counts
       const topicCountsBySubject = {};
@@ -67,16 +94,20 @@ module.exports = function createFlashcardStudyRoutes({ requireAuth }) {
       const doneCountBySubject = {};
       for (const subj of VALID_SUBJECTS) doneCountBySubject[subj] = 0;
 
-      const { data: doneRows, error: dErr } = await supabase
-        .from('flashcard_reviews')
-        .select('flashcard_id')
-        .eq('user_id', req.userId)
-        .eq('done', true);
-      if (dErr) {
-        console.error('[fc-bundle] done-rows query:', dErr.message);
+      let doneRows = [];
+      try {
+        doneRows = await fetchAllPaginated(
+          supabase
+            .from('flashcard_reviews')
+            .select('flashcard_id')
+            .eq('user_id', req.userId)
+            .eq('done', true)
+        );
+      } catch(e) {
+        console.error('[fc-bundle] done-rows query:', e.message);
         // Non-fatal — proceed with empty done set
       }
-      for (const r of (doneRows || [])) {
+      for (const r of doneRows) {
         doneCardIds.push(r.flashcard_id);
         const subj = cardSubjMap[r.flashcard_id];
         if (subj && doneCountBySubject[subj] != null) {
@@ -237,11 +268,17 @@ module.exports = function createFlashcardStudyRoutes({ requireAuth }) {
   // ── Route 5: Cross-subject aggregate ─────────────────────────
   router.get('/api/flashcards/stats-all', requireAuth, async (req, res) => {
     try {
-      const { data: allCards, error: cErr } = await supabase
-        .from('flashcards')
-        .select('id, subject')
-        .eq('enabled', true);
-      if (cErr) return res.status(500).json({ error: cErr.message });
+      let allCards = [];
+      try {
+        allCards = await fetchAllPaginated(
+          supabase
+            .from('flashcards')
+            .select('id, subject')
+            .eq('enabled', true)
+        );
+      } catch(e) {
+        return res.status(500).json({ error: e.message });
+      }
 
       const bySubject = {};
       const cardSubjMap = {};
@@ -258,13 +295,23 @@ module.exports = function createFlashcardStudyRoutes({ requireAuth }) {
       for (const subj of VALID_SUBJECTS) totalCards += bySubject[subj].totalCards;
 
       if (cardIds.length) {
-        const { data: doneRows } = await supabase
-          .from('flashcard_reviews')
-          .select('flashcard_id')
-          .eq('user_id', req.userId)
-          .eq('done', true)
-          .in('flashcard_id', cardIds);
-        for (const r of (doneRows || [])) {
+        let doneRows = [];
+        try {
+          // Supabase caps `.in()` array length around 1000 — chunk the cardIds
+          for (let i = 0; i < cardIds.length; i += 500) {
+            const chunk = cardIds.slice(i, i + 500);
+            const partial = await fetchAllPaginated(
+              supabase
+                .from('flashcard_reviews')
+                .select('flashcard_id')
+                .eq('user_id', req.userId)
+                .eq('done', true)
+                .in('flashcard_id', chunk)
+            );
+            doneRows.push(...partial);
+          }
+        } catch(_) { /* non-fatal */ }
+        for (const r of doneRows) {
           const subj = cardSubjMap[r.flashcard_id];
           if (subj && bySubject[subj]) {
             bySubject[subj].doneCount++;
