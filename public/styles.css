@@ -1485,3 +1485,13 @@ button[onclick*="switchSubjectTab(currentSubject,'quiz')"] { display: none !impo
   .fc-nav-row { grid-template-columns: 1fr 1fr; }
   .fc-nav-btn:nth-child(2) { grid-column: span 2; order: -1; }
 }
+
+/* Flash-highlight a topic row after returning from a study session (Session 4.2) */
+@keyframes fc-flash-highlight {
+  0%   { background: rgba(201,168,76,.28); box-shadow: 0 0 0 2px rgba(201,168,76,.4); }
+  100% { background: transparent; box-shadow: 0 0 0 0 rgba(201,168,76,0); }
+}
+.fc-flash-highlight {
+  animation: fc-flash-highlight 1.6s ease-out;
+  border-radius: 8px;
+}

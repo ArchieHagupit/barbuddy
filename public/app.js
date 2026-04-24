@@ -2489,6 +2489,13 @@ let _fcBundleCache = null;
 let _fcDoneSet = new Set();
 let _fcBundlePromise = null;
 
+// Remembered UI state for the Flashcards tab. Persists across re-renders
+// so ending a study session returns the user to their prior scroll/expand
+// state instead of scrolling back to the top.
+let _fcLastClickedNodeId = null;      // Node ID of the topic that launched the current session
+let _fcLastSubject = null;             // Subject of the last-rendered Flashcards tab
+const _fcExpandState = new Map();      // nodeId -> boolean (true = expanded)
+
 // Module-level study session state
 let _fcSession = null;
 // Shape when active:
@@ -2682,9 +2689,16 @@ function renderFlashcardTreeNodes(nodes, container, subj, counts, depth) {
       headerEl.appendChild(nameEl);
       const bodyEl = document.createElement('div');
       bodyEl.className = 'tl-group-body open';
+      // Restore prior expansion state if we have one
+      const sectionPriorExpanded = _fcExpandState.has(node.id) ? _fcExpandState.get(node.id) : true;
+      if (!sectionPriorExpanded) {
+        arrowEl.classList.remove('open');
+        bodyEl.classList.remove('open');
+      }
       headerEl.addEventListener('click', () => {
         arrowEl.classList.toggle('open');
         bodyEl.classList.toggle('open');
+        _fcExpandState.set(node.id, bodyEl.classList.contains('open'));
       });
       container.appendChild(headerEl);
       container.appendChild(bodyEl);
@@ -2698,6 +2712,7 @@ function renderFlashcardTreeNodes(nodes, container, subj, counts, depth) {
 
       const groupEl = document.createElement('div');
       groupEl.className = 'tl-group';
+      if (node.id) groupEl.setAttribute('data-node-id', node.id);
       const headerEl = document.createElement('div');
       headerEl.className = 'tl-group-header';
       const arrowEl = document.createElement('span');
@@ -2720,10 +2735,17 @@ function renderFlashcardTreeNodes(nodes, container, subj, counts, depth) {
 
       const bodyEl = document.createElement('div');
       bodyEl.className = 'tl-group-body open';
+      // Restore prior expansion state if we have one
+      const groupPriorExpanded = _fcExpandState.has(node.id) ? _fcExpandState.get(node.id) : true;
+      if (!groupPriorExpanded) {
+        arrowEl.classList.remove('open');
+        bodyEl.classList.remove('open');
+      }
       headerEl.addEventListener('click', (ev) => {
         ev.stopPropagation();
         arrowEl.classList.toggle('open');
         bodyEl.classList.toggle('open');
+        _fcExpandState.set(node.id, bodyEl.classList.contains('open'));
       });
       groupEl.appendChild(headerEl);
       groupEl.appendChild(bodyEl);
@@ -2780,6 +2802,12 @@ function renderFlashcardTreeNodes(nodes, container, subj, counts, depth) {
 }
 
 async function startFlashcardStudySession(subj, mode, nodeId) {
+  // Remember the last-clicked topic so endFlashcardSession can return the user there.
+  if (mode === 'topic' && nodeId) {
+    // nodeId may be an array or a single string depending on how the caller passes it.
+    const firstId = Array.isArray(nodeId) ? nodeId[0] : nodeId;
+    if (firstId) _fcLastClickedNodeId = firstId;
+  }
   try {
     let cards = [];
 
@@ -3042,6 +3070,7 @@ function renderFlashcardSessionSummary() {
 
 function endFlashcardSession() {
   const subj = _fcSession?.subject;
+  const nodeIdToRestore = _fcLastClickedNodeId; // captured before _fcSession is cleared
   _fcSession = null;
   detachFlashcardKeyboardListener();
   // Safety: make sure bundle is still in sync by invalidating + refetching
@@ -3049,9 +3078,50 @@ function endFlashcardSession() {
   fetchFlashcardBundle(true);
   if (subj) {
     const content = document.getElementById('subject-tab-content');
-    if (content) renderFlashcardsTab(subj, content);
+    if (content) {
+      renderFlashcardsTab(subj, content);
+      // After the tab re-renders its tree, scroll to the remembered node.
+      // renderFlashcardsTab is synchronous from cache when bundle is warm, so
+      // the DOM should be ready immediately; use a short timeout as a safety
+      // net in case of any async paint.
+      if (nodeIdToRestore) {
+        setTimeout(() => scrollFlashcardNodeIntoView(nodeIdToRestore), 50);
+      }
+    }
   }
   refreshSidebarFlashcardBadge();
+}
+
+// Scroll the given topic node into view within the flashcards topic tree
+// and flash-highlight it briefly so the user knows where they are.
+function scrollFlashcardNodeIntoView(nodeId) {
+  if (!nodeId) return;
+  // Find any DOM element tagged with this nodeId. Our tree uses
+  // data-node-id on leaf rows; groups don't have it yet, so leaves
+  // are the primary target. We search within the Flashcards tab container.
+  const container = document.getElementById('subject-tab-content');
+  if (!container) return;
+  const el = container.querySelector('[data-node-id="' + nodeId.replace(/"/g, '\\"') + '"]');
+  if (!el) return;
+  // Expand any collapsed ancestor groups so the element is actually visible
+  let anc = el.parentElement;
+  while (anc && anc !== container) {
+    if (anc.classList && anc.classList.contains('tl-group-body') && !anc.classList.contains('open')) {
+      anc.classList.add('open');
+      // Also flip the sibling header's arrow
+      const hdr = anc.previousElementSibling;
+      if (hdr) {
+        const arrow = hdr.querySelector('.tl-expand-arrow');
+        if (arrow) arrow.classList.add('open');
+      }
+    }
+    anc = anc.parentElement;
+  }
+  // Scroll into view
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  // Flash-highlight
+  el.classList.add('fc-flash-highlight');
+  setTimeout(() => { el.classList.remove('fc-flash-highlight'); }, 1600);
 }
 
 // ── Keyboard shortcuts ───────────────────────────────────────
