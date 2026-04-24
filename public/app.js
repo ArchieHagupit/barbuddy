@@ -2885,7 +2885,8 @@ function renderFlashcardCardViewer() {
     distinction: '⚖️ Distinction',
   }[card.card_type] || card.card_type;
 
-  const progress = Math.round(((position) / cards.length) * 100);
+  // Include the current card in "viewed" — so Card N of N shows a full bar.
+  const progress = Math.round(((position + 1) / cards.length) * 100);
   const isDone = !!card.done;
   const atStart = position === 0;
   const atEnd = position === cards.length - 1;
