@@ -3233,10 +3233,11 @@ function _paintFlashcardOverviewWidget(el, bundle) {
     return;
   }
 
-  // Top 4 subjects by remaining (prioritize what still needs doing)
+  // All subjects with cards, sorted by remaining count (descending) so
+  // the highest-remaining surface first. No cap — chips wrap to multiple
+  // rows via flex-wrap in CSS.
   const topSubjects = subjectsWithCards
-    .sort((a, b) => b.remaining - a.remaining)
-    .slice(0, 4);
+    .sort((a, b) => b.remaining - a.remaining);
 
   el.innerHTML = `
     <div class="fc-widget-inner">
