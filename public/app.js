@@ -2689,8 +2689,8 @@ function renderFlashcardTreeNodes(nodes, container, subj, counts, depth) {
       headerEl.appendChild(nameEl);
       const bodyEl = document.createElement('div');
       bodyEl.className = 'tl-group-body open';
-      // Restore prior expansion state if we have one
-      const sectionPriorExpanded = _fcExpandState.has(node.id) ? _fcExpandState.get(node.id) : true;
+      // Default collapsed; user clicks to expand. Map preserves user choice within session.
+      const sectionPriorExpanded = _fcExpandState.has(node.id) ? _fcExpandState.get(node.id) : false;
       if (!sectionPriorExpanded) {
         arrowEl.classList.remove('open');
         bodyEl.classList.remove('open');
@@ -2735,8 +2735,8 @@ function renderFlashcardTreeNodes(nodes, container, subj, counts, depth) {
 
       const bodyEl = document.createElement('div');
       bodyEl.className = 'tl-group-body open';
-      // Restore prior expansion state if we have one
-      const groupPriorExpanded = _fcExpandState.has(node.id) ? _fcExpandState.get(node.id) : true;
+      // Default collapsed; user clicks to expand. Map preserves user choice within session.
+      const groupPriorExpanded = _fcExpandState.has(node.id) ? _fcExpandState.get(node.id) : false;
       if (!groupPriorExpanded) {
         arrowEl.classList.remove('open');
         bodyEl.classList.remove('open');
@@ -3537,7 +3537,7 @@ function renderTopicTree(nodes, container, subj, depth) {
       const headerEl = document.createElement('div');
       headerEl.className = 'tl-section-header';
       const arrowEl = document.createElement('span');
-      arrowEl.className = 'tl-expand-arrow open';
+      arrowEl.className = 'tl-expand-arrow';
       arrowEl.textContent = '▶';
       const nameEl = document.createElement('span');
       nameEl.className = 'tl-section-name';
@@ -3545,7 +3545,7 @@ function renderTopicTree(nodes, container, subj, depth) {
       headerEl.appendChild(arrowEl);
       headerEl.appendChild(nameEl);
       const bodyEl = document.createElement('div');
-      bodyEl.className = 'tl-group-body open';
+      bodyEl.className = 'tl-group-body';
       headerEl.addEventListener('click', () => {
         arrowEl.classList.toggle('open');
         bodyEl.classList.toggle('open');
@@ -3561,7 +3561,7 @@ function renderTopicTree(nodes, container, subj, depth) {
       const headerEl = document.createElement('div');
       headerEl.className = 'tl-group-header';
       const arrowEl = document.createElement('span');
-      arrowEl.className = 'tl-expand-arrow open';
+      arrowEl.className = 'tl-expand-arrow';
       arrowEl.textContent = '▶';
       const nameEl = document.createElement('span');
       nameEl.className = 'tl-group-name';
@@ -3575,7 +3575,7 @@ function renderTopicTree(nodes, container, subj, depth) {
         headerEl.appendChild(pdfBadge);
       }
       const bodyEl = document.createElement('div');
-      bodyEl.className = 'tl-group-body open';
+      bodyEl.className = 'tl-group-body';
       headerEl.addEventListener('click', () => {
         arrowEl.classList.toggle('open');
         bodyEl.classList.toggle('open');
