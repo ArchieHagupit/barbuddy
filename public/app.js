@@ -3770,7 +3770,7 @@ async function renderTopicPDFViewer(node, container) {
   const displayName = h(node.title || node.name || '');
   // STEP 1: Show skeleton with spinner immediately — no waiting
   container.innerHTML = `
-    <div class="pdf-viewer-shell">
+    <div class="pdf-viewer-shell" id="pdf-viewer-shell-${h(node.id)}">
       <div class="pdf-viewer-header">
         <div class="pdf-header-info">
           <span style="font-size:16px;">📄</span>
@@ -3779,14 +3779,21 @@ async function renderTopicPDFViewer(node, container) {
             <div class="pdf-topic-sub">Review Material · ${h(node.pdfName || 'Document')}</div>
           </div>
         </div>
+        <button class="pdf-maximize-btn" id="pdf-max-btn-${h(node.id)}" title="Maximize (or press F)" onclick="toggleMaximizePdf('${h(node.id)}')">
+          <span class="pdf-max-icon">⛶</span>
+          <span class="pdf-max-label">Maximize</span>
+        </button>
       </div>
-      <div class="pdf-frame-wrap" id="pdf-frame-wrap-${node.id}">
-        <div class="pdf-loading-state" id="pdf-loading-${node.id}">
+      <div class="pdf-frame-wrap" id="pdf-frame-wrap-${h(node.id)}" oncontextmenu="return false">
+        <div class="pdf-loading-state" id="pdf-loading-${h(node.id)}">
           <div class="pdf-spinner"></div>
           <div style="font-size:13px;color:var(--muted);margin-top:12px;">Loading PDF…</div>
         </div>
       </div>
     </div>`;
+
+  // Attach the Ctrl/Cmd-S keyboard guard ONCE this viewer is in the DOM
+  attachPdfKeyboardGuard();
 
   try {
     // STEP 2: Fetch auth token
@@ -3794,7 +3801,11 @@ async function renderTopicPDFViewer(node, container) {
     const r = await fetch(`/api/syllabus/pdf-token/${node.id}`, { headers });
     if (!r.ok) throw new Error('Authentication failed (' + r.status + ')');
     const { token } = await r.json();
-    const pdfUrl = `/api/syllabus/pdf/${node.id}?token=${encodeURIComponent(token)}`;
+    // #toolbar=0&navpanes=0&scrollbar=0 is honored by Chrome/Edge/Firefox
+    // built-in PDF viewers — hides the toolbar that includes the Download button.
+    // Safari ignores it (still allows download); we accept that as an acknowledged
+    // gap per "casual deterrence only" scope.
+    const pdfUrl = `/api/syllabus/pdf/${node.id}?token=${encodeURIComponent(token)}#toolbar=0&navpanes=0&scrollbar=0`;
 
     // Guard: user navigated away while token was being fetched
     if (currentTopic?.id !== node.id) return;
@@ -3818,6 +3829,112 @@ async function renderTopicPDFViewer(node, container) {
         </button>
       </div>`;
   }
+}
+
+// ── PDF Maximize: Fullscreen API with CSS modal fallback ─────────
+function toggleMaximizePdf(nodeId) {
+  const shell = document.getElementById('pdf-viewer-shell-' + nodeId);
+  if (!shell) return;
+
+  // If currently in CSS modal mode, exit
+  if (shell.classList.contains('pdf-fullscreen-modal')) {
+    shell.classList.remove('pdf-fullscreen-modal');
+    document.body.classList.remove('pdf-fullscreen-modal-open');
+    updateMaximizeBtn(nodeId, false);
+    return;
+  }
+
+  // If currently in real fullscreen, exit
+  if (document.fullscreenElement === shell) {
+    document.exitFullscreen?.();
+    return; // fullscreenchange listener will update the button
+  }
+
+  // Try real fullscreen first
+  const reqFs = shell.requestFullscreen || shell.webkitRequestFullscreen || shell.msRequestFullscreen;
+  if (reqFs) {
+    try {
+      const result = reqFs.call(shell);
+      if (result && typeof result.then === 'function') {
+        result.then(() => updateMaximizeBtn(nodeId, true)).catch(() => activateModalFallback(shell, nodeId));
+      } else {
+        updateMaximizeBtn(nodeId, true);
+      }
+      return;
+    } catch (_) { /* fall through to CSS modal */ }
+  }
+
+  // Fallback: CSS modal (covers the page, browser chrome stays visible)
+  activateModalFallback(shell, nodeId);
+}
+
+function activateModalFallback(shell, nodeId) {
+  shell.classList.add('pdf-fullscreen-modal');
+  document.body.classList.add('pdf-fullscreen-modal-open');
+  updateMaximizeBtn(nodeId, true);
+}
+
+function updateMaximizeBtn(nodeId, isMaximized) {
+  const btn = document.getElementById('pdf-max-btn-' + nodeId);
+  if (!btn) return;
+  const icon = btn.querySelector('.pdf-max-icon');
+  const label = btn.querySelector('.pdf-max-label');
+  if (isMaximized) {
+    if (icon) icon.textContent = '⛶';
+    if (label) label.textContent = 'Exit';
+    btn.classList.add('is-maximized');
+  } else {
+    if (icon) icon.textContent = '⛶';
+    if (label) label.textContent = 'Maximize';
+    btn.classList.remove('is-maximized');
+  }
+}
+
+// Listen for fullscreen state changes from outside our toggle (e.g. Esc key)
+if (!window._pdfFsListenerAttached) {
+  document.addEventListener('fullscreenchange', () => {
+    // Find any pdf-viewer-shell that should reflect the new state
+    document.querySelectorAll('.pdf-viewer-shell').forEach(shell => {
+      const idMatch = shell.id.match(/^pdf-viewer-shell-(.+)$/);
+      if (!idMatch) return;
+      const nodeId = idMatch[1];
+      const isFs = (document.fullscreenElement === shell);
+      updateMaximizeBtn(nodeId, isFs);
+    });
+  });
+  // Also listen for Esc to exit modal fallback
+  document.addEventListener('keydown', (ev) => {
+    if (ev.key !== 'Escape') return;
+    const openShell = document.querySelector('.pdf-viewer-shell.pdf-fullscreen-modal');
+    if (openShell) {
+      const idMatch = openShell.id.match(/^pdf-viewer-shell-(.+)$/);
+      if (idMatch) toggleMaximizePdf(idMatch[1]);
+    }
+  });
+  window._pdfFsListenerAttached = true;
+}
+
+// ── PDF Keyboard Guard: block Ctrl/Cmd-S while a viewer is mounted ──
+let _pdfKeyboardGuardAttached = false;
+function attachPdfKeyboardGuard() {
+  if (_pdfKeyboardGuardAttached) return;
+  _pdfKeyboardGuardAttached = true;
+  document.addEventListener('keydown', (ev) => {
+    // Only act if a PDF viewer is currently in the DOM
+    if (!document.querySelector('.pdf-viewer-shell')) return;
+    // Block Ctrl/Cmd-S (Save), Ctrl/Cmd-P (Print), Ctrl/Cmd-Shift-S (Save As variant)
+    const isSaveCombo =
+      (ev.ctrlKey || ev.metaKey) &&
+      (ev.key === 's' || ev.key === 'S' || ev.key === 'p' || ev.key === 'P');
+    if (isSaveCombo) {
+      ev.preventDefault();
+      // Optional: brief toast
+      if (typeof showToast === 'function') {
+        showToast('Saving and printing are disabled for this content.', 'info');
+      }
+      return false;
+    }
+  }, true); // capture phase so we beat the iframe
 }
 
 function renderNoMaterials(subjKey, topicName) {
