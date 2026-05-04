@@ -122,9 +122,17 @@ module.exports = function createSyllabusRoutes({
     const stat = fs.statSync(filePath);
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Length', stat.size);
+    // 'inline' = display in browser, do not auto-trigger Save As dialog.
+    // Filename retained so any user-initiated save still gets a sane name.
     res.setHeader('Content-Disposition', `inline; filename="${(targetNode.pdfName || 'document.pdf').replace(/"/g, '')}"`);
     res.setHeader('X-Frame-Options', 'SAMEORIGIN');
     res.setHeader('Content-Security-Policy', "frame-ancestors 'self'");
+    // Discourage caching to a downloadable file; signal to browsers/proxies
+    // not to keep a persistent copy. Casual deterrence — does not stop a
+    // determined user from grabbing via DevTools network tab.
+    res.setHeader('Cache-Control', 'private, no-store, no-cache, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
     const stream = fs.createReadStream(filePath);
     stream.pipe(res);
     stream.on('error', err => { console.error('PDF stream error:', err.message); if (!res.headersSent) res.status(500).end(); });
