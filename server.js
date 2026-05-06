@@ -1039,15 +1039,24 @@ async function callClaudeHaikuJSON(prompt, maxTokens = 3000, _truncRetry = 0) {
   await aiSemaphore.acquire();
   const JSON_SYSTEM = 'You are a JSON API endpoint. Output ONLY valid JSON. STRICT RULES: (1) Use single quotes inside string values — NEVER double quotes inside strings. (2) No literal newlines inside string values — use \\n if needed. (3) No trailing commas anywhere. (4) Response must start with { and end with }. (5) No markdown, no code fences, no backticks, no explanations. (6) If feedback contains quotes, use single quotes instead.';
   const JSON_SUFFIX = '\n\nCRITICAL: Return ONLY raw JSON. No markdown. No backticks. No fences. Start with { and end with }. Use single quotes inside string values (never double quotes inside strings). No trailing commas. No line breaks inside string values.';
+  // Per-retry corrective hints. temperature=0 makes the model deterministic,
+  // so retrying with the same body reproduces the same malformed JSON. Each
+  // retry appends a different correction to perturb the prompt and break the
+  // failure cycle. Patterns called out are the actual ones observed in logs.
+  const RETRY_HINTS = [
+    '\n\nSELF-CHECK BEFORE RESPONDING: (a) Count opening braces { and closing braces } — they must match exactly. (b) Use ONE comma between fields — never two in a row (",," is INVALID). (c) Close objects with } and arrays with ] — never mix. (d) After an object close like }}, the next character must be either , or } or end of JSON.',
+    '\n\nFINAL CHECK: Your previous response had a JSON parse error. Common Haiku mistakes to avoid: writing }},, instead of }},  — writing }],"key" instead of }},"key" — writing }}}, when only }} is needed. Walk the brace stack mentally before emitting each closer.',
+  ];
   try {
-    const body = JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: maxTokens,
-      temperature: 0,
-      system: JSON_SYSTEM,
-      messages: [{ role: 'user', content: prompt + JSON_SUFFIX }],
-    });
     for (let attempt = 1; attempt <= 3; attempt++) {
+      const userContent = prompt + JSON_SUFFIX + (attempt > 1 ? RETRY_HINTS[attempt - 2] : '');
+      const body = JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: maxTokens,
+        temperature: 0,
+        system: JSON_SYSTEM,
+        messages: [{ role: 'user', content: userContent }],
+      });
       const r = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-api-key': API_KEY, 'anthropic-version': '2023-06-01' },
@@ -1056,7 +1065,13 @@ async function callClaudeHaikuJSON(prompt, maxTokens = 3000, _truncRetry = 0) {
       });
       const d = await r.json();
       if (r.status === 529 || r.status === 429 || d?.error?.type === 'overloaded_error') {
-        if (attempt < 3) { await sleep(attempt * 5000); continue; }
+        if (attempt < 3) {
+          // Jittered exponential backoff so concurrent overloaded callers don't all retry in lockstep.
+          const base = attempt * 5000;
+          const jittered = Math.floor(base * (0.7 + Math.random() * 0.6)); // ±30%
+          await sleep(jittered);
+          continue;
+        }
         throw new Error('Haiku overloaded after retries');
       }
       if (d.error) throw new Error(d.error.message);
@@ -1075,8 +1090,16 @@ async function callClaudeHaikuJSON(prompt, maxTokens = 3000, _truncRetry = 0) {
       }
       const raw = sanitizeAIResponse(d.content.map(c => c.text || '').join(''));
       const parsed = extractJSON(raw);
-      if (parsed !== null) return parsed;
-      if (attempt < 3) await sleep(1000);
+      if (parsed !== null) {
+        if (attempt > 1) console.log(`[callClaudeHaikuJSON] parse recovered on attempt ${attempt} via prompt-variation`);
+        return parsed;
+      }
+      if (attempt < 3) {
+        // Jitter the parse-retry sleep too — avoids synchronized retries when
+        // many concurrent users hit the same Haiku-malformation pattern.
+        const jittered = Math.floor(1000 * (0.7 + Math.random() * 0.6));
+        await sleep(jittered);
+      }
     }
     return null;
   } finally {
@@ -1439,8 +1462,11 @@ async function callClaude(messages, max_tokens=2000, { temperature } = {}) {
   for (let i = 0; i < SCHEDULE.length; i++) {
     const { model, waitBefore } = SCHEDULE[i];
     if (waitBefore > 0) {
-      console.warn(`Claude overloaded — attempt ${i+1}/4, waiting ${waitBefore/1000}s then trying ${model}`);
-      await sleep(waitBefore);
+      // Jitter the wait so simultaneous-callers don't all retry the overloaded
+      // model at the same instant (which re-overloads it). ±25% spread.
+      const jittered = Math.floor(waitBefore * (0.75 + Math.random() * 0.5));
+      console.warn(`Claude overloaded — attempt ${i+1}/4, waiting ${(jittered/1000).toFixed(1)}s then trying ${model}`);
+      await sleep(jittered);
     } else if (i === 2) {
       console.warn('Claude (Sonnet) overloaded twice — switching to Haiku');
     }
