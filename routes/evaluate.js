@@ -593,6 +593,19 @@ Respond ONLY with valid JSON (no markdown):
     // Return immediately — HTTP connection released, client polls /api/eval-progress/:id
     res.json({ submissionId, total: questions.length });
 
+    // Persist the eval inputs to result.answers so failed evaluations can be
+    // retried later by admin tooling (otherwise the student's answer + the
+    // model_answer/context/etc. used at scoring time are lost and we can't
+    // re-run the evaluation deterministically). Fire-and-forget — never block
+    // the eval pipeline on this write.
+    if (resultId) {
+      supabase.from('results').update({
+        answers: { items: questions, submissionId, sessionType, subject, savedAt: new Date().toISOString() },
+      }).eq('id', resultId).then(({ error: ae }) => {
+        if (ae) console.warn('[evaluate-batch] answers persist failed:', ae.message);
+      });
+    }
+
     // Run evaluations in the background; store results when all finish
     Promise.all(questions.map((q, i) => enqueueEval(submissionId, userId, q, i)))
       .then(async scores => {

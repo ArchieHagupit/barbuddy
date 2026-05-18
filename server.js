@@ -1034,52 +1034,93 @@ IMPORTANT: Return pure JSON only. No { } inside string values. Plain text senten
   return null;
 }
 
-// ── callClaudeHaikuJSON — haiku-only, semaphore-guarded, for fast batch eval ─
+// ── callClaudeHaikuJSON — semaphore-guarded JSON eval call ──────────
+// Schedule (per slot = one Anthropic round-trip):
+//   slot 0  Haiku   no wait
+//   slot 1  Haiku   ~5s  jittered (after overload or parse fail)
+//   slot 2  Haiku   ~10s jittered
+//   slot 3  Haiku   ~20s jittered
+//   slot 4  Sonnet  no wait — fallback when Haiku is sustainedly overloaded
+//
+// 5 total attempts. Each Haiku slot uses a different corrective hint to
+// perturb the prompt (temperature=0 makes the model deterministic, so the
+// SAME body would reproduce the SAME malformed JSON). Sonnet runs once at
+// the end as a clean fallback; production logs show Sonnet rarely overloads
+// at the same time as Haiku, so this recovers the question instead of
+// returning Evaluation temporarily unavailable to the student.
 async function callClaudeHaikuJSON(prompt, maxTokens = 3000, _truncRetry = 0) {
   await aiSemaphore.acquire();
+  const HAIKU  = 'claude-haiku-4-5-20251001';
+  const SONNET = 'claude-sonnet-4-5-20250929';
+  const SCHEDULE = [
+    { model: HAIKU,  waitBefore: 0     },
+    { model: HAIKU,  waitBefore: 5000  },
+    { model: HAIKU,  waitBefore: 10000 },
+    { model: HAIKU,  waitBefore: 20000 },
+    { model: SONNET, waitBefore: 0     },
+  ];
   const JSON_SYSTEM = 'You are a JSON API endpoint. Output ONLY valid JSON. STRICT RULES: (1) Use single quotes inside string values — NEVER double quotes inside strings. (2) No literal newlines inside string values — use \\n if needed. (3) No trailing commas anywhere. (4) Response must start with { and end with }. (5) No markdown, no code fences, no backticks, no explanations. (6) If feedback contains quotes, use single quotes instead.';
   const JSON_SUFFIX = '\n\nCRITICAL: Return ONLY raw JSON. No markdown. No backticks. No fences. Start with { and end with }. Use single quotes inside string values (never double quotes inside strings). No trailing commas. No line breaks inside string values.';
-  // Per-retry corrective hints. temperature=0 makes the model deterministic,
-  // so retrying with the same body reproduces the same malformed JSON. Each
-  // retry appends a different correction to perturb the prompt and break the
-  // failure cycle. Patterns called out are the actual ones observed in logs.
+  // Per-slot corrective hints. Index aligns with SCHEDULE; slot 0 gets no
+  // hint, slots 1-3 escalate corrections, slot 4 (Sonnet) starts clean.
   const RETRY_HINTS = [
+    '',
     '\n\nSELF-CHECK BEFORE RESPONDING: (a) Count opening braces { and closing braces } — they must match exactly. (b) Use ONE comma between fields — never two in a row (",," is INVALID). (c) Close objects with } and arrays with ] — never mix. (d) After an object close like }}, the next character must be either , or } or end of JSON.',
-    '\n\nFINAL CHECK: Your previous response had a JSON parse error. Common Haiku mistakes to avoid: writing }},, instead of }},  — writing }],"key" instead of }},"key" — writing }}}, when only }} is needed. Walk the brace stack mentally before emitting each closer.',
+    '\n\nFINAL CHECK: Your previous response had a JSON parse error. Common mistakes: writing }},, instead of }},  — writing }],"key" instead of }},"key" — writing }}}, when only }} is needed. Walk the brace stack mentally before emitting each closer.',
+    '\n\nLAST CHANCE: emit the simplest possible valid JSON object for this evaluation. Use the literal field names from the schema and keep feedback strings short. Do not nest beyond what the schema requires.',
+    '',
   ];
+  const isOverloaded = (status, body) =>
+    status === 529 || status === 429 || body?.error?.type === 'overloaded_error';
   try {
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      const userContent = prompt + JSON_SUFFIX + (attempt > 1 ? RETRY_HINTS[attempt - 2] : '');
+    for (let i = 0; i < SCHEDULE.length; i++) {
+      const { model, waitBefore } = SCHEDULE[i];
+      if (waitBefore > 0) {
+        // ±30% jitter so concurrent overloaded callers don't retry in lockstep.
+        const jittered = Math.floor(waitBefore * (0.7 + Math.random() * 0.6));
+        console.warn(`[callClaudeHaikuJSON] retry ${i + 1}/${SCHEDULE.length} (${model}) — waiting ${(jittered / 1000).toFixed(1)}s`);
+        await sleep(jittered);
+      } else if (model === SONNET) {
+        console.warn('[callClaudeHaikuJSON] Haiku exhausted — falling back to Sonnet');
+      }
+      const userContent = prompt + JSON_SUFFIX + (RETRY_HINTS[i] || '');
       const body = JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
+        model,
         max_tokens: maxTokens,
         temperature: 0,
         system: JSON_SYSTEM,
         messages: [{ role: 'user', content: userContent }],
       });
-      const r = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-api-key': API_KEY, 'anthropic-version': '2023-06-01' },
-        body,
-        signal: AbortSignal.timeout(35000), // 35s timeout per attempt
-      });
-      const d = await r.json();
-      if (r.status === 529 || r.status === 429 || d?.error?.type === 'overloaded_error') {
-        if (attempt < 3) {
-          // Jittered exponential backoff so concurrent overloaded callers don't all retry in lockstep.
-          const base = attempt * 5000;
-          const jittered = Math.floor(base * (0.7 + Math.random() * 0.6)); // ±30%
-          await sleep(jittered);
+      let d;
+      try {
+        const r = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-api-key': API_KEY, 'anthropic-version': '2023-06-01' },
+          body,
+          signal: AbortSignal.timeout(45000), // 45s — Sonnet can be slower than Haiku
+        });
+        d = await r.json();
+        if (isOverloaded(r.status, d)) {
+          if (i < SCHEDULE.length - 1) continue; // try next slot
+          throw new Error(`${model} overloaded — all retries exhausted`);
+        }
+      } catch (e) {
+        // Network/timeout failure: log and try next slot (don't fail the whole batch on a transient blip)
+        if (i < SCHEDULE.length - 1) {
+          console.warn(`[callClaudeHaikuJSON] slot ${i + 1} (${model}) network error: ${e.message} — trying next slot`);
           continue;
         }
-        throw new Error('Haiku overloaded after retries');
+        throw e;
       }
-      if (d.error) throw new Error(d.error.message);
+      if (d.error) {
+        // Don't burn the remaining schedule on a hard API error (auth, bad request, etc.)
+        throw new Error(d.error.message);
+      }
       if (d.usage) {
         const _tot = d.usage.input_tokens + d.usage.output_tokens;
-        console.log(`[tokens] haiku | in:${d.usage.input_tokens} out:${d.usage.output_tokens} total:${_tot}`);
+        console.log(`[tokens] ${model === SONNET ? 'sonnet-fallback' : 'haiku'} | in:${d.usage.input_tokens} out:${d.usage.output_tokens} total:${_tot}`);
       }
-      // Detect truncation — retry once with more tokens
+      // Truncation — retry once with more tokens (independent of the retry schedule)
       if (d.stop_reason === 'max_tokens') {
         console.warn('[callClaudeHaikuJSON] Truncated!', 'Used:', d.usage?.output_tokens, '/', maxTokens, 'tokens.', 'Retrying with', maxTokens + 1000);
         if (_truncRetry < 1) {
@@ -1091,16 +1132,15 @@ async function callClaudeHaikuJSON(prompt, maxTokens = 3000, _truncRetry = 0) {
       const raw = sanitizeAIResponse(d.content.map(c => c.text || '').join(''));
       const parsed = extractJSON(raw);
       if (parsed !== null) {
-        if (attempt > 1) console.log(`[callClaudeHaikuJSON] parse recovered on attempt ${attempt} via prompt-variation`);
+        if (i > 0) console.log(`[callClaudeHaikuJSON] success on slot ${i + 1}/${SCHEDULE.length} (${model})`);
         return parsed;
       }
-      if (attempt < 3) {
-        // Jitter the parse-retry sleep too — avoids synchronized retries when
-        // many concurrent users hit the same Haiku-malformation pattern.
-        const jittered = Math.floor(1000 * (0.7 + Math.random() * 0.6));
-        await sleep(jittered);
+      // Parse failed for this slot — fall through to next slot (different prompt hint or model)
+      if (i < SCHEDULE.length - 1) {
+        console.warn(`[callClaudeHaikuJSON] slot ${i + 1} (${model}) parse failed — trying next slot`);
       }
     }
+    console.error('[callClaudeHaikuJSON] All schedule slots exhausted without parseable JSON');
     return null;
   } finally {
     aiSemaphore.release();
@@ -1121,6 +1161,12 @@ app.use(require('./routes/evaluate')({
   evalProgress, evalResults, xpResults, EvalQueue, enqueueEval,
   API_KEY, KB, awardXP,
   callClaudeJSON, generateALACModelAnswer, generateConceptualModelAnswer,
+}));
+
+// ── Admin: retry failed evaluations (scans results for _evalError entries,
+//    re-runs them through the eval queue, rewrites scores + pass/fail) ─────
+app.use(require('./routes/admin-retry-evals')({
+  adminOnly, enqueueEval,
 }));
 
 
