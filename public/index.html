@@ -521,6 +521,25 @@ new PerformanceObserver((list) => {
         <div id="backfillAltAlacLabel" style="font-size:12px;color:var(--muted);"></div>
       </div>
     </div>
+    <!-- RETRY FAILED EVALUATIONS -->
+    <div style="background:var(--card);border:1px solid var(--bdr2);border-radius:16px;padding:20px;margin-top:18px;">
+      <h3 style="font-family:var(--fd);font-size:16px;font-weight:700;color:#ff6b8a;margin-bottom:4px;">🔁 Retry Failed Evaluations</h3>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.55;">Scans recent results for questions flagged <code style="background:var(--card3);padding:1px 5px;border-radius:4px;">_evalError: true</code> (the "Evaluation temporarily unavailable" cases) and re-runs them through the hardened eval queue. Recomputes the result's total score and pass/fail when complete. Results from before answers-persistence shipped cannot be retried — they'll appear under "no retry data".</p>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+        <label style="font-size:12px;color:var(--muted);">Days back:</label>
+        <input type="number" id="retryEvalsDaysInput" value="90" min="1" max="365" style="background:var(--card3);border:1px solid var(--bdr2);border-radius:6px;padding:4px 8px;width:70px;color:var(--white);font-family:var(--fm);font-size:13px;outline:none;" />
+        <button class="btn-gold" id="retryEvalsPreviewBtn" onclick="previewFailedEvals()" style="font-size:13px;padding:8px 14px;">🔍 Preview</button>
+        <button class="btn-gold" id="retryEvalsBtn" onclick="startRetryFailedEvals()" style="font-size:13px;padding:8px 18px;background:#ff6b8a;border-color:#ff6b8a;">🔁 Retry Failed Evals</button>
+        <span id="retryEvalsStatus" style="font-size:13px;color:var(--muted);"></span>
+      </div>
+      <div id="retryEvalsPreviewBox" style="display:none;font-size:12px;color:var(--muted);background:var(--card3);border-radius:8px;padding:10px;margin-bottom:10px;"></div>
+      <div id="retryEvalsProgress" style="display:none;margin-top:14px;">
+        <div style="background:var(--card3);border-radius:8px;height:8px;overflow:hidden;margin-bottom:8px;">
+          <div id="retryEvalsBar" style="height:100%;width:0%;background:#ff6b8a;border-radius:8px;transition:width .4s;"></div>
+        </div>
+        <div id="retryEvalsLabel" style="font-size:12px;color:var(--muted);"></div>
+      </div>
+    </div>
     <!-- BAR EXAM DATE CARD -->
     <div style="background:var(--card);border:1px solid var(--bdr2);border-radius:16px;padding:20px;margin-top:18px;">
       <h3 style="font-family:var(--fd);font-size:16px;font-weight:700;color:var(--gold-l);margin-bottom:4px;">⚖️ Bar Exam Date</h3>

@@ -6622,6 +6622,83 @@ async function startAltAlacBackfill() {
   }
 }
 
+// ── Retry Failed Evaluations ──────────────────────────────────
+let _retryEvalsPollInterval = null;
+async function previewFailedEvals() {
+  const tok = sessionToken || '';
+  const days = Math.max(1, Math.min(365, parseInt(document.getElementById('retryEvalsDaysInput').value) || 90));
+  const status = document.getElementById('retryEvalsStatus');
+  const box = document.getElementById('retryEvalsPreviewBox');
+  status.textContent = 'Scanning…';
+  box.style.display = 'none';
+  try {
+    const r = await fetch(`/api/admin/failed-evaluations/preview?daysBack=${days}`, { headers: { 'x-session-token': tok } });
+    const d = await r.json();
+    if (d.error) { status.textContent = '❌ ' + d.error; return; }
+    status.textContent = '';
+    box.style.display = 'block';
+    box.innerHTML = `
+      <div><strong>Scanned:</strong> ${d.scanned} results in last ${d.daysBack} days</div>
+      <div><strong>With failed evaluations:</strong> ${d.resultsWithFailures}</div>
+      <div><strong>Retryable</strong> (have stored answers): <span style="color:#7dd3a3">${d.retryable}</span></div>
+      <div><strong>Not retryable</strong> (pre-fix, no stored answers): <span style="color:#ff9b6b">${d.notRetryable}</span></div>
+      ${d.sample?.length ? `<div style="margin-top:8px;color:var(--muted);">First ${d.sample.length} candidates:</div>
+      <ul style="margin:4px 0 0 18px;padding:0;font-size:11px;line-height:1.6;">
+        ${d.sample.map(c => `<li>${c.id.slice(0,16)}… · ${c.subject||'—'} · ${c.failedCount} failed · ${c.hasRetryData ? '✓ retryable' : '✗ no data'}</li>`).join('')}
+      </ul>` : ''}
+    `;
+  } catch(e) {
+    status.textContent = '❌ ' + e.message;
+  }
+}
+
+async function startRetryFailedEvals() {
+  const tok = sessionToken || '';
+  const days = Math.max(1, Math.min(365, parseInt(document.getElementById('retryEvalsDaysInput').value) || 90));
+  if (!confirm(`Retry all failed evaluations from the last ${days} days?\n\nThis will re-run any question scored "Evaluation temporarily unavailable" through the eval queue and update the affected result records. Pre-fix results with no stored answers will be skipped.`)) return;
+  const btn = document.getElementById('retryEvalsBtn');
+  const status = document.getElementById('retryEvalsStatus');
+  const progressWrap = document.getElementById('retryEvalsProgress');
+  const bar = document.getElementById('retryEvalsBar');
+  const label = document.getElementById('retryEvalsLabel');
+  btn.disabled = true;
+  status.textContent = 'Starting…';
+  try {
+    const r = await fetch('/api/admin/retry-failed-evaluations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-session-token': tok },
+      body: JSON.stringify({ daysBack: days }),
+    });
+    const d = await r.json();
+    if (d.error) { status.textContent = '❌ ' + d.error; btn.disabled = false; return; }
+    if (!d.started) { status.textContent = d.message || 'Already running.'; btn.disabled = false; return; }
+    if (d.totalResults === 0) { status.textContent = '✅ No failed evaluations found.'; btn.disabled = false; return; }
+    progressWrap.style.display = 'block';
+    status.textContent = '';
+    clearInterval(_retryEvalsPollInterval);
+    _retryEvalsPollInterval = setInterval(async () => {
+      try {
+        const pr = await fetch('/api/admin/retry-failed-evaluations/status', { headers: { 'x-session-token': tok } });
+        const ps = await pr.json();
+        const pct = ps.totalResults > 0 ? Math.round((ps.scannedResults / ps.totalResults) * 100) : 0;
+        bar.style.width = pct + '%';
+        if (ps.complete) {
+          label.innerHTML = `✅ Complete. <strong>${ps.succeeded}</strong> questions recovered, <strong>${ps.stillFailing}</strong> still failing, <strong>${ps.noDataForRetry}</strong> had no stored answers. <strong>${ps.updatedResults}</strong> result records updated${ps.errors?.length ? ` (${ps.errors.length} errors)` : ''}.`;
+          status.textContent = '';
+          clearInterval(_retryEvalsPollInterval);
+          btn.disabled = false;
+          btn.textContent = '🔁 Re-run Retry';
+        } else {
+          label.textContent = `Processing ${ps.scannedResults} / ${ps.totalResults} results · ${ps.succeeded} recovered, ${ps.stillFailing} still failing`;
+        }
+      } catch(e) { /* ignore poll errors */ }
+    }, 2000);
+  } catch(e) {
+    status.textContent = '❌ ' + e.message;
+    btn.disabled = false;
+  }
+}
+
 async function retriggerGen(){
   if(!confirm('Regenerate all content? This replaces all existing lessons and quizzes.'))return;
   // Clear local cache
