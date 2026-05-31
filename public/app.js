@@ -83,7 +83,7 @@ let mockTimeLimitSecs=0; // original time limit in seconds (0 = no limit)
 let manualBatch=[], manualQNum=1;
 let adminKey='', sseSource=null;
 let currentSubject = null;  // active subject key ('civil'|'labor'|...|'custom'|null)
-let currentMode    = null;  // active mode ('learn'|'quiz'|'mockbar'|null)
+let currentMode    = null;  // active mode ('flashcards'|'mockbar'|'speeddrill'|'learn'|'quiz'|null)
 // Syllabus builder state
 let syllabusBuilderSubject = 'civil';
 let syllabusData = {};
@@ -587,7 +587,7 @@ window.addEventListener('DOMContentLoaded', async () => {
       const lastSubj = sessionStorage.getItem('bb_last_subject');
       const lastTab  = sessionStorage.getItem('bb_last_tab');
       if (lastView === 'subject' && lastSubj) {
-        navToSubject(lastSubj, lastTab || 'learn');
+        navToSubject(lastSubj, lastTab || 'flashcards');
       } else if (lastView === 'admin') {
         navToAdmin();
       } else if (lastView === 'progress') {
@@ -2100,10 +2100,13 @@ function navToSubject(subj, mode) {
 
   // Determine which mode to default to (pick first enabled)
   const ts = window.TAB_SETTINGS;
-  const modesInOrder = ['learn','quiz','mockbar','speeddrill'];
-  let targetMode = mode || 'learn';
+  // Tab landing priority: Flashcards is the primary default since Learn + Quiz
+  // are UI-hidden. Order reflects what to try if the requested mode is disabled
+  // for this subject via admin tab-settings.
+  const modesInOrder = ['flashcards','mockbar','speeddrill','learn','quiz'];
+  let targetMode = mode || 'flashcards';
   if (ts?.subjects?.[subj]?.[targetMode] === false) {
-    targetMode = modesInOrder.find(m => ts.subjects?.[subj]?.[m] !== false) || 'learn';
+    targetMode = modesInOrder.find(m => ts.subjects?.[subj]?.[m] !== false) || 'flashcards';
   }
 
   currentSubject = subj; currentMode = targetMode;
