@@ -2176,7 +2176,11 @@ function switchSubjectTab(subj, mode) {
   // If disabled, auto-pick first enabled
   const ts = window.TAB_SETTINGS?.subjects?.[subj] || {};
   if (ts[mode] === false) {
-    const first = ['learn','quiz','mockbar','speeddrill','flashcards'].find(m => ts[m] !== false);
+    // Learn + Quiz tabs are UI-hidden — prefer Flashcards as the landing tab.
+    // Order reflects priority: flashcards first, then mockbar, then speeddrill,
+    // then learn (hidden but kept as a final fallback so admins toggling the
+    // CSS hide can still navigate via the URL/state).
+    const first = ['flashcards','mockbar','speeddrill','learn','quiz'].find(m => ts[m] !== false);
     if (first) { switchSubjectTab(subj, first); return; }
   }
   currentMode = mode;
