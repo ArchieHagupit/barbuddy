@@ -1195,6 +1195,10 @@ select.form-input{cursor:pointer;}
 #stab-quiz { display: none !important; }
 button[onclick*="switchSubjectTab(currentSubject,'quiz')"] { display: none !important; }
 
+/* ── Learn module hidden (UI only — code intact, remove these rules to re-enable) ── */
+#stab-learn { display: none !important; }
+button[onclick*="switchSubjectTab(currentSubject,'learn')"] { display: none !important; }
+
 /* ── Flashcard review + manual authoring (Session 2.2) ── */
 .fc-review-panel{
   border:1px solid var(--gold-l);
