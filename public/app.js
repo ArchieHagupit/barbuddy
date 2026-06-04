@@ -3453,10 +3453,12 @@ function renderOverview() {
           const pct  = prog.total > 0 ? Math.round((prog.done / prog.total) * 100) : 0;
           const pb   = pbCount(s.key);
           const ts = window.TAB_SETTINGS?.subjects?.[s.key] || {};
-          const allOff = ['learn','quiz','mockbar'].every(m => ts[m] === false);
+          // Hide a card only if EVERY learnable mode is off — flashcards is now the
+          // primary overview action so it goes in the gate too.
+          const allOff = ['learn','quiz','mockbar','flashcards','speeddrill'].every(m => ts[m] === false);
           if (allOff && !adminKey) return ''; // Hide fully restricted subjects from overview
-          const learnOk = ts.learn !== false;
-          const mockOk  = ts.mockbar !== false;
+          const flashcardsOk = ts.flashcards !== false;
+          const mockOk       = ts.mockbar    !== false;
           return `
             <div class="ov-subj-card" data-subj="${s.key}" style="--subj-color:${s.color}">
               <div class="ov-subj-top">
@@ -3471,7 +3473,7 @@ function renderOverview() {
                 ${pb > 0 ? `<span>${pb} past Qs</span>` : ''}
               </div>
               <div class="ov-subj-actions">
-                ${learnOk ? `<button class="ov-btn-learn" onclick="navToSubject('${s.key}','learn')">📖 Learn</button>` : ''}
+                ${flashcardsOk ? `<button class="ov-btn-learn" onclick="navToSubject('${s.key}','flashcards')">🎴 Flashcards</button>` : ''}
                 ${pb > 0 && mockOk ? `<button class="ov-btn-mock" onclick="navToSubject('${s.key}','mockbar')">⏱ Mock</button>` : ''}
               </div>
             </div>`;
