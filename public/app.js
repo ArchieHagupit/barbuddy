@@ -3403,17 +3403,35 @@ function renderOverview() {
   const container = document.getElementById('overviewContainer');
   if (!container) return;
 
-  const progress = getUserProgress();
-  const pbCount  = subj => (KB.pastBar||[]).filter(p=>p.subject===subj).reduce((a,p)=>a+(p.qCount||0),0);
-
-  const totalDone   = SUBJS.reduce((a,s) => a + (getSubjectProgress(s.key).done  || 0), 0);
-  const totalTopics = SUBJS.reduce((a,s) => a + (getSubjectProgress(s.key).total || 0), 0);
-  const overallPct  = totalTopics > 0 ? Math.round((totalDone / totalTopics) * 100) : 0;
-  const userName    = currentUser?.name?.split(' ')[0] || 'Counselor';
-  const quote       = getMotivationalQuote();
+  const pbCount = subj => (KB.pastBar||[]).filter(p=>p.subject===subj).reduce((a,p)=>a+(p.qCount||0),0);
+  const userName = currentUser?.name?.split(' ')[0] || 'Counselor';
+  const quote    = getMotivationalQuote();
 
   const _cdDiff = _getBarExamDate().getTime() - Date.now();
   const _cdDays  = _cdDiff > 0 ? Math.floor(_cdDiff / 86400000) : -1;
+
+  // Time-of-day greeting in Manila local time (UTC+8 per CLAUDE.md).
+  const manilaHour = parseInt(new Date().toLocaleString('en-PH', { timeZone: 'Asia/Manila', hour: 'numeric', hour12: false }));
+  const timeWord = manilaHour < 12 ? 'Good morning' : manilaHour < 18 ? 'Good afternoon' : 'Good evening';
+  const timeIcon = manilaHour < 12 ? '☀️' : manilaHour < 18 ? '🌤' : '🌙';
+
+  // Pick a focus line that points at what the student can actually do today.
+  // Tier order: due flashcards > active mocks > generic start prompt. Counts
+  // come from the same bundle that powers the Flashcards Progress widget.
+  let focusLine = 'Pick a subject below to start drilling flashcards or take a Mock Bar.';
+  if (_fcBundleCache) {
+    let totalRemaining = 0;
+    for (const subj of Object.keys(_fcBundleCache.totalBySubject || {})) {
+      const t = _fcBundleCache.totalBySubject[subj] || 0;
+      const d = _fcBundleCache.doneCountBySubject[subj] || 0;
+      totalRemaining += Math.max(0, t - d);
+    }
+    if (totalRemaining > 0) {
+      focusLine = `You have <strong style="color:var(--gold-l)">${totalRemaining}</strong> flashcard${totalRemaining!==1?'s':''} left to drill. Keep the streak going.`;
+    } else if (totalRemaining === 0 && Object.keys(_fcBundleCache.totalBySubject||{}).length > 0) {
+      focusLine = `You've cleared every flashcard 🎉 — jump into a Mock Bar to test your recall under timed conditions.`;
+    }
+  }
 
   container.innerHTML = `
     <div class="overview-inner">
@@ -3430,18 +3448,9 @@ function renderOverview() {
       </div>
 
       <div class="ov-welcome-card">
-        <h2 class="ov-greeting">Welcome back, ${h(userName)}.</h2>
-        <p class="ov-subtitle">Philippine Bar Exam 2026 · Study Hub</p>
-        <div class="ov-overall-progress">
-          <div class="ov-progress-label">
-            <span>Overall Coverage</span>
-            <span class="ov-progress-pct">${overallPct}%</span>
-          </div>
-          <div class="ov-progress-track">
-            <div class="ov-progress-fill" style="width:${overallPct}%;${overallPct===0?'min-width:0':''}" id="ov-overall-fill"></div>
-          </div>
-          <div class="ov-progress-sub">${totalDone} of ${totalTopics} topics completed</div>
-        </div>
+        <h2 class="ov-greeting">${timeIcon} ${timeWord}, ${h(userName)}.</h2>
+        <p class="ov-subtitle">Welcome back to your Bar Exam 2026 study hub.</p>
+        <p class="ov-focus-line" style="margin-top:14px;font-size:14px;line-height:1.55;color:var(--white);opacity:.92;">${focusLine}</p>
       </div>
 
       <div class="fc-overview-widget" id="fc-overview-widget"></div>
