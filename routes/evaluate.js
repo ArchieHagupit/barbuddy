@@ -61,7 +61,9 @@ module.exports = function createEvaluateRoutes({
   router.get('/api/eval-queue-status/:submissionId', requireAuth, (req, res) => {
     const { submissionId } = req.params;
     res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
+    // See kb-content.js: without `no-transform` the global compression()
+    // middleware buffers SSE frames and the client never receives them.
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
     res.setHeader('Connection', 'keep-alive');
 
     function sendUpdate() {

@@ -715,7 +715,7 @@ function subscribeToProgress() {
   sseSource = new EventSource('/api/gen/progress');
   sseSource.onmessage = e => {
     const d = JSON.parse(e.data);
-    updateProgressUI(d);
+    updateGenProgressUI(d);
     if (d.finished || (!d.running && d.done > 0)) {
       // Generation done — sync cache
       setTimeout(() => syncCacheFromServer(), 1000);
@@ -726,7 +726,11 @@ function subscribeToProgress() {
   sseSource.onerror = () => { sseSource.close(); setTimeout(subscribeToProgress, 5000); };
 }
 
-function updateProgressUI(d) {
+// Drives the sticky pre-generation banner + the admin generation panel from
+// the /api/gen/progress SSE stream. Named for the generation pipeline
+// specifically: an earlier `updateProgressUI(subject)` for subject progress
+// bars shadowed this one, silently disabling the banner.
+function updateGenProgressUI(d) {
   const banner = document.getElementById('pregenBanner');
   const adminPanel = document.getElementById('adminGenPanel');
   const adminDone  = document.getElementById('adminGenDone');
