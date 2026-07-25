@@ -2226,8 +2226,9 @@ function switchSubjectTab(subj, mode) {
 
 function renderLearnTab(subj, container) {
   const subjInfo = SUBJS.find(s => s.key === subj);
-  const prog = getSubjectProgress(subj);
-  const pct  = prog.total > 0 ? Math.round((prog.done / prog.total) * 100) : 0;
+  // Progress everywhere in the app means flashcards done/total.
+  const prog = getSubjectFlashcardProgress(subj);
+  const pct  = prog.pct;
   const subjColor = subjInfo?.color || 'var(--gold)';
   container.innerHTML = `
     <div class="split-layout">
@@ -2240,7 +2241,7 @@ function renderLearnTab(subj, container) {
           <div class="subj-progress-bar-track">
             <div class="subj-progress-bar-fill" id="subj-progress-fill-${subj}" style="width:${pct}%;background:${subjColor};"></div>
           </div>
-          <span class="subj-progress-text" id="subj-progress-text-${subj}">${prog.done}/${prog.total} topics · ${pct}%</span>
+          <span class="subj-progress-text" id="subj-progress-text-${subj}">${prog.done}/${prog.total} cards · ${pct}%</span>
         </div>
         <div style="padding:0 12px 8px;">
           <button class="pl-bm-btn" onclick="openBookmarksPanel()">🔖 My Bookmarks</button>
@@ -2614,6 +2615,10 @@ function paintFlashcardsTabFromBundle(subj) {
     </div>
   `;
 
+  // Warm the subject's card list while the student reads this page, so
+  // Start Study Session opens from cache with no network wait.
+  prefetchFlashcardCards(subj);
+
   // Topic tree (reuses Session 3c helpers)
   const sections = syllabusCache[subj]?.sections || [];
   const counts = _fcBundleCache.topicCountsBySubject[subj] || {};
@@ -2808,51 +2813,87 @@ function renderFlashcardTreeNodes(nodes, container, subj, counts, depth) {
   }
 }
 
+// ── Card list cache ──────────────────────────────────────────
+// Keyed 'subject' for subject-wide sets and 'subject::nodeId' for single
+// topics. Cards are stored WITHOUT a `done` property — done state lives
+// only in _fcDoneSet, so one cached list can never disagree with another
+// (or with the Overview widget) after a mark-done.
+const _fcCardsCache = new Map();
+const _fcCardsInflight = new Map();
+
+function _fcCacheKey(subj, nodeId) {
+  return nodeId ? subj + '::' + nodeId : subj;
+}
+
+// Fetch (or replay from cache) the cards for a subject or a single topic.
+// Subject-wide sets come from ONE request — the old code fired one request
+// per topic, which is what made "Start Study Session" take seconds.
+function loadFlashcardCards(subj, nodeId, { force = false } = {}) {
+  const key = _fcCacheKey(subj, nodeId);
+  if (!force && _fcCardsCache.has(key)) return Promise.resolve(_fcCardsCache.get(key));
+  if (_fcCardsInflight.has(key)) return _fcCardsInflight.get(key);
+
+  const url = nodeId
+    ? '/api/flashcards/topic/' + encodeURIComponent(subj) + '/' + encodeURIComponent(nodeId)
+    : '/api/flashcards/subject/' + encodeURIComponent(subj);
+
+  const p = (async () => {
+    try {
+      const resp = await fetch(url, { headers: { 'x-session-token': sessionToken || '' } });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) throw new Error(data.error || 'Failed to load cards');
+      const cards = (data.cards || []).map(c => {
+        // Seed the done set from the server's per-card flag, then strip it.
+        if (c.done) _fcDoneSet.add(c.id);
+        const { done, ...rest } = c;
+        return rest;
+      });
+      _fcCardsCache.set(key, cards);
+      return cards;
+    } finally {
+      _fcCardsInflight.delete(key);
+    }
+  })();
+  _fcCardsInflight.set(key, p);
+  return p;
+}
+
+// Warm the subject-wide card list in the background while the student is
+// still looking at the Flashcards tab, so tapping Start Study Session
+// paints from cache with no network wait at all.
+function prefetchFlashcardCards(subj) {
+  if (!subj || _fcCardsCache.has(subj) || _fcCardsInflight.has(subj)) return;
+  const total = _fcBundleCache?.totalBySubject?.[subj] || 0;
+  if (total === 0) return;
+  const kick = () => loadFlashcardCards(subj).catch(() => {});
+  if (window.requestIdleCallback) requestIdleCallback(kick, { timeout: 1200 });
+  else setTimeout(kick, 250);
+}
+
+function isFlashcardDone(card) {
+  return !!card && _fcDoneSet.has(card.id);
+}
+
 async function startFlashcardStudySession(subj, mode, nodeId) {
   // Remember the last-clicked topic so endFlashcardSession can return the user there.
-  if (mode === 'topic' && nodeId) {
-    // nodeId may be an array or a single string depending on how the caller passes it.
-    const firstId = Array.isArray(nodeId) ? nodeId[0] : nodeId;
-    if (firstId) _fcLastClickedNodeId = firstId;
-  }
+  const topicId = mode === 'topic' && nodeId
+    ? (Array.isArray(nodeId) ? nodeId[0] : nodeId)
+    : null;
+  if (topicId) _fcLastClickedNodeId = topicId;
+
+  const key = _fcCacheKey(subj, topicId);
+  const cached = _fcCardsCache.get(key);
+
+  // Nothing cached yet → show a loading shell immediately instead of a
+  // dead-looking button, so the tap always produces instant feedback.
+  if (!cached) _renderFlashcardLoading();
+
   try {
-    let cards = [];
+    const cards = cached || await loadFlashcardCards(subj, topicId);
 
-    if (mode === 'topic' && nodeId) {
-      // Load just that topic's cards
-      const resp = await fetch(
-        '/api/flashcards/topic/' + encodeURIComponent(subj) + '/' + encodeURIComponent(nodeId),
-        { headers: { 'x-session-token': sessionToken || '' } }
-      );
-      const data = await resp.json();
-      if (!resp.ok) throw new Error(data.error || 'Failed to load topic cards');
-      cards = data.cards || [];
-    } else {
-      // Subject-wide: load every topic's cards. We batch by iterating
-      // leaf topics from the cached bundle's topicCountsBySubject.
-      // (Single query approach: fetch all enabled cards for the subject
-      //  in one go. We add a quick endpoint-less shortcut by walking the
-      //  syllabus and fetching each topic sequentially — but that's slow.
-      //  Instead, use the existing per-topic endpoint's pattern via a
-      //  combined route. For simplicity & speed: fetch all topics at once
-      //  via a new "subject" call pattern — but to avoid a new route,
-      //  we make a single /topic call per topic with node_id=* — which
-      //  doesn't exist. So: we fall back to one fetch per topic with cards,
-      //  in parallel.)
-      const counts = _fcBundleCache?.topicCountsBySubject?.[subj] || {};
-      const nodeIdsWithCards = Object.keys(counts).filter(nid => counts[nid] > 0);
-      const results = await Promise.all(nodeIdsWithCards.map(nid =>
-        fetch('/api/flashcards/topic/' + encodeURIComponent(subj) + '/' + encodeURIComponent(nid), {
-          headers: { 'x-session-token': sessionToken || '' },
-        }).then(r => r.ok ? r.json() : { cards: [] }).catch(() => ({ cards: [] }))
-      ));
-      for (const r of results) {
-        if (r.cards) cards.push(...r.cards);
-      }
-    }
-
-    if (cards.length === 0) {
+    if (!cards.length) {
       showToast('No cards to study', 'info');
+      if (!cached) _restoreFlashcardsTab(subj);
       return;
     }
 
@@ -2863,85 +2904,219 @@ async function startFlashcardStudySession(subj, mode, nodeId) {
       position: 0,
       startedAt: new Date(),
       currentFlipped: false,
-      submittingMarkDone: false,
-      nodeIdFilter: mode === 'topic' ? nodeId : null,
+      nodeIdFilter: topicId,
     };
 
     renderFlashcardCardViewer();
     attachFlashcardKeyboardListener();
   } catch(e) {
     showToast('Study session failed: ' + e.message, 'error');
+    _restoreFlashcardsTab(subj);
   }
 }
+
+// Rebuild the whole Flashcards tab. Needed after the loading shell has
+// replaced the tab's markup — paintFlashcardsTabFromBundle only fills the
+// stats/topics slots and no-ops when they're gone.
+function _restoreFlashcardsTab(subj) {
+  const container = document.getElementById('subject-tab-content');
+  if (container) renderFlashcardsTab(subj, container);
+}
+
+function _renderFlashcardLoading() {
+  const container = document.getElementById('subject-tab-content');
+  if (!container) return;
+  container.innerHTML = `
+    <div class="fc-viewer-wrap">
+      <div class="fc-card-outer">
+        <div class="fc-card-face fc-card-loading" style="position:relative;min-height:320px;align-items:center;justify-content:center;">
+          <div style="font-size:34px;margin-bottom:10px;opacity:.5;">🎴</div>
+          <div style="font-size:12px;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;">Shuffling your deck…</div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// The viewer is built ONCE per session; every subsequent interaction
+// (flip, next, prev, mark-done) mutates the existing nodes instead of
+// re-writing innerHTML. Re-parsing the whole viewer on every tap is what
+// made the cards feel unresponsive, and it also killed the CSS flip
+// transition — a freshly-inserted element can't animate into its class.
+let _fcEls = null;
+
+const FC_TYPE_BADGES = {
+  definition: '📖 Definition',
+  elements: '🔢 Elements',
+  distinction: '⚖️ Distinction',
+};
 
 function renderFlashcardCardViewer() {
   if (!_fcSession) return;
   const container = document.getElementById('subject-tab-content');
   if (!container) return;
 
-  const { cards, position, currentFlipped, submittingMarkDone } = _fcSession;
-  const card = cards[position];
-  if (!card) {
+  if (!_fcSession.cards[_fcSession.position]) {
     renderFlashcardSessionSummary();
     return;
   }
-
-  const typeBadge = {
-    definition: '📖 Definition',
-    elements: '🔢 Elements',
-    distinction: '⚖️ Distinction',
-  }[card.card_type] || card.card_type;
-
-  // Include the current card in "viewed" — so Card N of N shows a full bar.
-  const progress = Math.round(((position + 1) / cards.length) * 100);
-  const isDone = !!card.done;
-  const atStart = position === 0;
-  const atEnd = position === cards.length - 1;
 
   container.innerHTML = `
     <div class="fc-viewer-wrap">
       <div class="fc-viewer-topbar" style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap;">
         <div style="display:flex;align-items:center;gap:12px;min-width:0;flex:1;">
-          <div style="font-size:11px;color:var(--muted);white-space:nowrap;">Card ${position+1} of ${cards.length}</div>
+          <div class="fc-count" style="font-size:11px;color:var(--muted);white-space:nowrap;"></div>
           <div style="flex:1;min-width:80px;max-width:220px;height:4px;background:rgba(255,255,255,.06);border-radius:2px;overflow:hidden;">
-            <div style="height:100%;background:linear-gradient(90deg,var(--gold),var(--gold-l));width:${progress}%;transition:width .3s;"></div>
+            <div class="fc-progress-fill" style="height:100%;background:linear-gradient(90deg,var(--gold),var(--gold-l));width:0%;transition:width .25s;"></div>
           </div>
         </div>
         <button class="btn-og" onclick="endFlashcardSession()" style="font-size:11px;padding:5px 10px;">End Session</button>
       </div>
 
       <div class="fc-card-outer">
-        <div class="fc-card ${currentFlipped ? 'fc-card-flipped' : ''} ${isDone ? 'fc-card-done' : ''}" onclick="flipFlashcard()">
+        <div class="fc-card">
           <div class="fc-card-face fc-card-front">
-            <div class="fc-card-type-badge">${typeBadge} ${isDone ? '<span style="color:#2ec4a0;margin-left:6px;">✓ Done</span>' : ''}</div>
-            <div class="fc-card-content">${h(card.front)}</div>
+            <div class="fc-card-type-badge"></div>
+            <div class="fc-card-content"></div>
             <div class="fc-card-hint">Tap or press Space to flip</div>
           </div>
           <div class="fc-card-face fc-card-back">
-            <div class="fc-card-type-badge">${typeBadge} ${isDone ? '<span style="color:#2ec4a0;margin-left:6px;">✓ Done</span>' : ''}</div>
-            <div class="fc-card-content">${formatFlashcardBack(card.back)}</div>
-            ${card.source_snippet ? `<div class="fc-card-source">📚 ${h(card.source_snippet)}</div>` : ''}
-            <div class="fc-card-path" style="font-size:10px;color:var(--muted);margin-top:8px;opacity:.7;">${h(card.node_path || '')}</div>
+            <div class="fc-card-type-badge"></div>
+            <div class="fc-card-content"></div>
+            <div class="fc-card-source" style="display:none;"></div>
+            <div class="fc-card-path" style="font-size:10px;color:var(--muted);margin-top:8px;opacity:.7;"></div>
           </div>
         </div>
       </div>
 
       <div class="fc-nav-row">
-        <button class="fc-nav-btn fc-nav-prev" onclick="goPrevFlashcard()" ${atStart ? 'disabled' : ''}>
+        <button class="fc-nav-btn fc-nav-prev" onclick="goPrevFlashcard()">
           <div class="fc-nav-key">←</div>
           <div class="fc-nav-label">Previous</div>
         </button>
-        <button class="fc-nav-btn fc-nav-done ${isDone ? 'fc-nav-done-active' : ''}" onclick="toggleFlashcardDone()" ${submittingMarkDone ? 'disabled' : ''}>
+        <button class="fc-nav-btn fc-nav-done" onclick="toggleFlashcardDone()">
           <div class="fc-nav-key">D</div>
-          <div class="fc-nav-label">${isDone ? '✓ Marked Done' : 'Mark as Done'}</div>
+          <div class="fc-nav-label">Mark as Done</div>
         </button>
-        <button class="fc-nav-btn fc-nav-next" onclick="goNextFlashcard()" ${atEnd ? 'disabled' : ''}>
+        <button class="fc-nav-btn fc-nav-next" onclick="goNextFlashcard()">
           <div class="fc-nav-key">→</div>
           <div class="fc-nav-label">Next</div>
         </button>
       </div>
     </div>
   `;
+
+  const q = sel => container.querySelector(sel);
+  _fcEls = {
+    card:       q('.fc-card'),
+    count:      q('.fc-count'),
+    progress:   q('.fc-progress-fill'),
+    frontBadge: q('.fc-card-front .fc-card-type-badge'),
+    frontBody:  q('.fc-card-front .fc-card-content'),
+    backBadge:  q('.fc-card-back .fc-card-type-badge'),
+    backBody:   q('.fc-card-back .fc-card-content'),
+    source:     q('.fc-card-source'),
+    path:       q('.fc-card-path'),
+    prevBtn:    q('.fc-nav-prev'),
+    nextBtn:    q('.fc-nav-next'),
+    doneBtn:    q('.fc-nav-done'),
+    doneLabel:  q('.fc-nav-done .fc-nav-label'),
+  };
+
+  _attachFlashcardTapHandlers(_fcEls.card);
+  _fcPaintCard({ animate: false });
+}
+
+// Flip on pointerup rather than click: it fires at the moment the finger
+// lifts (no ~300ms mobile click delay, no waiting on a dblclick check),
+// while the movement/time guards keep scrolling long card backs and
+// selecting text from being misread as a flip.
+function _attachFlashcardTapHandlers(cardEl) {
+  if (!cardEl) return;
+  let startX = 0, startY = 0, startT = 0, tracking = false;
+
+  cardEl.addEventListener('pointerdown', ev => {
+    if (ev.button != null && ev.button !== 0) return;   // left / touch / pen only
+    tracking = true;
+    startX = ev.clientX; startY = ev.clientY; startT = Date.now();
+    cardEl.classList.add('fc-card-pressed');
+  });
+
+  const clearPress = () => { cardEl.classList.remove('fc-card-pressed'); };
+  cardEl.addEventListener('pointercancel', () => { tracking = false; clearPress(); });
+  cardEl.addEventListener('pointerleave', clearPress);
+
+  cardEl.addEventListener('pointerup', ev => {
+    clearPress();
+    if (!tracking) return;
+    tracking = false;
+    const moved = Math.abs(ev.clientX - startX) + Math.abs(ev.clientY - startY);
+    if (moved > 12) return;                                 // scroll / drag, not a tap
+    if (Date.now() - startT > 700) return;                  // long-press, not a tap
+    const sel = window.getSelection?.();
+    if (sel && !sel.isCollapsed && sel.toString().trim()) return; // text selection
+    flipFlashcard();
+  });
+}
+
+// Paint the current card into the existing DOM. `animate: false` suppresses
+// the flip transition so advancing a card while flipped snaps back to the
+// front instead of visibly rotating with the next card's text showing.
+function _fcPaintCard({ animate = true } = {}) {
+  if (!_fcSession || !_fcEls?.card) return;
+  const { cards, position, currentFlipped } = _fcSession;
+  const card = cards[position];
+  if (!card) return;
+
+  _fcPaintDoneState();
+  _fcEls.frontBody.textContent = card.front || '';
+  _fcEls.backBody.innerHTML = formatFlashcardBack(card.back);
+  _fcEls.path.textContent = card.node_path || '';
+
+  if (card.source_snippet) {
+    _fcEls.source.style.display = '';
+    _fcEls.source.textContent = '📚 ' + card.source_snippet;
+  } else {
+    _fcEls.source.style.display = 'none';
+  }
+
+  // Both faces scroll independently — reset them so a new card always
+  // starts at the top.
+  _fcEls.frontBody.scrollTop = 0;
+  _fcEls.backBody.scrollTop = 0;
+
+  if (!animate) _fcEls.card.classList.add('fc-no-anim');
+  _fcEls.card.classList.toggle('fc-card-flipped', !!currentFlipped);
+  if (!animate) {
+    void _fcEls.card.offsetWidth; // flush the class change before re-enabling transitions
+    _fcEls.card.classList.remove('fc-no-anim');
+  }
+
+  const pct = Math.round(((position + 1) / cards.length) * 100);
+  _fcEls.count.textContent = `Card ${position + 1} of ${cards.length}`;
+  _fcEls.progress.style.width = pct + '%';
+  _fcEls.prevBtn.disabled = position === 0;
+  // Last card stays enabled — it advances to the session summary.
+  const atEnd = position === cards.length - 1;
+  _fcEls.nextBtn.querySelector('.fc-nav-label').textContent = atEnd ? 'Finish' : 'Next';
+}
+
+// Just the done affordances (badges, card outline, nav button) — the only
+// thing a mark-done changes, so toggling it never touches the flip state.
+function _fcPaintDoneState() {
+  if (!_fcSession || !_fcEls?.card) return;
+  const card = _fcSession.cards[_fcSession.position];
+  if (!card) return;
+
+  const isDone = isFlashcardDone(card);
+  const badge = FC_TYPE_BADGES[card.card_type] || card.card_type || '';
+  const badgeHtml = h(badge) + (isDone ? '<span style="color:#2ec4a0;margin-left:6px;">✓ Done</span>' : '');
+
+  _fcEls.frontBadge.innerHTML = badgeHtml;
+  _fcEls.backBadge.innerHTML = badgeHtml;
+  _fcEls.card.classList.toggle('fc-card-done', isDone);
+  _fcEls.doneBtn.classList.toggle('fc-nav-done-active', isDone);
+  _fcEls.doneLabel.textContent = isDone ? '✓ Marked Done' : 'Mark as Done';
 }
 
 function formatFlashcardBack(text) {
@@ -2951,10 +3126,12 @@ function formatFlashcardBack(text) {
     .replace(/(^|<br>)(\s*)(\d+[.)])\s/g, '$1$2<strong>$3</strong> ');
 }
 
+// Flip is a pure class toggle — no re-render, so the CSS transition runs
+// and the card responds on the same frame as the tap.
 function flipFlashcard() {
-  if (!_fcSession) return;
+  if (!_fcSession || !_fcEls?.card) return;
   _fcSession.currentFlipped = !_fcSession.currentFlipped;
-  renderFlashcardCardViewer();
+  _fcEls.card.classList.toggle('fc-card-flipped', _fcSession.currentFlipped);
 }
 
 function goPrevFlashcard() {
@@ -2962,7 +3139,7 @@ function goPrevFlashcard() {
   if (_fcSession.position > 0) {
     _fcSession.position -= 1;
     _fcSession.currentFlipped = false;
-    renderFlashcardCardViewer();
+    _fcPaintCard({ animate: false });
   }
 }
 
@@ -2971,67 +3148,84 @@ function goNextFlashcard() {
   if (_fcSession.position < _fcSession.cards.length - 1) {
     _fcSession.position += 1;
     _fcSession.currentFlipped = false;
-    renderFlashcardCardViewer();
+    _fcPaintCard({ animate: false });
   } else {
     // At the last card — move to summary
     renderFlashcardSessionSummary();
   }
 }
 
-async function toggleFlashcardDone() {
-  if (!_fcSession || _fcSession.submittingMarkDone) return;
+// In-flight mark-done writes. endFlashcardSession waits on these before
+// reconciling the bundle with the server.
+let _fcMarkDonePending = [];
+
+// Optimistic: the done state flips locally and repaints immediately, then
+// the request goes out. On failure we roll back and tell the user. This is
+// what makes rapid D-key / button tapping feel instant.
+function toggleFlashcardDone() {
+  if (!_fcSession) return;
   const card = _fcSession.cards[_fcSession.position];
   if (!card) return;
-  const newDone = !card.done;
+  const newDone = !isFlashcardDone(card);
 
-  _fcSession.submittingMarkDone = true;
-  renderFlashcardCardViewer();
+  _applyFlashcardDoneLocally(card, newDone, _fcSession.subject);
+  _fcPaintDoneState();
 
-  try {
-    const resp = await fetch('/api/flashcards/mark-done', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-session-token': sessionToken || '',
-      },
-      body: JSON.stringify({ flashcardId: card.id, done: newDone }),
-    });
-    const data = await resp.json();
-    if (!resp.ok) throw new Error(data.error || 'Mark-done failed');
-
-    // Update local card state
-    card.done = newDone;
-
-    // Optimistic bundle cache update
-    if (_fcBundleCache) {
-      const subj = card.subject || _fcSession.subject;
-      if (newDone) {
-        if (!_fcDoneSet.has(card.id)) {
-          _fcDoneSet.add(card.id);
-          if (_fcBundleCache.doneCountBySubject[subj] != null) {
-            _fcBundleCache.doneCountBySubject[subj] += 1;
-          }
-          _fcBundleCache.doneCardIds = _fcBundleCache.doneCardIds || [];
-          _fcBundleCache.doneCardIds.push(card.id);
-        }
-      } else {
-        if (_fcDoneSet.has(card.id)) {
-          _fcDoneSet.delete(card.id);
-          if (_fcBundleCache.doneCountBySubject[subj] != null && _fcBundleCache.doneCountBySubject[subj] > 0) {
-            _fcBundleCache.doneCountBySubject[subj] -= 1;
-          }
-          if (Array.isArray(_fcBundleCache.doneCardIds)) {
-            _fcBundleCache.doneCardIds = _fcBundleCache.doneCardIds.filter(id => id !== card.id);
-          }
-        }
+  const p = fetch('/api/flashcards/mark-done', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-session-token': sessionToken || '',
+    },
+    body: JSON.stringify({ flashcardId: card.id, done: newDone }),
+  })
+    .then(async resp => {
+      if (!resp.ok) {
+        const data = await resp.json().catch(() => ({}));
+        throw new Error(data.error || 'Mark-done failed');
       }
+    })
+    .catch(e => {
+      // Roll back the optimistic update
+      _applyFlashcardDoneLocally(card, !newDone, _fcSession?.subject);
+      if (_fcSession?.cards[_fcSession.position]?.id === card.id) {
+        _fcPaintDoneState();
+      }
+      showToast('Mark-done failed: ' + e.message, 'error');
+    })
+    .finally(() => {
+      _fcMarkDonePending = _fcMarkDonePending.filter(x => x !== p);
+    });
+  _fcMarkDonePending.push(p);
+}
+
+// Single place that mutates done state: the id set plus the cached
+// per-subject counters that drive the Overview bars and sidebar badge.
+function _applyFlashcardDoneLocally(card, done, fallbackSubj) {
+  const subj = card.subject || fallbackSubj;
+  const already = _fcDoneSet.has(card.id);
+  if (done === already) return;
+
+  if (done) _fcDoneSet.add(card.id);
+  else _fcDoneSet.delete(card.id);
+
+  if (_fcBundleCache) {
+    const counts = _fcBundleCache.doneCountBySubject;
+    if (counts && counts[subj] != null) {
+      counts[subj] = done
+        ? counts[subj] + 1
+        : Math.max(0, counts[subj] - 1);
     }
-  } catch(e) {
-    showToast('Mark-done failed: ' + e.message, 'error');
-  } finally {
-    _fcSession.submittingMarkDone = false;
-    renderFlashcardCardViewer();
+    if (done) {
+      _fcBundleCache.doneCardIds = _fcBundleCache.doneCardIds || [];
+      _fcBundleCache.doneCardIds.push(card.id);
+    } else if (Array.isArray(_fcBundleCache.doneCardIds)) {
+      _fcBundleCache.doneCardIds = _fcBundleCache.doneCardIds.filter(id => id !== card.id);
+    }
   }
+
+  // Keep the Overview subject bars + widget live while studying.
+  refreshFlashcardProgressUI(subj);
 }
 
 function renderFlashcardSessionSummary() {
@@ -3040,8 +3234,9 @@ function renderFlashcardSessionSummary() {
   if (!container) return;
 
   const { cards, startedAt, subject } = _fcSession;
-  const doneInSession = cards.filter(c => c.done).length;
+  const doneInSession = cards.filter(isFlashcardDone).length;
   const total = cards.length;
+  _fcEls = null;
   const elapsedMs = Date.now() - startedAt.getTime();
   const elapsedMin = Math.max(1, Math.round(elapsedMs / 60000));
   const pct = total > 0 ? Math.round((doneInSession / total) * 100) : 0;
@@ -3080,10 +3275,20 @@ function endFlashcardSession() {
   const subj = _fcSession?.subject;
   const nodeIdToRestore = _fcLastClickedNodeId; // captured before _fcSession is cleared
   _fcSession = null;
+  _fcEls = null;
   detachFlashcardKeyboardListener();
-  // Safety: make sure bundle is still in sync by invalidating + refetching
-  // (optimistic updates should have kept it right, but this is a cheap insurance)
-  fetchFlashcardBundle(true);
+  // Safety: reconcile the bundle with the server. Waits for any in-flight
+  // mark-done writes first — refetching mid-write would pull a stale count
+  // and visibly undo the optimistic update.
+  const pending = _fcMarkDonePending.slice();
+  Promise.allSettled(pending).then(() => {
+    fetchFlashcardBundle(true).then(() => {
+      refreshFlashcardProgressUI();
+      if (!_fcSession && document.getElementById('fc-stats-slot') && subj) {
+        paintFlashcardsTabFromBundle(subj);
+      }
+    });
+  });
   if (subj) {
     const content = document.getElementById('subject-tab-content');
     if (content) {
@@ -3142,7 +3347,10 @@ function attachFlashcardKeyboardListener() {
     if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
     if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
 
-    if (ev.code === 'Space') {
+    // Held keys shouldn't machine-gun a toggle; arrows may repeat so the
+    // student can scrub through a deck by holding the key down.
+    if (ev.code === 'Space' || ev.key === 'Enter' || ev.key === 'f' || ev.key === 'F') {
+      if (ev.repeat) return;
       ev.preventDefault();
       flipFlashcard();
     } else if (ev.key === 'ArrowLeft') {
@@ -3152,6 +3360,7 @@ function attachFlashcardKeyboardListener() {
       ev.preventDefault();
       goNextFlashcard();
     } else if (ev.key === 'd' || ev.key === 'D') {
+      if (ev.repeat) return;
       ev.preventDefault();
       toggleFlashcardDone();
     }
@@ -3177,6 +3386,17 @@ async function fetchFlashcardBundle(force = false) {
       });
       if (!resp.ok) return null;
       const data = await resp.json();
+      // Drop cached card lists for any subject whose card count changed
+      // (e.g. an admin imported cards while this tab was open) so we never
+      // study a stale deck.
+      const prevTotals = _fcBundleCache?.totalBySubject || {};
+      for (const subj of Object.keys(data.totalBySubject || {})) {
+        if (prevTotals[subj] != null && prevTotals[subj] !== data.totalBySubject[subj]) {
+          for (const key of [..._fcCardsCache.keys()]) {
+            if (key === subj || key.startsWith(subj + '::')) _fcCardsCache.delete(key);
+          }
+        }
+      }
       _fcBundleCache = data;
       _fcDoneSet = new Set(data.doneCardIds || []);
       return data;
@@ -3194,9 +3414,10 @@ async function fetchFlashcardBundle(force = false) {
 // can paint synchronously from _fcBundleCache with zero network delay.
 async function loadFlashcardBundleOnBoot() {
   await fetchFlashcardBundle(true);
-  // Repaint any cached flashcard UI that's already visible
-  renderDashboardFlashcardWidget();
-  refreshSidebarFlashcardBadge();
+  // Repaint any cached flashcard UI that's already visible — including the
+  // Overview subject cards, whose progress bars come from this bundle and
+  // would otherwise sit at 0% until the next full render.
+  refreshFlashcardProgressUI();
 }
 
 // ── Overview widget ──────────────────────────────────────────
@@ -3270,6 +3491,60 @@ function _paintFlashcardOverviewWidget(el, bundle) {
       </div>
     </div>
   `;
+}
+
+// ── Per-subject flashcard progress ───────────────────────────
+// The single source of truth for every "progress" bar in the app. Overview
+// subject cards used to show Learn-tab topic checkmarks, which went stale
+// when the Learn tab was hidden — progress is now flashcards done/total.
+function getSubjectFlashcardProgress(subj) {
+  const total = _fcBundleCache?.totalBySubject?.[subj] || 0;
+  const done  = Math.min(total, _fcBundleCache?.doneCountBySubject?.[subj] || 0);
+  return {
+    done,
+    total,
+    remaining: Math.max(0, total - done),
+    pct: total > 0 ? Math.round((done / total) * 100) : 0,
+    loaded: !!_fcBundleCache,
+  };
+}
+
+// Update the progress affordances in place — no full re-render, so this is
+// cheap enough to call after every single mark-done.
+// Pass a subject to touch just that one; omit to refresh all of them.
+function refreshFlashcardProgressUI(subj) {
+  const subjects = subj
+    ? [subj]
+    : SUBJS.filter(s => s.key !== 'custom').map(s => s.key);
+
+  for (const key of subjects) {
+    const prog = getSubjectFlashcardProgress(key);
+    const label = prog.total > 0
+      ? `${prog.done}/${prog.total} cards`
+      : 'No cards yet';
+
+    // Overview subject card
+    const ovCard = document.querySelector(`.ov-subj-card[data-subj="${key}"]`);
+    if (ovCard) {
+      const fill  = ovCard.querySelector('.ov-subj-prog-fill');
+      const stat  = ovCard.querySelector('.ov-subj-stats span:first-child');
+      const track = ovCard.querySelector('.ov-subj-prog-track');
+      if (fill) fill.style.width = prog.pct + '%';
+      if (stat) stat.textContent = label;
+      if (track) track.title = prog.total > 0
+        ? `${prog.done} of ${prog.total} flashcards marked done`
+        : 'No flashcards imported yet';
+    }
+
+    // Subject-page sidebar bar (Learn tab layout)
+    const fill2 = document.getElementById('subj-progress-fill-' + key);
+    const txt2  = document.getElementById('subj-progress-text-' + key);
+    if (fill2) fill2.style.width = prog.pct + '%';
+    if (txt2)  txt2.textContent  = `${prog.done}/${prog.total} cards · ${prog.pct}%`;
+  }
+
+  renderDashboardFlashcardWidget();
+  refreshSidebarFlashcardBadge();
 }
 
 // ── Sidebar badge ────────────────────────────────────────────
@@ -3403,17 +3678,35 @@ function renderOverview() {
   const container = document.getElementById('overviewContainer');
   if (!container) return;
 
-  const progress = getUserProgress();
-  const pbCount  = subj => (KB.pastBar||[]).filter(p=>p.subject===subj).reduce((a,p)=>a+(p.qCount||0),0);
-
-  const totalDone   = SUBJS.reduce((a,s) => a + (getSubjectProgress(s.key).done  || 0), 0);
-  const totalTopics = SUBJS.reduce((a,s) => a + (getSubjectProgress(s.key).total || 0), 0);
-  const overallPct  = totalTopics > 0 ? Math.round((totalDone / totalTopics) * 100) : 0;
-  const userName    = currentUser?.name?.split(' ')[0] || 'Counselor';
-  const quote       = getMotivationalQuote();
+  const pbCount = subj => (KB.pastBar||[]).filter(p=>p.subject===subj).reduce((a,p)=>a+(p.qCount||0),0);
+  const userName = currentUser?.name?.split(' ')[0] || 'Counselor';
+  const quote    = getMotivationalQuote();
 
   const _cdDiff = _getBarExamDate().getTime() - Date.now();
   const _cdDays  = _cdDiff > 0 ? Math.floor(_cdDiff / 86400000) : -1;
+
+  // Time-of-day greeting in Manila local time (UTC+8 per CLAUDE.md).
+  const manilaHour = parseInt(new Date().toLocaleString('en-PH', { timeZone: 'Asia/Manila', hour: 'numeric', hour12: false }));
+  const timeWord = manilaHour < 12 ? 'Good morning' : manilaHour < 18 ? 'Good afternoon' : 'Good evening';
+  const timeIcon = manilaHour < 12 ? '☀️' : manilaHour < 18 ? '🌤' : '🌙';
+
+  // Pick a focus line that points at what the student can actually do today.
+  // Tier order: due flashcards > active mocks > generic start prompt. Counts
+  // come from the same bundle that powers the Flashcards Progress widget.
+  let focusLine = 'Pick a subject below to start drilling flashcards or take a Mock Bar.';
+  if (_fcBundleCache) {
+    let totalRemaining = 0;
+    for (const subj of Object.keys(_fcBundleCache.totalBySubject || {})) {
+      const t = _fcBundleCache.totalBySubject[subj] || 0;
+      const d = _fcBundleCache.doneCountBySubject[subj] || 0;
+      totalRemaining += Math.max(0, t - d);
+    }
+    if (totalRemaining > 0) {
+      focusLine = `You have <strong style="color:var(--gold-l)">${totalRemaining}</strong> flashcard${totalRemaining!==1?'s':''} left to drill. Keep the streak going.`;
+    } else if (totalRemaining === 0 && Object.keys(_fcBundleCache.totalBySubject||{}).length > 0) {
+      focusLine = `You've cleared every flashcard 🎉 — jump into a Mock Bar to test your recall under timed conditions.`;
+    }
+  }
 
   container.innerHTML = `
     <div class="overview-inner">
@@ -3430,18 +3723,9 @@ function renderOverview() {
       </div>
 
       <div class="ov-welcome-card">
-        <h2 class="ov-greeting">Welcome back, ${h(userName)}.</h2>
-        <p class="ov-subtitle">Philippine Bar Exam 2026 · Study Hub</p>
-        <div class="ov-overall-progress">
-          <div class="ov-progress-label">
-            <span>Overall Coverage</span>
-            <span class="ov-progress-pct">${overallPct}%</span>
-          </div>
-          <div class="ov-progress-track">
-            <div class="ov-progress-fill" style="width:${overallPct}%;${overallPct===0?'min-width:0':''}" id="ov-overall-fill"></div>
-          </div>
-          <div class="ov-progress-sub">${totalDone} of ${totalTopics} topics completed</div>
-        </div>
+        <h2 class="ov-greeting">${timeIcon} ${timeWord}, ${h(userName)}.</h2>
+        <p class="ov-subtitle">Welcome back to your Bar Exam 2026 study hub.</p>
+        <p class="ov-focus-line" style="margin-top:14px;font-size:14px;line-height:1.55;color:var(--white);opacity:.92;">${focusLine}</p>
       </div>
 
       <div class="fc-overview-widget" id="fc-overview-widget"></div>
@@ -3449,29 +3733,32 @@ function renderOverview() {
       <div class="ov-subjects-label">SUBJECTS</div>
       <div class="ov-subjects-grid">
         ${SUBJS.filter(s => s.key !== 'custom').map(s => {
-          const prog = getSubjectProgress(s.key);
-          const pct  = prog.total > 0 ? Math.round((prog.done / prog.total) * 100) : 0;
+          // Progress = flashcards marked done / total cards for the subject.
+          const prog = getSubjectFlashcardProgress(s.key);
+          const pct  = prog.pct;
           const pb   = pbCount(s.key);
           const ts = window.TAB_SETTINGS?.subjects?.[s.key] || {};
-          const allOff = ['learn','quiz','mockbar'].every(m => ts[m] === false);
+          // Hide a card only if EVERY learnable mode is off — flashcards is now the
+          // primary overview action so it goes in the gate too.
+          const allOff = ['learn','quiz','mockbar','flashcards','speeddrill'].every(m => ts[m] === false);
           if (allOff && !adminKey) return ''; // Hide fully restricted subjects from overview
-          const learnOk = ts.learn !== false;
-          const mockOk  = ts.mockbar !== false;
+          const flashcardsOk = ts.flashcards !== false;
+          const mockOk       = ts.mockbar    !== false;
           return `
             <div class="ov-subj-card" data-subj="${s.key}" style="--subj-color:${s.color}">
               <div class="ov-subj-top">
                 <div class="ov-subj-dot" style="background:${s.color}"></div>
                 <div class="ov-subj-name">${h(s.name)}</div>
               </div>
-              <div class="ov-subj-prog-track">
+              <div class="ov-subj-prog-track" title="${prog.total > 0 ? `${prog.done} of ${prog.total} flashcards marked done` : 'No flashcards imported yet'}">
                 <div class="ov-subj-prog-fill" style="width:${pct}%;background:${s.color}"></div>
               </div>
               <div class="ov-subj-stats">
-                <span>${prog.done}/${prog.total} topics</span>
+                <span>${prog.total > 0 ? `${prog.done}/${prog.total} cards` : 'No cards yet'}</span>
                 ${pb > 0 ? `<span>${pb} past Qs</span>` : ''}
               </div>
               <div class="ov-subj-actions">
-                ${learnOk ? `<button class="ov-btn-learn" onclick="navToSubject('${s.key}','learn')">📖 Learn</button>` : ''}
+                ${flashcardsOk ? `<button class="ov-btn-learn" onclick="navToSubject('${s.key}','flashcards')">🎴 Flashcards</button>` : ''}
                 ${pb > 0 && mockOk ? `<button class="ov-btn-mock" onclick="navToSubject('${s.key}','mockbar')">⏱ Mock</button>` : ''}
               </div>
             </div>`;
@@ -4065,7 +4352,11 @@ function setTopicDone(subject, topicId, done) {
       body: JSON.stringify({ subject, topicId, done })
     }).catch(() => {});
   }
-  updateProgressUI(subject);
+  // Progress bars track flashcards now, not lesson topics — but repaint the
+  // subject's bars anyway so nothing is left stale after a Learn-tab action.
+  // (Called directly rather than through the old updateProgressUI wrapper,
+  // whose name collided with the pregeneration SSE handler above.)
+  refreshFlashcardProgressUI(subject);
 }
 
 function isTopicDone(subject, topicId) {
@@ -4311,22 +4602,6 @@ function handleMarkDone(subject, topicId) {
   if (document.getElementById('page-dashboard')?.classList.contains('on')) renderOverview();
 }
 
-function updateProgressUI(subject) {
-  const prog = getSubjectProgress(subject);
-  const pct  = prog.total > 0 ? Math.round((prog.done / prog.total) * 100) : 0;
-  const fill = document.getElementById('subj-progress-fill-' + subject);
-  const txt  = document.getElementById('subj-progress-text-' + subject);
-  if (fill) fill.style.width = pct + '%';
-  if (txt)  txt.textContent  = `${prog.done}/${prog.total} topics · ${pct}%`;
-  // Update overview card if rendered
-  const ovCard = document.querySelector(`.ov-subj-card[data-subj="${subject}"]`);
-  if (ovCard) {
-    const fill2 = ovCard.querySelector('.ov-subj-prog-fill');
-    const stats = ovCard.querySelector('.ov-subj-stats span:first-child');
-    if (fill2) fill2.style.width = pct + '%';
-    if (stats) stats.textContent = `${prog.done}/${prog.total} topics`;
-  }
-}
 
 // Legacy shim — kept so existing lesson footer "Mark Done" button still works
 function markDone(){
@@ -6914,6 +7189,14 @@ async function doLogout() {
   localStorage.removeItem('bb_admin_key');
   sessionStorage.clear();
   window.TAB_SETTINGS = null;
+  // Flashcard caches are per-user (done flags, progress counts) — clear them
+  // so the next login never sees the previous student's progress.
+  _fcBundleCache = null;
+  _fcDoneSet = new Set();
+  _fcCardsCache.clear();
+  _fcCardsInflight.clear();
+  _fcSession = null;
+  _fcEls = null;
   const aw = document.getElementById('authWall');
   aw.style.display = 'flex';
   requestAnimationFrame(() => { aw.style.opacity = '1'; });
