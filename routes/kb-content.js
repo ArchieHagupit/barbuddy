@@ -99,7 +99,11 @@ module.exports = function createKbContentRoutes({
   // ── SSE: live generation progress ──────────────────────────
   router.get('/api/gen/progress', (req, res) => {
     res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
+    // `no-transform` is what stops the global compression() middleware from
+    // buffering this stream. Without it gzip holds every `data:` frame in its
+    // buffer and the browser's onmessage never fires — the pre-gen banner
+    // simply never appeared. compression() honours no-transform per RFC 7234.
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
     res.setHeader('Connection', 'keep-alive');
     GEN.clients.add(res);
     sseSend(res, { done:GEN.done, total:GEN.total, current:GEN.current, running:GEN.running, finished:!!GEN.finishedAt&&!GEN.running });
