@@ -1276,12 +1276,39 @@ button[onclick*="switchSubjectTab(currentSubject,'learn')"] { display: none !imp
   width: 100%;
   min-height: 320px;
   cursor: pointer;
-  transition: transform .55s cubic-bezier(.4,0,.2,1);
+  transition: transform .42s cubic-bezier(.4,0,.2,1), scale .12s ease;
   transform-style: preserve-3d;
   will-change: transform;
+  /* touch-action kills the mobile tap delay; the tap-highlight and
+     touch-callout suppressions stop the flip from flashing a grey overlay
+     or opening a long-press menu mid-review. */
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
 }
 
 .fc-card-flipped { transform: rotateY(180deg); }
+
+/* Press feedback fires on pointerdown, before the flip resolves, so a tap
+   always acknowledges itself instantly. Uses the standalone `scale`
+   property so it composes with the flip's rotateY instead of clobbering it. */
+.fc-card-pressed { scale: .992; }
+.fc-card-pressed .fc-card-face { border-color: rgba(201,168,76,.45); }
+
+/* Applied for one frame when swapping cards, so advancing while flipped
+   snaps back to the front instead of animating the next card's text. */
+.fc-no-anim, .fc-no-anim .fc-card-face { transition: none !important; }
+
+/* Loading shell shown while a deck is fetched (cache misses only) */
+.fc-card-loading {
+  align-items: center;
+  justify-content: center;
+  animation: fc-pulse 1.2s ease-in-out infinite;
+}
+@keyframes fc-pulse {
+  0%, 100% { opacity: .55; }
+  50%      { opacity: .9; }
+}
 
 .fc-card-face {
   position: absolute;
@@ -1321,6 +1348,8 @@ button[onclick*="switchSubjectTab(currentSubject,'learn')"] { display: none !imp
   color: var(--text);
   font-family: var(--fd);
   overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   max-height: 48vh;
 }
 
@@ -1406,8 +1435,14 @@ button[onclick*="switchSubjectTab(currentSubject,'learn')"] { display: none !imp
 .fc-summary-stat:hover { transform: translateY(-2px); }
 
 /* Flashcard topic tree — reuses Learn tab .tl-* classes but needs a hover distinction */
-.fc-topic-leaf { cursor: pointer; transition: background .12s; }
+.fc-topic-leaf {
+  cursor: pointer;
+  transition: background .12s;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
 .fc-topic-leaf:hover { background: rgba(201,168,76,.08); }
+.fc-topic-leaf:active { background: rgba(201,168,76,.16); }
 .fc-topic-tree { max-height: 520px; overflow-y: auto; border: 1px solid var(--bdr2); border-radius: 10px; padding: 8px 10px; background: rgba(255,255,255,.01); }
 
 /* Session 4: 3-button nav row for flashcard viewer */
@@ -1425,14 +1460,18 @@ button[onclick*="switchSubjectTab(currentSubject,'learn')"] { display: none !imp
   cursor: pointer;
   color: var(--text);
   text-align: center;
-  transition: all .15s;
+  transition: transform .12s, box-shadow .12s, background .12s, border-color .12s;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 4px;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
 }
 
 .fc-nav-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,.2); }
+.fc-nav-btn:active:not(:disabled) { transform: translateY(0) scale(.975); background: rgba(201,168,76,.1); }
 .fc-nav-btn:disabled { opacity: .35; cursor: not-allowed; }
 
 .fc-nav-key {

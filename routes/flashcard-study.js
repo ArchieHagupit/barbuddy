@@ -9,6 +9,7 @@
 //
 // Endpoints:
 //   GET  /api/flashcards/bundle                  — comprehensive app-boot bundle
+//   GET  /api/flashcards/subject/:subject        — ALL cards for one subject in ONE request
 //   GET  /api/flashcards/topic/:subject/:nodeId  — all cards for one topic (incl. done flag)
 //   POST /api/flashcards/mark-done               — toggle done flag for a card
 //   GET  /api/flashcards/stats/:subject          — subject-scoped stats (done/total)
@@ -41,6 +42,29 @@ async function fetchAllPaginated(queryBuilder, { pageSize = 1000, maxPages = 50 
     if (data.length < pageSize) break; // short page = end of results
   }
   return all;
+}
+
+// Only the columns the study viewer actually renders. Selecting these
+// instead of '*' keeps subject-wide payloads (1000+ cards) small enough
+// to parse instantly on mobile.
+const CARD_FIELDS = 'id, subject, node_id, node_path, card_type, front, back, source_snippet';
+
+// Look up which of `cardIds` this user has marked done. Chunked because
+// Supabase caps `.in()` array length around 1000.
+async function fetchDoneSet(userId, cardIds) {
+  const doneSet = new Set();
+  for (let i = 0; i < cardIds.length; i += 500) {
+    const chunk = cardIds.slice(i, i + 500);
+    const { data, error } = await supabase
+      .from('flashcard_reviews')
+      .select('flashcard_id')
+      .eq('user_id', userId)
+      .eq('done', true)
+      .in('flashcard_id', chunk);
+    if (error) throw error;
+    for (const r of (data || [])) doneSet.add(r.flashcard_id);
+  }
+  return doneSet;
 }
 
 module.exports = function createFlashcardStudyRoutes({ requireAuth }) {
@@ -127,6 +151,47 @@ module.exports = function createFlashcardStudyRoutes({ requireAuth }) {
     }
   });
 
+  // ── Route 1b: Subject-wide cards (one request) ───────────────
+  // Every enabled card for a subject, in syllabus order, with each
+  // card's `done` flag. Replaces the old client-side pattern of firing
+  // one /topic request per topic (40+ round trips for a big subject)
+  // when the student hits "Start Study Session".
+  router.get('/api/flashcards/subject/:subject', requireAuth, async (req, res) => {
+    try {
+      const { subject } = req.params;
+      if (!VALID_SUBJECTS.includes(subject)) {
+        return res.status(400).json({ error: 'Invalid subject' });
+      }
+
+      const cards = await fetchAllPaginated(
+        supabase
+          .from('flashcards')
+          .select(CARD_FIELDS)
+          .eq('subject', subject)
+          .eq('enabled', true)
+          .order('node_id', { ascending: true })
+          .order('generated_at', { ascending: true })
+      );
+
+      const cardIds = cards.map(c => c.id);
+      let doneSet = new Set();
+      if (cardIds.length) {
+        try {
+          doneSet = await fetchDoneSet(req.userId, cardIds);
+        } catch(e) {
+          console.error('[fc-subject] done lookup:', e.message);
+          // Non-fatal — cards still render, just without done marks.
+        }
+      }
+
+      const out = cards.map(c => ({ ...c, done: doneSet.has(c.id) }));
+      res.json({ subject, cards: out, count: out.length });
+    } catch(e) {
+      console.error('[fc-subject] fatal:', e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   // ── Route 2: Topic cards ─────────────────────────────────────
   // Returns all enabled cards for one topic, with per-card `done` flag.
   router.get('/api/flashcards/topic/:subject/:nodeId', requireAuth, async (req, res) => {
@@ -137,7 +202,7 @@ module.exports = function createFlashcardStudyRoutes({ requireAuth }) {
       }
       const { data: cards, error } = await supabase
         .from('flashcards')
-        .select('*')
+        .select(CARD_FIELDS)
         .eq('subject', subject)
         .eq('node_id', nodeId)
         .eq('enabled', true)
@@ -147,13 +212,10 @@ module.exports = function createFlashcardStudyRoutes({ requireAuth }) {
       const cardIds = (cards || []).map(c => c.id);
       let doneSet = new Set();
       if (cardIds.length) {
-        const { data: reviews } = await supabase
-          .from('flashcard_reviews')
-          .select('flashcard_id, done')
-          .eq('user_id', req.userId)
-          .in('flashcard_id', cardIds);
-        for (const r of (reviews || [])) {
-          if (r.done) doneSet.add(r.flashcard_id);
+        try {
+          doneSet = await fetchDoneSet(req.userId, cardIds);
+        } catch(e) {
+          console.error('[fc-topic] done lookup:', e.message);
         }
       }
       const out = (cards || []).map(c => ({ ...c, done: doneSet.has(c.id) }));
@@ -176,23 +238,29 @@ module.exports = function createFlashcardStudyRoutes({ requireAuth }) {
         return res.status(400).json({ error: 'done must be a boolean' });
       }
 
-      // Verify card exists + enabled
-      const { data: card, error: cardErr } = await supabase
-        .from('flashcards')
-        .select('id, enabled')
-        .eq('id', flashcardId)
-        .maybeSingle();
+      // Card validity check and existing-review lookup are independent —
+      // run them concurrently so the round trip the client waits on is one
+      // query deep instead of two.
+      const [cardRes, existingRes] = await Promise.all([
+        supabase
+          .from('flashcards')
+          .select('id, enabled')
+          .eq('id', flashcardId)
+          .maybeSingle(),
+        supabase
+          .from('flashcard_reviews')
+          .select('id')
+          .eq('user_id', req.userId)
+          .eq('flashcard_id', flashcardId)
+          .maybeSingle(),
+      ]);
+
+      const { data: card, error: cardErr } = cardRes;
       if (cardErr) return res.status(500).json({ error: cardErr.message });
       if (!card) return res.status(404).json({ error: 'Card not found' });
       if (!card.enabled) return res.status(400).json({ error: 'Card is not enabled' });
 
-      // Upsert: look up existing row, UPDATE if present, INSERT otherwise
-      const { data: existing } = await supabase
-        .from('flashcard_reviews')
-        .select('id')
-        .eq('user_id', req.userId)
-        .eq('flashcard_id', flashcardId)
-        .maybeSingle();
+      const existing = existingRes.data;
 
       const nowIso = new Date().toISOString();
 
