@@ -226,10 +226,43 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .sr-mastered{background:rgba(46,196,160,.1);border:1px solid rgba(46,196,160,.25);color:#4dd4b0;}
 .sr-improved{background:rgba(91,168,255,.1);border:1px solid rgba(91,168,255,.25);color:#7dc0ff;}
 .sr-retry{background:rgba(224,112,128,.08);border:1px solid rgba(224,112,128,.2);color:#e07080;}
-/* Login/review banner */
-#sr-review-banner{position:fixed;top:64px;left:var(--sw);right:0;z-index:200;background:rgba(15,20,35,.97);border-bottom:1px solid rgba(212,168,67,.3);padding:10px 24px;display:flex;align-items:center;gap:12px;box-shadow:0 3px 12px rgba(0,0,0,.3);transition:left .22s ease;}
-.sr-banner-btn{padding:7px 14px;background:rgba(212,168,67,.18);border:1px solid rgba(212,168,67,.4);color:var(--gold-l);border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;font-family:var(--fb);}
-.sr-banner-dismiss{padding:6px 12px;background:transparent;border:1px solid var(--bdr2);color:var(--muted);border-radius:8px;cursor:pointer;font-size:12px;font-family:var(--fb);}
+/* ── Notification bell + panel ───────────────────────────────── */
+/* Replaced the old #sr-review-banner, a fixed bar that pushed itself under
+   the topbar across the full content width on every load. */
+.notif-wrap{position:relative;flex-shrink:0;}
+.notif-bell{position:relative;width:32px;height:32px;display:flex;align-items:center;justify-content:center;background:transparent;border:1px solid var(--bdr2);border-radius:9px;cursor:pointer;font-size:15px;line-height:1;padding:0;transition:border-color .2s,background .2s;}
+.notif-bell:hover{border-color:rgba(212,168,67,.45);background:rgba(212,168,67,.08);}
+.notif-bell.has-unread{border-color:rgba(212,168,67,.4);}
+.notif-bell.has-unread>span[aria-hidden]{animation:notifNudge 2.4s ease-in-out 3;transform-origin:50% 15%;}
+@keyframes notifNudge{0%,88%,100%{transform:rotate(0);}90%{transform:rotate(11deg);}94%{transform:rotate(-9deg);}97%{transform:rotate(4deg);}}
+.notif-badge{position:absolute;top:-5px;right:-5px;min-width:17px;height:17px;padding:0 4px;border-radius:9px;background:#e0506a;color:#fff;font-family:var(--fm);font-size:10px;font-weight:700;line-height:17px;text-align:center;box-shadow:0 0 0 2px var(--bg,#0d1220);}
+/* Body-level (see index.html) and position:fixed — .topbar clips descendants,
+   so the panel is anchored to the bell in JS instead of nested under it. */
+.notif-panel{position:fixed;top:0;left:0;width:330px;max-height:min(460px,70vh);overflow-y:auto;z-index:400;background:rgba(15,20,35,.99);border:1px solid rgba(212,168,67,.28);border-radius:13px;box-shadow:0 12px 34px rgba(0,0,0,.5);opacity:0;transform:translateY(-6px);pointer-events:none;transition:opacity .16s ease,transform .16s ease;display:none;}
+.notif-panel.open{display:block;}
+.notif-panel.open{opacity:1;transform:translateY(0);pointer-events:auto;}
+.notif-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:13px 15px;border-bottom:1px solid var(--bdr);}
+.notif-title{font-family:var(--fd);font-size:13px;font-weight:700;color:var(--gold-l);}
+.notif-body{padding:6px;}
+.notif-item{padding:12px 11px;border-radius:10px;display:flex;gap:11px;align-items:flex-start;}
+.notif-item+.notif-item{margin-top:2px;border-top:1px solid var(--bdr);border-radius:0 0 10px 10px;}
+.notif-ic{font-size:17px;line-height:1.2;flex-shrink:0;}
+.notif-txt{flex:1;min-width:0;}
+.notif-msg{font-size:12.5px;color:var(--white);line-height:1.45;}
+.notif-sub{font-size:11px;color:var(--muted);margin-top:3px;}
+.notif-act{margin-top:9px;width:100%;padding:9px;font-family:var(--fd);font-size:12px;font-weight:700;background:linear-gradient(135deg,rgba(212,168,67,.18),rgba(212,168,67,.08));border:1px solid rgba(212,168,67,.4);color:var(--gold-l);border-radius:9px;cursor:pointer;transition:all .2s;}
+.notif-act:hover{background:rgba(212,168,67,.26);}
+.notif-empty{padding:30px 18px;text-align:center;font-size:12.5px;color:var(--muted);}
+.notif-empty-ic{font-size:26px;margin-bottom:9px;opacity:.75;}
+/* Reminder toggle */
+.notif-foot{padding:11px 15px;border-top:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;gap:10px;}
+.notif-foot-lbl{font-size:11.5px;color:var(--muted);line-height:1.35;}
+.notif-switch{position:relative;width:38px;height:21px;flex-shrink:0;border:none;padding:0;border-radius:11px;background:rgba(255,255,255,.13);cursor:pointer;transition:background .2s;}
+.notif-switch::after{content:'';position:absolute;top:3px;left:3px;width:15px;height:15px;border-radius:50%;background:#8c93a6;transition:transform .2s,background .2s;}
+.notif-switch[aria-checked="true"]{background:rgba(212,168,67,.4);}
+.notif-switch[aria-checked="true"]::after{transform:translateX(17px);background:var(--gold-l);}
+.notif-switch:disabled{opacity:.5;cursor:not-allowed;}
+@media(max-width:560px){.notif-panel{width:min(310px,calc(100vw - 24px));}}
 
 /* Subject page internal tabs */
 .subject-page-header{display:flex;align-items:center;gap:16px;margin-bottom:24px;padding:20px 24px;

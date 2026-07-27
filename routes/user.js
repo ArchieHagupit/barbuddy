@@ -32,6 +32,37 @@ module.exports = function createUserRoutes({ requireAuth }) {
     } catch(e) { res.status(500).json({ error: e.message }); }
   });
 
+  // ── Student-owned preferences ─────────────────────────────────
+  // Currently just the due-review reminder toggle. Deliberately separate from
+  // the admin-controlled access flags (spaced_repetition_enabled,
+  // custom_subject_enabled) — a student can silence the reminder but cannot
+  // grant themselves access to anything.
+  router.patch('/api/user/preferences', requireAuth, async (req, res) => {
+    try {
+      const { reviewRemindersEnabled } = req.body || {};
+      if (typeof reviewRemindersEnabled !== 'boolean') {
+        return res.status(400).json({ error: 'reviewRemindersEnabled (boolean) required' });
+      }
+      const { error } = await supabase
+        .from('users')
+        .update({ review_reminders_enabled: reviewRemindersEnabled })
+        .eq('id', req.userId);
+      if (error) {
+        // 42703 = undefined_column — the migration in
+        // scripts/add-review-reminders-column.sql hasn't been run yet.
+        if (error.code === '42703' || /review_reminders_enabled/.test(error.message || '')) {
+          console.error('[user/preferences] review_reminders_enabled column missing — run scripts/add-review-reminders-column.sql');
+          return res.status(503).json({ error: 'preference_storage_unavailable' });
+        }
+        throw error;
+      }
+      res.json({ success: true, reviewRemindersEnabled });
+    } catch(e) {
+      console.error('[user/preferences]', e.message);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   // ── Exam session auto-save ────────────────────────────────────
   router.post('/api/exam-session/save', requireAuth, async (req, res) => {
     try {
