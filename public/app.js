@@ -4001,63 +4001,35 @@ function renderDashboardFlashcardWidget() {
   _paintFlashcardOverviewWidget(el, _fcBundleCache);
 }
 
+// Renders the aggregate flashcard progress bar inside the overview hero.
+// It used to be a standalone card that also listed a chip per subject —
+// the same dot, name and done/total as the subject grid directly below it,
+// with the same click target. That duplicate list is gone; the subject cards
+// own per-subject detail, and this owns the single overall number.
 function _paintFlashcardOverviewWidget(el, bundle) {
   el.style.display = '';
 
-  // Compute aggregated stats from bundle
   let totalCards = 0, totalDone = 0;
-  const subjectsWithCards = [];
   for (const subj of Object.keys(bundle.totalBySubject || {})) {
     const t = bundle.totalBySubject[subj] || 0;
-    const d = bundle.doneCountBySubject[subj] || 0;
+    // Clamp per subject, matching getSubjectFlashcardProgress — a stale done
+    // count must never push the aggregate above 100%.
     totalCards += t;
-    totalDone += d;
-    if (t > 0) {
-      subjectsWithCards.push({ subj, total: t, done: d, remaining: t - d });
-    }
+    totalDone  += Math.min(t, bundle.doneCountBySubject[subj] || 0);
   }
   const overallPct = totalCards > 0 ? Math.round((totalDone / totalCards) * 100) : 0;
 
   if (totalCards === 0) {
-    el.innerHTML = `
-      <div class="fc-widget-empty">
-        <div style="font-size:24px;margin-bottom:4px;opacity:.6;">🎴</div>
-        <div style="font-size:13px;color:var(--muted);">No flashcards imported yet.</div>
-      </div>
-    `;
+    el.innerHTML = `<div class="ov-prog-empty">No flashcards imported yet — past bar questions are still available below.</div>`;
     return;
   }
 
-  // All subjects with cards, sorted by remaining count (descending) so
-  // the highest-remaining surface first. No cap — chips wrap to multiple
-  // rows via flex-wrap in CSS.
-  const topSubjects = subjectsWithCards
-    .sort((a, b) => b.remaining - a.remaining);
-
   el.innerHTML = `
-    <div class="fc-widget-inner">
-      <div class="fc-widget-header">
-        <div>
-          <div class="fc-widget-title">🎴 Flashcards Progress</div>
-          <div class="fc-widget-sub">${totalDone} of ${totalCards} done · ${overallPct}% complete</div>
-        </div>
-      </div>
-      <div class="fc-widget-overall-bar" style="height:6px;background:rgba(255,255,255,.06);border-radius:3px;overflow:hidden;margin-bottom:12px;">
-        <div style="height:100%;width:${overallPct}%;background:linear-gradient(90deg,var(--gold),var(--gold-l));transition:width .4s;"></div>
-      </div>
-      <div class="fc-widget-chips">
-        ${topSubjects.map(({ subj, done, total }) => {
-          const pct = total > 0 ? Math.round((done / total) * 100) : 0;
-          const subjInfo = SUBJS.find(x => x.key === subj);
-          return `<button class="fc-widget-chip" onclick="navToSubject('${h(subj)}', 'flashcards')">
-            <span class="fc-chip-dot" style="background:${subjInfo?.color || '#888'};"></span>
-            <span class="fc-chip-name">${h(subjInfo?.name || subj)}</span>
-            <span class="fc-chip-count">${done}/${total}</span>
-          </button>`;
-        }).join('')}
-      </div>
-    </div>
-  `;
+    <div class="ov-prog-track"><div class="ov-prog-fill" style="width:${overallPct}%"></div></div>
+    <div class="ov-prog-meta">
+      <span><strong>${totalDone.toLocaleString()}</strong> of ${totalCards.toLocaleString()} flashcards done</span>
+      <span class="ov-prog-pct">${overallPct}%</span>
+    </div>`;
 }
 
 // ── Per-subject flashcard progress ───────────────────────────
@@ -4096,8 +4068,13 @@ function refreshFlashcardProgressUI(subj) {
       const fill  = ovCard.querySelector('.ov-subj-prog-fill');
       const stat  = ovCard.querySelector('.ov-subj-stats span:first-child');
       const track = ovCard.querySelector('.ov-subj-prog-track');
+      const pctEl = ovCard.querySelector('.ov-subj-pct');
       if (fill) fill.style.width = prog.pct + '%';
       if (stat) stat.textContent = label;
+      if (pctEl) pctEl.textContent = prog.total > 0 ? prog.pct + '%' : '';
+      // Drives the muted empty styling — must follow the data, or a subject
+      // stays greyed out after its first cards are imported.
+      ovCard.classList.toggle('is-empty', prog.total === 0);
       if (track) track.title = prog.total > 0
         ? `${prog.done} of ${prog.total} flashcards marked done`
         : 'No flashcards imported yet';
@@ -4327,53 +4304,68 @@ function renderOverview() {
       totalRemaining += Math.max(0, t - d);
     }
     if (totalRemaining > 0) {
-      focusLine = `You have <strong style="color:var(--gold-l)">${totalRemaining}</strong> flashcard${totalRemaining!==1?'s':''} left to drill. Keep the streak going.`;
+      // toLocaleString to match the grouped figures in the progress bar below —
+      // "1207 left" beside "of 1,920" read as two different number systems.
+      focusLine = `You have <strong style="color:var(--gold-l)">${totalRemaining.toLocaleString()}</strong> flashcard${totalRemaining!==1?'s':''} left to drill. Keep the streak going.`;
     } else if (totalRemaining === 0 && Object.keys(_fcBundleCache.totalBySubject||{}).length > 0) {
       focusLine = `You've cleared every flashcard 🎉 — jump into a Mock Bar to test your recall under timed conditions.`;
     }
   }
 
+  // Subjects actually shown, computed before render so the section header can
+  // report a count that matches what's on screen.
+  const visibleSubjs = SUBJS.filter(s => s.key !== 'custom').filter(s => {
+    const ts = window.TAB_SETTINGS?.subjects?.[s.key] || {};
+    const allOff = ['learn','quiz','mockbar','flashcards','speeddrill'].every(m => ts[m] === false);
+    return !(allOff && !adminKey);
+  });
+
   container.innerHTML = `
     <div class="overview-inner">
-      ${_cdDays >= 0
-        ? `<div class="ov-countdown-banner">
-            <span>⚖️</span>
-            <span><span class="ov-cd-days">${_cdDays}</span> day${_cdDays!==1?'s':''} until the Philippine Bar Exam 2026</span>
-            <span style="margin-left:auto;font-size:11px;cursor:pointer;opacity:.6;" onclick="navToProgress()">📊 My Progress →</span>
-          </div>`
-        : ''}
-      <div class="ov-quote-bar">
-        <span class="ov-quote-star">✦</span>
-        <span class="ov-quote-text">"${h(quote)}"</span>
+      <!-- Hero: greeting, today's focus, aggregate progress and the countdown
+           in one card. These were four separate stacked bands (countdown
+           banner, welcome card, "Flashcards Progress" card, quote bar) that
+           between them said "Bar Exam 2026" twice and the flashcard count
+           three times before any actionable content appeared. -->
+      <section class="ov-hero">
+        <div class="ov-hero-main">
+          <h2 class="ov-greeting">${timeIcon} ${timeWord}, ${h(userName)}.</h2>
+          <p class="ov-focus-line">${focusLine}</p>
+          <div class="ov-prog" id="fc-overview-widget"></div>
+        </div>
+        ${_cdDays >= 0
+          ? `<button class="ov-countdown" onclick="navToProgress()" title="View my progress">
+              <span class="ov-cd-num">${_cdDays}</span>
+              <span class="ov-cd-lbl">day${_cdDays!==1?'s':''} to the Bar</span>
+              <span class="ov-cd-link">My Progress →</span>
+            </button>`
+          : ''}
+      </section>
+
+      <p class="ov-quote"><span class="ov-quote-star">✦</span> ${h(quote)}</p>
+
+      <div class="ov-subjects-head">
+        <span class="ov-subjects-title">Subjects</span>
+        <span class="ov-subjects-count">${visibleSubjs.length}</span>
       </div>
-
-      <div class="ov-welcome-card">
-        <h2 class="ov-greeting">${timeIcon} ${timeWord}, ${h(userName)}.</h2>
-        <p class="ov-subtitle">Welcome back to your Bar Exam 2026 study hub.</p>
-        <p class="ov-focus-line" style="margin-top:14px;font-size:14px;line-height:1.55;color:var(--white);opacity:.92;">${focusLine}</p>
-      </div>
-
-      <div class="fc-overview-widget" id="fc-overview-widget"></div>
-
-      <div class="ov-subjects-label">SUBJECTS</div>
       <div class="ov-subjects-grid">
-        ${SUBJS.filter(s => s.key !== 'custom').map(s => {
+        ${visibleSubjs.map(s => {
           // Progress = flashcards marked done / total cards for the subject.
           const prog = getSubjectFlashcardProgress(s.key);
           const pct  = prog.pct;
           const pb   = pbCount(s.key);
           const ts = window.TAB_SETTINGS?.subjects?.[s.key] || {};
-          // Hide a card only if EVERY learnable mode is off — flashcards is now the
-          // primary overview action so it goes in the gate too.
-          const allOff = ['learn','quiz','mockbar','flashcards','speeddrill'].every(m => ts[m] === false);
-          if (allOff && !adminKey) return ''; // Hide fully restricted subjects from overview
           const flashcardsOk = ts.flashcards !== false;
           const mockOk       = ts.mockbar    !== false;
+          // `empty` mutes the track instead of rendering a full-width trough
+          // next to the words "No cards yet", which said the same thing twice.
+          const empty = prog.total === 0;
           return `
-            <div class="ov-subj-card" data-subj="${s.key}" style="--subj-color:${s.color}">
+            <div class="ov-subj-card${empty ? ' is-empty' : ''}" data-subj="${s.key}" style="--subj-color:${s.color}">
               <div class="ov-subj-top">
                 <div class="ov-subj-dot" style="background:${s.color}"></div>
                 <div class="ov-subj-name">${h(s.name)}</div>
+                <div class="ov-subj-pct">${empty ? '' : pct + '%'}</div>
               </div>
               <div class="ov-subj-prog-track" title="${prog.total > 0 ? `${prog.done} of ${prog.total} flashcards marked done` : 'No flashcards imported yet'}">
                 <div class="ov-subj-prog-fill" style="width:${pct}%;background:${s.color}"></div>
