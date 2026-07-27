@@ -101,6 +101,7 @@ module.exports = function createFlashcardStudyRoutes({ requireAuth }) {
       const topicCountsBySubject = {};
       const totalBySubject = {};
       const cardSubjMap = {};
+      const cardNodeMap = {};
       for (const subj of VALID_SUBJECTS) {
         topicCountsBySubject[subj] = {};
         totalBySubject[subj] = 0;
@@ -111,12 +112,19 @@ module.exports = function createFlashcardStudyRoutes({ requireAuth }) {
           (topicCountsBySubject[c.subject][c.node_id] || 0) + 1;
         totalBySubject[c.subject]++;
         cardSubjMap[c.id] = c.subject;
+        cardNodeMap[c.id] = c.node_id;
       }
 
       // Fetch user's done rows
       let doneCardIds = [];
       const doneCountBySubject = {};
-      for (const subj of VALID_SUBJECTS) doneCountBySubject[subj] = 0;
+      // Per-topic done tallies drive the green completion state in the
+      // Flashcards "Browse by Topic" tree (parents roll up client-side).
+      const doneTopicCountsBySubject = {};
+      for (const subj of VALID_SUBJECTS) {
+        doneCountBySubject[subj] = 0;
+        doneTopicCountsBySubject[subj] = {};
+      }
 
       let doneRows = [];
       try {
@@ -136,6 +144,11 @@ module.exports = function createFlashcardStudyRoutes({ requireAuth }) {
         const subj = cardSubjMap[r.flashcard_id];
         if (subj && doneCountBySubject[subj] != null) {
           doneCountBySubject[subj]++;
+          const nodeId = cardNodeMap[r.flashcard_id];
+          if (nodeId) {
+            doneTopicCountsBySubject[subj][nodeId] =
+              (doneTopicCountsBySubject[subj][nodeId] || 0) + 1;
+          }
         }
       }
 
@@ -144,6 +157,7 @@ module.exports = function createFlashcardStudyRoutes({ requireAuth }) {
         totalBySubject,
         doneCardIds,
         doneCountBySubject,
+        doneTopicCountsBySubject,
       });
     } catch(e) {
       console.error('[fc-bundle] fatal:', e);

@@ -1487,6 +1487,37 @@ button[onclick*="switchSubjectTab(currentSubject,'learn')"] { display: none !imp
 .fc-topic-leaf:active { background: rgba(201,168,76,.16); }
 .fc-topic-tree { max-height: 520px; overflow-y: auto; border: 1px solid var(--bdr2); border-radius: 10px; padding: 8px 10px; background: rgba(255,255,255,.01); }
 
+/* ── Topic completion (100% only) ─────────────────────────────
+   Applied to leaves, group headers and section headers alike; parents
+   get it once every descendant topic is finished. Transitions so
+   finishing a topic's last card fades in rather than snapping. */
+.tl-topic.fc-complete,
+.tl-group-header.fc-complete,
+.tl-section-header.fc-complete {
+  background: rgba(46,196,160,.10);
+  transition: background .18s ease, color .18s ease;
+}
+.tl-topic.fc-complete { color: #7fe3c8; box-shadow: inset 2px 0 0 #2ec4a0; }
+.tl-topic.fc-complete:hover { background: rgba(46,196,160,.16); }
+.tl-topic.fc-complete .tl-topic-name,
+.tl-group-header.fc-complete .tl-group-name,
+.tl-section-header.fc-complete .tl-section-name { color: #7fe3c8; }
+.tl-section-header.fc-complete:hover .tl-section-name { color: #9dedd8; }
+.tl-group-header.fc-complete:hover { color: #9dedd8; background: rgba(46,196,160,.16); }
+/* Count badge: gold "N cards" → green "✓ N/N" at 100% */
+.fc-count-badge {
+  background: rgba(201,168,76,.12);
+  border: 1px solid rgba(201,168,76,.25);
+  color: var(--gold-l);
+  transition: background .18s ease, color .18s ease, border-color .18s ease;
+}
+.fc-count-badge.fc-badge-complete {
+  background: rgba(46,196,160,.18);
+  border-color: rgba(46,196,160,.45);
+  color: #2ec4a0;
+  font-weight: 700;
+}
+
 /* Session 4: 3-button nav row for flashcard viewer */
 .fc-nav-row {
   display: grid;
