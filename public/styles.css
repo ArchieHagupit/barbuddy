@@ -265,6 +265,16 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .notif-sub{font-size:11px;color:var(--muted);margin-top:3px;}
 .notif-act{margin-top:9px;width:100%;padding:9px;font-family:var(--fd);font-size:12px;font-weight:700;background:linear-gradient(135deg,rgba(212,168,67,.18),rgba(212,168,67,.08));border:1px solid rgba(212,168,67,.4);color:var(--gold-l);border-radius:9px;cursor:pointer;transition:all .2s;}
 .notif-act:hover{background:rgba(212,168,67,.26);}
+/* Progress bar for the unfinished-exam notification */
+.notif-bar{height:4px;background:rgba(255,255,255,.08);border-radius:2px;overflow:hidden;margin-top:8px;}
+.notif-bar-fill{height:100%;background:var(--gold);border-radius:2px;transition:width .4s ease;}
+/* Paired actions (Resume / Discard) */
+.notif-btn-row{display:flex;gap:7px;margin-top:10px;}
+.notif-btn-primary{flex:1;padding:8px 12px;font-family:var(--fd);font-size:12px;font-weight:700;background:linear-gradient(135deg,var(--gold),var(--gold-d));color:#1a1200;border:none;border-radius:8px;cursor:pointer;white-space:nowrap;transition:filter .15s;}
+.notif-btn-primary:hover{filter:brightness(1.08);}
+.notif-btn-ghost{padding:8px 14px;font-family:var(--fb);font-size:11.5px;font-weight:600;background:transparent;color:var(--muted);border:1px solid var(--bdr);border-radius:8px;cursor:pointer;white-space:nowrap;transition:color .15s,border-color .15s;}
+.notif-btn-ghost:hover{color:var(--white);border-color:var(--bdr2);}
+@media(prefers-reduced-motion:reduce){.notif-bar-fill{transition:none;}}
 .notif-empty{padding:30px 18px;text-align:center;font-size:12.5px;color:var(--muted);}
 .notif-empty-ic{font-size:26px;margin-bottom:9px;opacity:.75;}
 /* Reminder toggle */
@@ -1142,7 +1152,8 @@ select.form-input{cursor:pointer;}
 .fade{opacity:0;animation:fadeUp .4s ease forwards;}
 .fade:nth-child(1){animation-delay:.04s;}.fade:nth-child(2){animation-delay:.09s;}.fade:nth-child(3){animation-delay:.14s;}.fade:nth-child(4){animation-delay:.19s;}.fade:nth-child(5){animation-delay:.23s;}
 @keyframes fadeUp{from{opacity:0;transform:translateY(12px);}to{opacity:1;transform:translateY(0);}}
-@keyframes slideUp{from{opacity:0;transform:translateX(-50%) translateY(20px);}to{opacity:1;transform:translateX(-50%) translateY(0);}}
+/* slideUp animated the floating resume banner, which now lives in the
+   notification panel. Removed with it. */
 @keyframes slideDown{from{opacity:0;transform:translateX(-50%) translateY(-10px);}to{opacity:1;transform:translateX(-50%) translateY(0);}}
 ::-webkit-scrollbar{width:6px;}::-webkit-scrollbar-track{background:transparent;}::-webkit-scrollbar-thumb{background:rgba(212,168,67,.14);border-radius:4px;}
 @media(max-width:900px){.two-col{grid-template-columns:1fr;}.right-col{display:none;}.stat-row{grid-template-columns:repeat(2,1fr);}.split-layout{grid-template-columns:1fr;}.panel-l{display:none;}.mock-config-grid{grid-template-columns:1fr;}.admin-grid{grid-template-columns:1fr;}.mr-stats{flex-wrap:wrap;}}
