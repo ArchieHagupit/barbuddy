@@ -1301,6 +1301,83 @@ button[onclick*="switchSubjectTab(currentSubject,'learn')"] { display: none !imp
   background: rgba(201,168,76,.06) !important;
 }
 
+/* ── Study session: topic outline + card, two columns ─────────
+   The frame is sized to the viewport by _fcSizeStudyLayout(), so the page
+   itself doesn't scroll during a session: the outline scrolls internally,
+   and the card's Prev/Done/Next row stays pinned in view. (Sticky is not
+   used for the columns — body{overflow-x:hidden} makes body a scroll
+   container, which breaks viewport-relative sticky for nested elements.) */
+.fc-study-layout {
+  display: grid;
+  grid-template-columns: 288px minmax(0, 1fr);
+  gap: 18px;
+  align-items: stretch;
+  min-height: 380px;
+}
+.fc-study-main { min-width: 0; display: flex; flex-direction: column; }
+.fc-study-outline {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: rgba(255,255,255,.015);
+  border: 1px solid var(--bdr2);
+  border-radius: 12px;
+  overflow: hidden;
+}
+/* Card area takes the slack and scrolls if a card back is long; the nav
+   row never leaves the frame. */
+.fc-study-main .fc-viewer-wrap {
+  display: flex; flex-direction: column;
+  flex: 1; min-height: 0; width: 100%;
+}
+.fc-study-main .fc-card-outer { flex: 1; min-height: 0; overflow-y: auto; }
+.fc-study-main .fc-nav-row { flex-shrink: 0; }
+.fc-outline-head {
+  font-size: 10px; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--muted); padding: 11px 12px 9px;
+  border-bottom: 1px solid var(--bdr2); flex-shrink: 0;
+}
+.fc-outline-scroll { overflow-y: auto; flex: 1; min-height: 0; padding: 6px 6px 10px; }
+.fc-outline-scroll::-webkit-scrollbar { width: 5px; }
+.fc-outline-scroll::-webkit-scrollbar-thumb { background: rgba(201,168,76,.25); border-radius: 3px; }
+/* The outline owns the scrolling, so the tree drops its own box + cap */
+.fc-study-outline .fc-topic-tree {
+  max-height: none; overflow: visible; border: none;
+  border-radius: 0; padding: 0; background: transparent;
+}
+/* Topic the visible card belongs to */
+.fc-active-topic {
+  background: rgba(201,168,76,.14) !important;
+  box-shadow: inset 2px 0 0 var(--gold);
+  color: var(--gold-l) !important;
+  transition: background .18s ease, color .18s ease;
+}
+.fc-active-topic .tl-topic-name, .fc-active-topic .tl-group-name { color: var(--gold-l); }
+/* Completion green still wins its own row styling when both apply */
+.fc-active-topic.fc-complete { box-shadow: inset 2px 0 0 #2ec4a0; }
+
+/* Keep title + tab row pinned while studying so only the outline scrolls */
+/* Trim the tab's bottom padding too — the study frame is already sized to
+   the viewport, and 60px of padding below it would reintroduce page scroll. */
+#page-subject.fc-session-active .pg-inner { max-width: 1180px; padding-bottom: 14px; }
+#page-subject.fc-session-active #subject-sticky-head {
+  position: sticky; top: 58px; z-index: 20;
+  background: rgba(15,20,35,.94);
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  margin: 0 -26px; padding: 10px 26px 0;
+}
+#page-subject.fc-session-active .subject-page-header { margin-bottom: 12px; }
+#page-subject.fc-session-active .subject-tab-bar { margin-bottom: 12px; }
+
+@media (max-width: 900px) {
+  /* Stack: outline above the card with its own capped scroll area, and let
+     the page scroll normally again rather than caging it in the viewport. */
+  .fc-study-layout { grid-template-columns: 1fr; height: auto !important; }
+  .fc-study-outline { max-height: 200px; }
+  .fc-study-main .fc-card-outer { overflow-y: visible; }
+  #page-subject.fc-session-active #subject-sticky-head { position: static; margin: 0; padding: 0; }
+}
+
 /* Card viewer */
 .fc-viewer-wrap {
   max-width: 720px;

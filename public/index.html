@@ -290,8 +290,12 @@ new PerformanceObserver((list) => {
 <!-- ═══ SUBJECT PAGE (shared template for all 9 subjects) ═══ -->
 <div class="page" id="page-subject">
 <div class="pg-inner">
-  <div id="subject-page-header-area"></div>
-  <div id="subject-tab-bar" class="subject-tab-bar"></div>
+  <!-- Wrapper exists so the title + tab row can stick together as one block
+       during a flashcard study session (see #page-subject.fc-session-active) -->
+  <div id="subject-sticky-head">
+    <div id="subject-page-header-area"></div>
+    <div id="subject-tab-bar" class="subject-tab-bar"></div>
+  </div>
   <div id="subject-tab-content"></div>
 </div>
 </div>
