@@ -2210,6 +2210,7 @@ function switchSubjectTab(subj, mode) {
     }
   }
   updateBreadcrumb(subj, mode);
+  maybeAutoExpandSidebarForFlashcards(subj, mode);
   const content = document.getElementById('subject-tab-content');
   if (!content) return;
   // Guard: block rendering if tab is restricted for this user (defense-in-depth)
@@ -2496,7 +2497,8 @@ function drillAgain() {
 
 // Flashcard bundle cache — populated once at login via loadFlashcardBundleOnBoot.
 // Shape (from GET /api/flashcards/bundle):
-//   { topicCountsBySubject, totalBySubject, doneCardIds, doneCountBySubject }
+//   { topicCountsBySubject, totalBySubject, doneCardIds, doneCountBySubject,
+//     doneTopicCountsBySubject }
 // doneCardIds kept as a Set in memory for O(1) done-state lookups.
 let _fcBundleCache = null;
 let _fcDoneSet = new Set();
@@ -2684,18 +2686,88 @@ function renderFlashcardTopicTree(container, subj, sections, countsByNodeId) {
   `;
 
   const treeEl = container.querySelector('.fc-topic-tree');
+  // Remembered so refreshFlashcardTreeCompletion() can recompute roll-ups
+  // in place after a mark-done, without re-rendering (which would collapse
+  // scroll position and re-run the whole prune).
+  _fcRenderedTree = { subj, nodes: filtered, counts: countsByNodeId };
   renderFlashcardTreeNodes(filtered, treeEl, subj, countsByNodeId, 0);
 }
 
+// ── Topic completion roll-up ─────────────────────────────────
+// The tree currently painted into #fc-topics-slot, kept so completion
+// state can be recomputed without a full re-render.
+let _fcRenderedTree = null;
+
+// Total/done card tallies for a node INCLUDING all descendants. A node is
+// "complete" only at 100% — partial progress keeps the neutral styling.
+function fcNodeTally(node, counts, doneCounts) {
+  let total = counts[node.id] || 0;
+  let done = Math.min(doneCounts[node.id] || 0, total);
+  for (const child of (node.children || [])) {
+    const t = fcNodeTally(child, counts, doneCounts);
+    total += t.total;
+    done += t.done;
+  }
+  return { total, done };
+}
+
+function fcIsNodeComplete(node, counts, doneCounts) {
+  const { total, done } = fcNodeTally(node, counts, doneCounts);
+  return total > 0 && done >= total;
+}
+
+// Repaint just the green/neutral completion state on the already-rendered
+// tree. Called after every mark-done so finishing a topic lights up live.
+function refreshFlashcardTreeCompletion() {
+  if (!_fcRenderedTree) return;
+  const { subj, nodes, counts } = _fcRenderedTree;
+  const treeEl = document.getElementById('fc-topic-tree-' + subj);
+  if (!treeEl) return;
+  const doneCounts = _fcBundleCache?.doneTopicCountsBySubject?.[subj] || {};
+
+  (function walk(list) {
+    for (const node of list) {
+      const tally = fcNodeTally(node, counts, doneCounts);
+      const complete = tally.total > 0 && tally.done >= tally.total;
+      const row = node.id
+        ? treeEl.querySelector('[data-fc-node="' + CSS.escape(node.id) + '"]')
+        : null;
+      if (row) {
+        row.classList.toggle('fc-complete', complete);
+        const badge = row.querySelector('.fc-count-badge');
+        if (badge) fcPaintCountBadge(badge, counts[node.id] || 0, doneCounts[node.id] || 0);
+      }
+      if (node.children?.length) walk(node.children);
+    }
+  })(nodes);
+}
+
+// A leaf/self badge shows "N cards" until every card in it is done, then
+// flips to a green "✓ N/N".
+function fcPaintCountBadge(badgeEl, total, doneRaw) {
+  const done = Math.min(doneRaw, total);
+  const complete = total > 0 && done >= total;
+  badgeEl.classList.toggle('fc-badge-complete', complete);
+  badgeEl.textContent = complete
+    ? '✓ ' + done + '/' + total
+    : total + ' card' + (total !== 1 ? 's' : '');
+}
+
 function renderFlashcardTreeNodes(nodes, container, subj, counts, depth) {
+  const doneCounts = _fcBundleCache?.doneTopicCountsBySubject?.[subj] || {};
   for (const node of nodes) {
     const children = node.children || [];
     const displayName = node.title || node.name || '';
+    // Roll-up: green only at 100%, so a parent lights up once every
+    // descendant topic is finished.
+    const nodeComplete = fcIsNodeComplete(node, counts, doneCounts);
 
     if (node.type === 'section') {
       // Roman numeral section header — expandable, non-clickable
       const headerEl = document.createElement('div');
       headerEl.className = 'tl-section-header';
+      if (node.id) headerEl.setAttribute('data-fc-node', node.id);
+      if (nodeComplete) headerEl.classList.add('fc-complete');
       const arrowEl = document.createElement('span');
       arrowEl.className = 'tl-expand-arrow open';
       arrowEl.textContent = '▶';
@@ -2732,6 +2804,8 @@ function renderFlashcardTreeNodes(nodes, container, subj, counts, depth) {
       if (node.id) groupEl.setAttribute('data-node-id', node.id);
       const headerEl = document.createElement('div');
       headerEl.className = 'tl-group-header';
+      if (node.id) headerEl.setAttribute('data-fc-node', node.id);
+      if (nodeComplete) headerEl.classList.add('fc-complete');
       const arrowEl = document.createElement('span');
       arrowEl.className = 'tl-expand-arrow open';
       arrowEl.textContent = '▶';
@@ -2744,9 +2818,9 @@ function renderFlashcardTreeNodes(nodes, container, subj, counts, depth) {
       // If the group node itself has cards, show a small badge on the header
       if (selfCount > 0) {
         const selfBadge = document.createElement('span');
-        selfBadge.className = 'tl-cached-badge';
-        selfBadge.style.cssText = 'background:rgba(201,168,76,.12);border-color:rgba(201,168,76,.25);color:var(--gold-l);margin-left:6px;';
-        selfBadge.textContent = selfCount + ' card' + (selfCount !== 1 ? 's' : '');
+        selfBadge.className = 'tl-cached-badge fc-count-badge';
+        selfBadge.style.marginLeft = '6px';
+        fcPaintCountBadge(selfBadge, selfCount, doneCounts[node.id] || 0);
         headerEl.appendChild(selfBadge);
       }
 
@@ -2797,6 +2871,8 @@ function renderFlashcardTreeNodes(nodes, container, subj, counts, depth) {
       const topicEl = document.createElement('div');
       topicEl.className = 'tl-topic fc-topic-leaf';
       topicEl.setAttribute('data-node-id', node.id || '');
+      if (node.id) topicEl.setAttribute('data-fc-node', node.id);
+      if (nodeComplete) topicEl.classList.add('fc-complete');
       const checkEl = document.createElement('span');
       checkEl.className = 'tl-topic-check';
       checkEl.textContent = '🎴';
@@ -2804,9 +2880,8 @@ function renderFlashcardTreeNodes(nodes, container, subj, counts, depth) {
       nameEl.className = 'tl-topic-name';
       nameEl.textContent = (node.label ? node.label + '. ' : '') + displayName;
       const badgeEl = document.createElement('span');
-      badgeEl.className = 'tl-cached-badge';
-      badgeEl.style.cssText = 'background:rgba(201,168,76,.12);border-color:rgba(201,168,76,.25);color:var(--gold-l);';
-      badgeEl.textContent = selfCount + ' card' + (selfCount !== 1 ? 's' : '');
+      badgeEl.className = 'tl-cached-badge fc-count-badge';
+      fcPaintCountBadge(badgeEl, selfCount, doneCounts[node.id] || 0);
       topicEl.appendChild(checkEl);
       topicEl.appendChild(nameEl);
       topicEl.appendChild(badgeEl);
@@ -3221,6 +3296,17 @@ function _applyFlashcardDoneLocally(card, done, fallbackSubj) {
         ? counts[subj] + 1
         : Math.max(0, counts[subj] - 1);
     }
+    // Keep the per-topic tally in step so the topic tree's green completion
+    // state stays correct without refetching the bundle.
+    const nodeId = card.node_id;
+    if (subj && nodeId) {
+      const byNode = _fcBundleCache.doneTopicCountsBySubject
+        || (_fcBundleCache.doneTopicCountsBySubject = {});
+      const forSubj = byNode[subj] || (byNode[subj] = {});
+      forSubj[nodeId] = done
+        ? (forSubj[nodeId] || 0) + 1
+        : Math.max(0, (forSubj[nodeId] || 0) - 1);
+    }
     if (done) {
       _fcBundleCache.doneCardIds = _fcBundleCache.doneCardIds || [];
       _fcBundleCache.doneCardIds.push(card.id);
@@ -3550,6 +3636,8 @@ function refreshFlashcardProgressUI(subj) {
 
   renderDashboardFlashcardWidget();
   refreshSidebarFlashcardBadge();
+  // Green topic roll-ups follow marks made during a study session.
+  refreshFlashcardTreeCompletion();
 }
 
 // ── Sidebar badge ────────────────────────────────────────────
@@ -3634,6 +3722,27 @@ function setSidebarCollapsed(collapsed) {
 
 function toggleSidebarCollapse() {
   setSidebarCollapsed(!document.documentElement.classList.contains('sb-collapsed'));
+}
+
+// Which `subject::flashcards` view we last auto-expanded the sidebar for.
+// Navigating into Flashcards opens the rail so "Browse by Topic" sits
+// side-by-side with the cards; re-renders and a manual re-collapse while
+// staying on the tab must NOT re-open it, so the key is only cleared when
+// the user leaves Flashcards.
+let _fcSidebarAutoExpandKey = null;
+
+function maybeAutoExpandSidebarForFlashcards(subj, mode) {
+  if (mode !== 'flashcards') {
+    // Left the tab — a later return counts as fresh navigation.
+    _fcSidebarAutoExpandKey = null;
+    return;
+  }
+  const key = subj + '::flashcards';
+  if (_fcSidebarAutoExpandKey === key) return; // same view, just a re-render
+  _fcSidebarAutoExpandKey = key;
+  if (document.documentElement.classList.contains('sb-collapsed')) {
+    setSidebarCollapsed(false);
+  }
 }
 
 // Syncs the toggle button's title/aria to whatever state the early inline
