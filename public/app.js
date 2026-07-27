@@ -251,41 +251,30 @@ async function checkForInterruptedExam() {
   const timeStr = minutesAgo < 1 ? 'just now' : minutesAgo < 60 ? `${Math.round(minutesAgo)} minute${Math.round(minutesAgo)>1?'s':''} ago` : `${Math.round(minutesAgo/60)} hour${Math.round(minutesAgo/60)>1?'s':''} ago`;
   const answeredCount = countAnswered(session.answers);
 
-  // Always show banner — never auto-resume; let the user decide
-  showResumeBanner({ session, timeStr, answeredCount });
+  // Surfaced through the notification bell rather than a floating banner —
+  // never auto-resume; let the user decide. It stays in the panel until they
+  // explicitly Resume or Discard.
+  setInterruptedExamNotice({ session, timeStr, answeredCount });
   return true;
 }
 
-function showResumeBanner({ session, timeStr, answeredCount }) {
-  document.getElementById('resume-banner')?.remove();
-  const pct = Math.round(answeredCount / session.totalQuestions * 100);
-  const banner = document.createElement('div');
-  banner.id = 'resume-banner';
-  banner.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:999;background:var(--card,#1a2235);border:1px solid rgba(201,168,76,.35);border-radius:16px;padding:18px 22px;box-shadow:0 8px 32px rgba(0,0,0,.4),0 0 0 1px rgba(201,168,76,.1);display:flex;align-items:center;gap:16px;max-width:520px;width:calc(100vw - 48px);animation:slideUp .3s ease;';
-  banner.innerHTML = `
-    <div style="font-size:28px;flex-shrink:0;">⚡</div>
-    <div style="flex:1;min-width:0;">
-      <div style="font-family:var(--fd);font-size:14px;font-weight:800;color:var(--gold-l);margin-bottom:3px;">Unfinished Exam Found</div>
-      <div style="font-size:12px;color:var(--text-muted,rgba(240,236,227,.55));line-height:1.5;">
-        <strong style="color:var(--white)">${h(session.subjectName || session.subject)}</strong> · ${answeredCount}/${session.totalQuestions} answered · Interrupted ${timeStr}
-      </div>
-      <div style="height:4px;background:rgba(255,255,255,.08);border-radius:2px;margin-top:8px;overflow:hidden;">
-        <div style="height:100%;background:var(--gold);border-radius:2px;width:${pct}%;"></div>
-      </div>
-    </div>
-    <div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0;">
-      <button onclick="resumeExamSession()" style="padding:9px 18px;background:linear-gradient(135deg,var(--gold),var(--gold-d,#b8882a));color:#1a1200;font-weight:800;font-size:13px;border:none;border-radius:10px;cursor:pointer;font-family:var(--fd);white-space:nowrap;">▶ Resume Exam</button>
-      <button onclick="discardExamSession()" style="padding:7px 18px;background:transparent;color:var(--muted);font-size:11px;border:1px solid var(--bdr);border-radius:8px;cursor:pointer;font-family:var(--fb);">Discard</button>
-    </div>`;
-  document.body.appendChild(banner);
-  // Banner stays visible until user explicitly clicks Resume or Discard
+// The one place that owns "there is an unfinished exam" state for the bell.
+// Pass null to clear it.
+function setInterruptedExamNotice(info) {
+  window._interruptedExam = info || null;
+  refreshNotifications();
 }
 
 async function resumeExamSession(sessionArg) {
-  document.getElementById('resume-banner')?.remove();
+  closeNotifPanel();
   // Accept a pre-loaded session or fetch the best available one
   const session = sessionArg || await ExamSession.getBestSession();
-  if (!session || !session.questions?.length) { showToast('Session data not found.', 'error'); return; }
+  if (!session || !session.questions?.length) {
+    showToast('Session data not found.', 'error');
+    setInterruptedExamNotice(null);   // nothing to resume — drop the notice
+    return;
+  }
+  setInterruptedExamNotice(null);
 
   // ── Restore global exam state ──────────────────────────────
   window.activeExamSession = session;
@@ -345,15 +334,12 @@ async function resumeExamSession(sessionArg) {
 }
 
 async function discardExamSession() {
-  document.getElementById('resume-banner')?.remove();
-  if (!confirm('Discard the unfinished exam? Your answers will be lost.')) {
-    const session = ExamSession.loadLocal();
-    if (session) {
-      showResumeBanner({ session, timeStr: 'recently', answeredCount: countAnswered(session.answers) });
-    }
-    return;
-  }
+  // Cancelling leaves the notice in place — nothing to restore, since the
+  // panel renders from window._interruptedExam rather than a DOM node we
+  // just removed.
+  if (!confirm('Discard the unfinished exam? Your answers will be lost.')) return;
   await ExamSession.clearAll();
+  setInterruptedExamNotice(null);
   showToast('Exam session discarded.', 'info');
 }
 
@@ -380,11 +366,13 @@ function confirmAbandonExam() {
   hideSessionOverlay();
   const subj = window.activeExamSession?.subject || 'civil';
   navToSubject(subj, 'mockbar');
+  // Exiting mid-exam saves progress — surface it in the bell so the student
+  // can pick it back up.
   setTimeout(async () => {
     const session = ExamSession.loadLocal();
     if (session) {
       const answeredCount = Object.values(session.answers||{}).filter(a=>a.text?.trim()).length;
-      showResumeBanner({ session, timeStr: 'just now', answeredCount });
+      setInterruptedExamNotice({ session, timeStr: 'just now', answeredCount });
     }
   }, 500);
 }
@@ -1373,10 +1361,31 @@ function remindersEnabled() {
   return currentUser?.reviewRemindersEnabled !== false;
 }
 
-// The set of notifications is derived, not stored — today that's just the due
-// reviews. Add cases here as new notification kinds appear.
+// The set of notifications is derived, not stored — currently an unfinished
+// exam and due reviews. Add cases here as new notification kinds appear.
 function _collectNotifications() {
   const out = [];
+
+  // Unfinished exam first — it's time-boxed (sessions expire after 24h) and
+  // represents work already done, so it outranks anything else in the panel.
+  // Deliberately NOT gated by remindersEnabled(): that toggle is scoped to
+  // due-review reminders, and silencing those must never hide unsaved work.
+  const ex = window._interruptedExam;
+  if (ex?.session) {
+    const total = ex.session.totalQuestions || ex.session.questions?.length || 0;
+    const pct = total > 0 ? Math.round(ex.answeredCount / total * 100) : 0;
+    out.push({
+      id: 'exam-resume', icon: '⚡', weight: 1,
+      msg: `Unfinished <strong style="color:var(--gold-l);">${h(ex.session.subjectName || ex.session.subject || 'exam')}</strong> exam.`,
+      sub: `${ex.answeredCount}/${total} answered · interrupted ${ex.timeStr}`,
+      bar: pct,
+      buttons: [
+        { label: '▶ Resume', cls: 'notif-btn-primary', fn: 'resumeExamSession()' },
+        { label: 'Discard',  cls: 'notif-btn-ghost',   fn: 'discardExamSession()' },
+      ],
+    });
+  }
+
   const due = Array.isArray(window._srDueItems) ? window._srDueItems : [];
   if (isSREnabled() && remindersEnabled() && due.length) {
     const overdue = due.filter(i => (i.daysOverdue || 0) > 0).length;
@@ -1401,12 +1410,14 @@ function refreshNotifications() {
   wrap.style.display = (sessionToken && currentUser) ? '' : 'none';
 
   const items = _collectNotifications();
+  // Due reviews count as their question total (the number a student cares
+  // about); everything else counts as one item.
   const count = items.reduce((n, i) => n + (i.id === 'sr-due' ? (window._srDueItems?.length || 0) : 1), 0);
   if (count > 0) {
     badge.textContent = count > 99 ? '99+' : count;
     badge.style.display = '';
     bell.classList.add('has-unread');
-    bell.title = `${count} notification${count !== 1 ? 's' : ''}`;
+    bell.title = `${count} item${count !== 1 ? 's' : ''} need${count === 1 ? 's' : ''} your attention`;
   } else {
     badge.style.display = 'none';
     bell.classList.remove('has-unread');
@@ -1428,7 +1439,16 @@ function renderNotifPanel() {
           <div class="notif-txt">
             <div class="notif-msg">${i.msg}</div>
             ${i.sub ? `<div class="notif-sub">${h(i.sub)}</div>` : ''}
+            ${typeof i.bar === 'number'
+              ? `<div class="notif-bar"><div class="notif-bar-fill" style="width:${i.bar}%"></div></div>` : ''}
             ${i.rows ? `<div class="sr-subj-list">${i.rows}</div>` : ''}
+            ${i.buttons
+              ? `<div class="notif-btn-row">${i.buttons.map(b =>
+                  // stopPropagation: Discard re-renders this panel, detaching
+                  // the clicked button — without it the bubbled click reaches
+                  // _notifOutsideClick with a target that has no ancestors and
+                  // reads as an outside click.
+                  `<button class="${b.cls}" onclick="event.stopPropagation();${b.fn}">${b.label}</button>`).join('')}</div>` : ''}
             ${i.action ? `<button class="notif-act" onclick="closeNotifPanel();${i.action.fn}">${i.action.label}</button>` : ''}
           </div>
         </div>`).join('')
