@@ -572,12 +572,12 @@ window.addEventListener('DOMContentLoaded', async () => {
     requestAnimationFrame(() => { aw.style.opacity = '1'; });
   }
   // On hard refresh with existing session, kick off the SR fetch concurrently
-  // with init(). Without this, the sidebar "X due" badges never populate on
-  // non-Progress views (init renders sidebar from undefined _srDueCounts,
-  // onAuthSuccess doesn't run on this path, so checkDueReviews only fires
-  // as a side effect of eventually visiting Progress). It also warms the SR
-  // cache the Progress page renders from; the in-flight promise
-  // (window._srDueFetchPromise) lets Progress join it rather than refetch.
+  // with init(). Without this the notification bell's due count never appears
+  // on non-Progress views (onAuthSuccess doesn't run on this path, so
+  // checkDueReviews would only fire as a side effect of eventually visiting
+  // Progress). It also warms the SR cache the Progress page renders from; the
+  // in-flight promise (window._srDueFetchPromise) lets Progress join it
+  // rather than refetch.
   if (hasSession) checkDueReviews().catch(() => {});
   if (hasSession) loadFlashcardBundleOnBoot();
   setLoadingMsg('Loading your dashboard...');
@@ -1327,19 +1327,40 @@ const _SR_SUBJ_NAMES = {civil:'Civil Law',criminal:'Criminal Law',political:'Pol
   labor:'Labor Law',commercial:'Commercial Law',taxation:'Taxation Law',
   remedial:'Remedial Law',ethics:'Legal Ethics',custom:'Custom',mixed:'Mixed'};
 
-function refreshSidebarReviewBadges() {
-  const srEnabled = isSREnabled();
-  SUBJS.forEach(s => {
-    const badge = document.getElementById('sb-sr-' + s.key);
-    if (!badge) return;
-    const count = window._srDueCounts?.[s.key] || 0;
-    if (srEnabled && count > 0) {
-      badge.textContent = count + ' due';
-      badge.style.display = '';
-    } else {
-      badge.style.display = 'none';
-    }
+// Due counts grouped by subject, ordered most-urgent first (overdue, then
+// volume). The single source for every per-subject due breakdown — the
+// notification panel and the Progress widget both render from this.
+function _srDueBySubject(dueItems) {
+  const map = {};
+  (Array.isArray(dueItems) ? dueItems : []).forEach(i => {
+    const key = i.subject || 'mixed';
+    if (!map[key]) map[key] = { subject: key, total: 0, overdue: 0 };
+    map[key].total++;
+    if ((i.daysOverdue || 0) > 0) map[key].overdue++;
   });
+  return Object.values(map).sort((a, b) => b.overdue - a.overdue || b.total - a.total);
+}
+
+const _SR_SUBJ_COLORS = {civil:'var(--c-civil)',criminal:'var(--c-criminal)',political:'var(--c-political)',
+  labor:'var(--c-labor)',commercial:'var(--c-commercial)',taxation:'var(--c-taxation)',
+  remedial:'var(--c-remedial)',ethics:'var(--c-ethics)',custom:'var(--c-custom)',mixed:'var(--muted)'};
+
+// One tappable row per subject: name, due count, overdue count, and a review
+// affordance. Replaces both the sidebar "X due" badges and the single
+// all-subjects "Start Review Session" button.
+function _renderSRSubjectRows(dueItems) {
+  return _srDueBySubject(dueItems).map(({ subject, total, overdue }) => `
+    <button class="sr-subj-row" data-sr-review="${h(subject)}"
+            onclick="startReviewSession('${h(subject)}')"
+            title="Review ${total} due question${total!==1?'s':''} in ${h(_SR_SUBJ_NAMES[subject] || subject)}">
+      <span class="sr-subj-dot" style="background:${_SR_SUBJ_COLORS[subject] || 'var(--muted)'}"></span>
+      <span class="sr-subj-name">${h(_SR_SUBJ_NAMES[subject] || subject)}</span>
+      <span class="sr-subj-counts">
+        <span class="sr-subj-due">${total} due</span>
+        ${overdue > 0 ? `<span class="sr-subj-overdue">${overdue} overdue</span>` : ''}
+      </span>
+      <span class="sr-subj-go" aria-hidden="true">→</span>
+    </button>`).join('');
 }
 
 // ── Notification bell ─────────────────────────────────────────
@@ -1358,17 +1379,14 @@ function _collectNotifications() {
   const out = [];
   const due = Array.isArray(window._srDueItems) ? window._srDueItems : [];
   if (isSREnabled() && remindersEnabled() && due.length) {
-    const bySubj = {};
-    due.forEach(i => { bySubj[i.subject] = (bySubj[i.subject] || 0) + 1; });
-    const subjLine = Object.keys(bySubj)
-      .map(k => _SR_SUBJ_NAMES[k] || k)
-      .slice(0, 4).join(' · ');
     const overdue = due.filter(i => (i.daysOverdue || 0) > 0).length;
     out.push({
       id: 'sr-due', icon: '🧠',
-      msg: `<strong style="color:var(--gold-l);">${due.length}</strong> question${due.length!==1?'s':''} due for review today.`,
-      sub: subjLine + (overdue ? ` — ${overdue} overdue` : ''),
-      action: { label: '🚀 Start Review Session', fn: 'startReviewSession()' },
+      msg: `<strong style="color:var(--gold-l);">${due.length}</strong> question${due.length!==1?'s':''} due for review.`,
+      sub: overdue > 0 ? `${overdue} overdue · pick a subject to start` : 'Pick a subject to start',
+      // Per-subject rows instead of one all-subjects button, so a student can
+      // clear Civil Law without being handed every other subject too.
+      rows: _renderSRSubjectRows(due),
     });
   }
   return out;
@@ -1410,6 +1428,7 @@ function renderNotifPanel() {
           <div class="notif-txt">
             <div class="notif-msg">${i.msg}</div>
             ${i.sub ? `<div class="notif-sub">${h(i.sub)}</div>` : ''}
+            ${i.rows ? `<div class="sr-subj-list">${i.rows}</div>` : ''}
             ${i.action ? `<button class="notif-act" onclick="closeNotifPanel();${i.action.fn}">${i.action.label}</button>` : ''}
           </div>
         </div>`).join('')
@@ -1560,11 +1579,9 @@ async function checkDueReviews() {
       window._srDueItems = dueItems;
       window._srStats    = srStats;
       window._srCacheAt  = Date.now();
-      window._srDueCounts = {};
-      dueItems.forEach(item => {
-        window._srDueCounts[item.subject] = (window._srDueCounts[item.subject] || 0) + 1;
-      });
-      refreshSidebarReviewBadges();
+      // Per-subject counts are derived on demand by _srDueBySubject now that
+      // the sidebar badges are gone — no separate _srDueCounts map to keep
+      // in sync.
       refreshNotifications();
     } catch(e) { /* non-critical */ }
     finally {
@@ -1584,19 +1601,31 @@ async function _fetchFullDueItems() {
   return Array.isArray(items) ? items : [];
 }
 
-async function startReviewSession() {
+// `subject` scopes the session to one subject's due questions. Omit it to
+// review everything that's due (kept for any caller that wants the old
+// behaviour; the UI now always passes a subject).
+async function startReviewSession(subject) {
   if (!isSREnabled()) { showToast('Spaced Repetition is currently disabled', 'info'); return; }
   let dueItems = window._srDueItems || [];
-  if (!dueItems.length) { showToast('No reviews due right now', 'info'); return; }
+  const inScope = it => !subject || it.subject === subject;
+  const subjLabel = subject ? (_SR_SUBJ_NAMES[subject] || subject) : '';
 
-  // The cached list is metadata-only — pull the real questions now. Guard the
-  // button so a double-click can't launch two sessions.
+  if (!dueItems.filter(inScope).length) {
+    showToast(subject ? `No ${subjLabel} reviews due right now` : 'No reviews due right now', 'info');
+    return;
+  }
+
+  // The cached list is metadata-only — pull the real questions now. Disable
+  // every review row while it's in flight so a double-click can't launch two
+  // sessions, and show the spinner on the row that was actually clicked.
   if (!dueItems.some(item => item.question?.q)) {
     if (window._srFullFetchInFlight) return;
     window._srFullFetchInFlight = true;
-    const btn = document.querySelector('.sr-due-widget button');
-    const btnHtml = btn?.innerHTML;
-    if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Loading questions…'; }
+    const rows = [...document.querySelectorAll('[data-sr-review]')];
+    const clicked = rows.find(b => b.dataset.srReview === subject);
+    const clickedHtml = clicked?.innerHTML;
+    rows.forEach(b => { b.disabled = true; });
+    if (clicked) clicked.innerHTML = '<span class="sr-subj-loading">⏳ Loading questions…</span>';
     try {
       dueItems = await _fetchFullDueItems();
       window._srDueItems = dueItems;
@@ -1605,18 +1634,25 @@ async function startReviewSession() {
       return;
     } finally {
       window._srFullFetchInFlight = false;
-      if (btn) { btn.disabled = false; if (btnHtml) btn.innerHTML = btnHtml; }
+      rows.forEach(b => { b.disabled = false; });
+      if (clicked && clickedHtml) clicked.innerHTML = clickedHtml;
     }
-    if (!dueItems.length) { showToast('No reviews due right now', 'info'); return; }
+    if (!dueItems.filter(inScope).length) {
+      showToast(subject ? `No ${subjLabel} reviews due right now` : 'No reviews due right now', 'info');
+      return;
+    }
   }
 
-  const questions = dueItems.map(item => item.question).filter(q => q?.q);
+  const scoped = dueItems.filter(inScope);
+  const questions = scoped.map(item => item.question).filter(q => q?.q);
   if (!questions.length) { showToast('Question data unavailable', 'error'); return; }
   // Store previous scores for comparison in results display
   window._srReviewData = {};
-  dueItems.forEach(item => {
+  scoped.forEach(item => {
     if (item.question?.id) window._srReviewData[item.question.id] = item.lastScore || 0;
   });
+  // Lets the results screen name the subject that was reviewed.
+  window._srReviewSubject = subject || null;
   window.isReviewSession = true;
   window.isSpeedDrill    = false;
   closeNotifPanel();
@@ -1636,33 +1672,19 @@ function _renderSRDueWidget(dueItems) {
       </div>
     </div>`;
   }
-  const SUBJ_COLORS = {civil:'var(--c-civil)',criminal:'var(--c-criminal)',political:'var(--c-political)',
-    labor:'var(--c-labor)',commercial:'var(--c-commercial)',taxation:'var(--c-taxation)',
-    remedial:'var(--c-remedial)',ethics:'var(--c-ethics)',custom:'var(--c-custom)',mixed:'var(--muted)'};
   if (!dueItems.length) {
     return `<div class="prog-section">
       <div class="prog-section-title">🧠 Questions Due for Review</div>
       <div style="font-size:13px;color:#4dd4b0;">✅ You're all caught up! No reviews due today.</div>
     </div>`;
   }
-  const preview = dueItems.slice(0, 4).map(item => {
-    const subjName = _SR_SUBJ_NAMES[item.subject] || item.subject;
-    const overdueLabel = item.daysOverdue > 0 ? `${item.daysOverdue} day${item.daysOverdue!==1?'s':''} overdue` : 'due today';
-    const dotColor = SUBJ_COLORS[item.subject] || 'var(--muted)';
-    return `<div class="sr-due-row">
-      <div style="width:7px;height:7px;border-radius:50%;background:${dotColor};flex-shrink:0;"></div>
-      <div class="sr-due-subj">${h(subjName)} question</div>
-      <div class="sr-due-meta">${overdueLabel}</div>
-      <div class="sr-due-score">${(item.lastScore||0).toFixed(1)}/10</div>
-    </div>`;
-  }).join('');
-  const moreCount = dueItems.length > 4 ? dueItems.length - 4 : 0;
+  const overdue = dueItems.filter(i => (i.daysOverdue || 0) > 0).length;
+  // Same per-subject rows as the notification panel — one entry point per
+  // subject rather than a single button that hands over every due question.
   return `<div class="prog-section sr-due-widget">
     <div class="prog-section-title">🧠 Questions Due for Review</div>
-    <div style="font-size:13px;color:var(--gold-l);margin-bottom:14px;">You have <strong>${dueItems.length}</strong> question${dueItems.length!==1?'s':''} to revisit today</div>
-    ${preview}
-    ${moreCount > 0 ? `<div style="font-size:11px;color:var(--muted);padding-top:8px;">+${moreCount} more question${moreCount!==1?'s':''}</div>` : ''}
-    <button onclick="startReviewSession()" style="margin-top:14px;width:100%;padding:13px;font-family:var(--fd);font-size:14px;font-weight:700;background:linear-gradient(135deg,rgba(212,168,67,.18),rgba(212,168,67,.08));border:1px solid rgba(212,168,67,.4);color:var(--gold-l);border-radius:11px;cursor:pointer;transition:all .2s;">🚀 Start Review Session</button>
+    <div style="font-size:13px;color:var(--gold-l);margin-bottom:12px;">You have <strong>${dueItems.length}</strong> question${dueItems.length!==1?'s':''} to revisit${overdue > 0 ? ` · <span style="color:#e07080;">${overdue} overdue</span>` : ''}</div>
+    <div class="sr-subj-list">${_renderSRSubjectRows(dueItems)}</div>
   </div>`;
 }
 
@@ -1807,7 +1829,7 @@ async function renderProgressDashboard() { return renderProgressPage(); }
 // Placeholder heights below are measured against the rendered components, not
 // guessed — .prog-section-title is 21px tall with a 16px bottom margin,
 // .prog-stat-card is 87px, .prog-subj-row 16px, .prog-insight 46px,
-// .sr-due-row 33px. Keep them in sync if those components change.
+// .sr-subj-row 37px. Keep them in sync if those components change.
 const _skelTitle = (w = '30%') =>
   `<div class="bb-skeleton" style="height:21px;width:${w};border-radius:4px;margin-bottom:16px;"></div>`;
 
@@ -1820,19 +1842,19 @@ function _skelStatCards(n) {
   </div>`;
 }
 
+// Mirrors the per-subject row layout the real widget renders. The row count is
+// one per subject with dues, which varies per account — so when a previous
+// fetch left anything in the cache (the common repeat-visit case) we reuse its
+// subject count and the swap is pixel-exact. 3 is the cold-start fallback.
 function _skelSRDue() {
+  const known = _srDueBySubject(window._srDueItems).length;
+  const rows  = known > 0 ? known : 3;
   return `<div class="prog-section">
     ${_skelTitle('42%')}
-    <div class="bb-skeleton" style="height:17px;width:58%;border-radius:4px;margin-bottom:14px;"></div>
-    ${[1,2,3,4].map(() => `<div class="sr-due-row">
-      <div class="bb-skeleton" style="width:7px;height:7px;border-radius:50%;flex-shrink:0;"></div>
-      <div class="bb-skeleton" style="height:16px;flex:1;border-radius:4px;"></div>
-      <div class="bb-skeleton" style="height:15px;width:74px;border-radius:4px;flex-shrink:0;"></div>
-      <div class="bb-skeleton" style="height:15px;width:48px;border-radius:4px;flex-shrink:0;"></div>
-    </div>`).join('')}
-    <!-- the real widget shows a "+N more" line whenever more than 4 are due -->
-    <div class="bb-skeleton" style="height:12px;width:34%;border-radius:4px;margin-top:8px;"></div>
-    <div class="bb-skeleton" style="height:47px;border-radius:11px;margin-top:14px;"></div>
+    <div class="bb-skeleton" style="height:17px;width:58%;border-radius:4px;margin-bottom:12px;"></div>
+    <div class="sr-subj-list">
+      ${Array.from({ length: rows }, () => `<div class="bb-skeleton" style="height:37px;border-radius:9px;"></div>`).join('')}
+    </div>
   </div>`;
 }
 
@@ -4221,28 +4243,26 @@ function renderSidebar() {
   const html = SUBJS.map(s => {
     const hasMaterials = (KB.references||[]).some(r=>r.subject===s.key) || (KB.pastBar||[]).some(p=>p.subject===s.key);
     const qCount = (KB.pastBar||[]).filter(p=>p.subject===s.key).reduce((a,p)=>a+(p.qCount||0),0);
-    const srDue = window._srDueCounts?.[s.key] || 0;
+    // The per-subject "N due" badge lives in the notification panel now, where
+    // it comes with a review action instead of just a number.
     return `<button class="sb-subject" id="sb-subj-${s.key}" style="--subject-color:${s.color};" onclick="navToSubject('${s.key}')" title="${h(s.name)}">
       <span class="sb-subj-dot" style="background:${hasMaterials?s.color:'rgba(248,246,241,.2)'};"></span>
       <span class="sb-subj-name sb-lbl">${h(s.name)}</span>
       ${qCount>0?`<span class="sb-subj-qcount sb-lbl">${qCount}q</span>`:''}
-      <span class="sb-sr-badge sb-lbl" id="sb-sr-${s.key}" style="${srDue>0?'':'display:none;'}">${srDue} due</span>
       <span class="sb-lock-icon sb-lbl" style="display:none;">🔒</span>
     </button>`;
   }).join('');
   list.innerHTML = html;
   sessionStorage.setItem('bb_sidebar_cache', html);
-  // Sidebar owns its SR data dependency. If SR counts aren't populated yet,
-  // kick off the fetch now. The in-flight-promise guard in checkDueReviews
-  // dedupes if another handler (DOMContentLoaded, onAuthSuccess) already
-  // fired it; this runs after renderSidebar has created the badge DOM slots,
-  // and checkDueReviews' success path calls refreshSidebarReviewBadges which
-  // finds those slots by ID and populates them.
+  // The sidebar no longer displays SR counts, but it's still a reliable point
+  // to make sure the due data gets fetched — the notification bell reads the
+  // same cache. The in-flight-promise guard in checkDueReviews dedupes if
+  // another handler (DOMContentLoaded, onAuthSuccess) already fired it.
   //
   // Guarded by sessionToken because renderSidebar can be called before login
   // completes (on initial app boot) and checkDueReviews would return early
   // anyway — but this avoids the no-op call overhead.
-  if (sessionToken && !window._srDueCounts) {
+  if (sessionToken && !window._srDueItems) {
     checkDueReviews().catch(() => {});
   }
 }
@@ -6807,7 +6827,6 @@ async function applyTabSettings() {
     }
     // Enforce spaced repetition toggle (global + per-user)
     if (!isSREnabled()) {
-      refreshSidebarReviewBadges();
       refreshNotifications();   // drops the due-review notification + badge
     }
     updateAccessControlBadge();
