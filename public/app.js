@@ -575,8 +575,9 @@ window.addEventListener('DOMContentLoaded', async () => {
   // with init(). Without this, the sidebar "X due" badges never populate on
   // non-Progress views (init renders sidebar from undefined _srDueCounts,
   // onAuthSuccess doesn't run on this path, so checkDueReviews only fires
-  // as a side effect of eventually visiting Progress). The in-flight promise
-  // (window._srDueFetchPromise) lets Progress's Phase 1 await it if needed.
+  // as a side effect of eventually visiting Progress). It also warms the SR
+  // cache the Progress page renders from; the in-flight promise
+  // (window._srDueFetchPromise) lets Progress join it rather than refetch.
   if (hasSession) checkDueReviews().catch(() => {});
   if (hasSession) loadFlashcardBundleOnBoot();
   setLoadingMsg('Loading your dashboard...');
@@ -772,6 +773,12 @@ function clearSidebarActive() {
   // through here, so this is the one place that reliably sees the user
   // leave Flashcards — reset their opt-out of sidebar auto-expand.
   _fcSidebarUserCollapsed = false;
+  // Same reasoning for Progress teardown: only navToOverview used to stop the
+  // countdown, so navigating to a subject or Admin left a 1s interval ticking
+  // against hidden DOM and a Chart.js instance holding a detached canvas.
+  // navToProgress re-starts both after this runs.
+  _stopCountdown();
+  _destroyProgressChart();
 }
 
 function updateBreadcrumb(subj, mode) {
@@ -787,8 +794,7 @@ function updateBreadcrumb(subj, mode) {
 
 function navToOverview() {
   currentSubject = null; currentMode = null;
-  _stopCountdown();
-  clearSidebarActive();
+  clearSidebarActive();   // stops the countdown + tears down the chart
   document.getElementById('sb-overview')?.classList.add('active');
   showPage('dashboard');
   updateBreadcrumb(null, null);
@@ -1359,6 +1365,23 @@ function dismissSrBanner() {
   document.getElementById('sr-review-banner')?.remove();
 }
 
+// How long a cached SR due/stats payload is considered fresh enough to render
+// without a background refetch. SR state only changes when the user finishes a
+// session, and endMockSession() invalidates explicitly, so this can be generous.
+const SR_CACHE_TTL_MS = 60000;
+
+function _srCacheIsFresh() {
+  return Array.isArray(window._srDueItems)
+    && window._srStats
+    && (Date.now() - (window._srCacheAt || 0)) < SR_CACHE_TTL_MS;
+}
+
+// Drop the SR cache so the next read refetches. Called after a session changes
+// spaced-repetition state.
+function invalidateSRCache() {
+  window._srCacheAt = 0;
+}
+
 async function checkDueReviews() {
   if (!sessionToken) return;
   // Share the in-flight fetch so concurrent callers (e.g. the Progress page
@@ -1367,13 +1390,21 @@ async function checkDueReviews() {
   if (window._srDueFetchPromise) return window._srDueFetchPromise;
   window._srDueFetchPromise = (async () => {
     try {
+      // summary=1 — the badges, banner and Progress due widget only read
+      // subject/lastScore/daysOverdue. The full payload (question text, model
+      // answers, 5 alternatives + their ALAC blobs per row) is fetched lazily
+      // by startReviewSession() when the user actually starts reviewing.
       const [dueResp, statsResp] = await Promise.all([
-        fetch('/api/spaced-repetition/due',   { headers: { 'x-session-token': sessionToken } }),
-        fetch('/api/spaced-repetition/stats',  { headers: { 'x-session-token': sessionToken } }),
+        fetch('/api/spaced-repetition/due?summary=1', { headers: { 'x-session-token': sessionToken } }),
+        fetch('/api/spaced-repetition/stats',         { headers: { 'x-session-token': sessionToken } }),
       ]);
       const dueItems = dueResp.ok   ? await dueResp.json()   : [];
-      // (stats unused here but warms the cache; progress page will re-fetch)
+      // Keep the stats body — the Progress page reads this cache instead of
+      // firing its own duplicate round-trip.
+      const srStats  = statsResp.ok ? await statsResp.json() : null;
       window._srDueItems = dueItems;
+      window._srStats    = srStats;
+      window._srCacheAt  = Date.now();
       window._srDueCounts = {};
       dueItems.forEach(item => {
         window._srDueCounts[item.subject] = (window._srDueCounts[item.subject] || 0) + 1;
@@ -1389,10 +1420,41 @@ async function checkDueReviews() {
   return window._srDueFetchPromise;
 }
 
+// Fetch the full due payload (with question bodies). The cached list from
+// checkDueReviews is summary-only, so this runs when the user starts a review.
+async function _fetchFullDueItems() {
+  const r = await fetch('/api/spaced-repetition/due', { headers: { 'x-session-token': sessionToken } });
+  if (!r.ok) throw new Error('Failed to load review questions');
+  const items = await r.json();
+  return Array.isArray(items) ? items : [];
+}
+
 async function startReviewSession() {
   if (!isSREnabled()) { showToast('Spaced Repetition is currently disabled', 'info'); return; }
-  const dueItems = window._srDueItems || [];
+  let dueItems = window._srDueItems || [];
   if (!dueItems.length) { showToast('No reviews due right now', 'info'); return; }
+
+  // The cached list is metadata-only — pull the real questions now. Guard the
+  // button so a double-click can't launch two sessions.
+  if (!dueItems.some(item => item.question?.q)) {
+    if (window._srFullFetchInFlight) return;
+    window._srFullFetchInFlight = true;
+    const btn = document.querySelector('.sr-due-widget button');
+    const btnHtml = btn?.innerHTML;
+    if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Loading questions…'; }
+    try {
+      dueItems = await _fetchFullDueItems();
+      window._srDueItems = dueItems;
+    } catch(e) {
+      showToast('Could not load review questions — please try again', 'error');
+      return;
+    } finally {
+      window._srFullFetchInFlight = false;
+      if (btn) { btn.disabled = false; if (btnHtml) btn.innerHTML = btnHtml; }
+    }
+    if (!dueItems.length) { showToast('No reviews due right now', 'info'); return; }
+  }
+
   const questions = dueItems.map(item => item.question).filter(q => q?.q);
   if (!questions.length) { showToast('Question data unavailable', 'error'); return; }
   // Store previous scores for comparison in results display
@@ -1487,122 +1549,320 @@ function navToProgress(tab) {
 }
 
 function switchProgressTab(tab) {
+  if (_progressActiveTab === tab) return;
   _progressActiveTab = tab;
+  sessionStorage.setItem('bb_last_tab', tab);
   renderProgressPage();
+}
+
+// Monotonic token — every render bumps it. Async continuations compare their
+// captured token against the current one and bail if the user has since
+// switched tabs, so a slow response can never paint over newer content.
+let _progRenderToken = 0;
+
+// The tab bar is built once and left in the DOM. Re-rendering it on every tab
+// switch destroyed and recreated the buttons, which killed the .prog-tab-btn
+// transition and dropped keyboard focus.
+function _ensureProgressShell(container) {
+  if (container.querySelector('.prog-tabs')) return;
+  container.innerHTML = `
+    <div class="prog-tabs">
+      <button class="prog-tab-btn" data-ptab="progress" onclick="switchProgressTab('progress')">📊 My Progress</button>
+      <button class="prog-tab-btn" data-ptab="xp" onclick="switchProgressTab('xp')">⚡ XP &amp; Level</button>
+    </div>
+    <div id="progressTabPanel"></div>`;
 }
 
 async function renderProgressPage() {
   const container = document.getElementById('progressContainer');
   if (!container) return;
 
-  const tabBar = `
-    <div class="prog-tabs">
-      <button class="prog-tab-btn${_progressActiveTab === 'progress' ? ' active' : ''}" onclick="switchProgressTab('progress')">📊 My Progress</button>
-      <button class="prog-tab-btn${_progressActiveTab === 'xp' ? ' active' : ''}" onclick="switchProgressTab('xp')">⚡ XP &amp; Level</button>
-    </div>`;
+  _ensureProgressShell(container);
+  container.querySelectorAll('.prog-tab-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.ptab === _progressActiveTab);
+  });
+
+  const panel = container.querySelector('#progressTabPanel');
+  if (!panel) return;
+  const token = ++_progRenderToken;
 
   if (_progressActiveTab === 'xp') {
-    container.innerHTML = tabBar + '<div id="xpLevelContent">' + skeletonXPLevel() + '</div>';
-    renderXPLevelTab();
+    // Leaving the Progress tab — tear down the chart so it isn't left holding
+    // a detached canvas and its resize observer.
+    _destroyProgressChart();
+    _stopCountdown();
+    panel.innerHTML = '<div id="xpLevelContent"></div>';
+    await renderXPLevelTab(token);
   } else {
-    container.innerHTML = tabBar + '<div id="progressDashContent"></div>';
-    // Temporarily swap container target so renderProgressDashboard fills the inner div
-    const orig = document.getElementById('progressContainer');
-    const inner = document.getElementById('progressDashContent');
-    // Patch: render into inner div
-    await _renderProgressDashboardInto(inner);
+    panel.innerHTML = '<div id="progressDashContent"></div>';
+    await _renderProgressDashboardInto(panel.querySelector('#progressDashContent'), token);
   }
 }
 
 let _progScoreChart = null;
 
+function _destroyProgressChart() {
+  if (_progScoreChart) {
+    try { _progScoreChart.destroy(); } catch(_) {}
+    _progScoreChart = null;
+  }
+}
+
+// ── Progress / XP data caches ─────────────────────────────────
+// Both payloads only change when a session finishes, so repeat visits paint
+// from cache immediately and revalidate in the background (stale-while-
+// revalidate). endMockSession() calls invalidateProgressCaches() so a freshly
+// completed session is never served stale.
+const PROG_CACHE_TTL_MS = 60000;
+let _progResultsCache = null;   // { data, at }
+let _xpSummaryCache   = null;   // { data, at }
+
+function invalidateProgressCaches() {
+  _progResultsCache = null;
+  _xpSummaryCache   = null;
+  invalidateSRCache();
+}
+
+async function _fetchUserResults() {
+  const resp = await fetch('/api/user/results', { headers: { 'x-session-token': sessionToken } });
+  if (!resp.ok) throw new Error('Failed to load results');
+  const data = await resp.json();
+  _progResultsCache = { data, at: Date.now() };
+  return data;
+}
+
+async function _fetchXPSummary() {
+  const r = await fetch('/api/xp/summary', { headers: { 'x-session-token': sessionToken } });
+  if (!r.ok) throw new Error('Failed to load XP');
+  const data = await r.json();
+  _xpSummaryCache = { data, at: Date.now() };
+  return data;
+}
+
 // Keep the old name as an alias so any other callers still work
 async function renderProgressDashboard() { return renderProgressPage(); }
 
-function skeletonProgressDashboard() {
-  // Stat cards row
-  const statCards = `<div class="bb-skeleton-card">
-    <div style="display:flex;gap:12px;">
-      ${[1,2,3,4].map(() => '<div class="bb-skeleton bb-skeleton-stat"></div>').join('')}
-    </div>
-  </div>`;
-  // Streak
-  const streak = `<div class="bb-skeleton-card">
-    <div class="bb-skeleton bb-skeleton-title" style="width:25%;"></div>
-    <div style="display:flex;align-items:center;gap:12px;">
-      <div class="bb-skeleton bb-skeleton-circle" style="width:36px;height:36px;"></div>
-      <div style="flex:1;"><div class="bb-skeleton bb-skeleton-text" style="width:50%;"></div><div class="bb-skeleton bb-skeleton-text" style="width:70%;height:11px;"></div></div>
-    </div>
-  </div>`;
-  // Score chart
-  const chart = `<div class="bb-skeleton-card">
-    <div class="bb-skeleton bb-skeleton-title" style="width:30%;"></div>
-    <div class="bb-skeleton" style="height:180px;border-radius:8px;"></div>
-  </div>`;
-  // Subject bars
-  const subjects = `<div class="bb-skeleton-card">
-    <div class="bb-skeleton bb-skeleton-title" style="width:35%;"></div>
-    ${[90,75,60,45,80,55,70,65].map(w => `<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
-      <div class="bb-skeleton" style="width:80px;height:13px;border-radius:4px;flex-shrink:0;"></div>
-      <div class="bb-skeleton bb-skeleton-bar" style="flex:1;"></div>
-      <div class="bb-skeleton" style="width:35px;height:13px;border-radius:4px;flex-shrink:0;"></div>
+// ── Skeletons ─────────────────────────────────────────────────
+// These deliberately reuse the REAL layout classes (.prog-page, .prog-section,
+// .prog-summary-row, .prog-stat-card, .xp-hero …) rather than .bb-skeleton-card.
+// The old skeletons used their own padding/margin and omitted whole sections,
+// so every load ended in a visible jump when real content replaced them.
+// Matching the real box model means the swap is geometrically silent.
+
+// Placeholder heights below are measured against the rendered components, not
+// guessed — .prog-section-title is 21px tall with a 16px bottom margin,
+// .prog-stat-card is 87px, .prog-subj-row 16px, .prog-insight 46px,
+// .sr-due-row 33px. Keep them in sync if those components change.
+const _skelTitle = (w = '30%') =>
+  `<div class="bb-skeleton" style="height:21px;width:${w};border-radius:4px;margin-bottom:16px;"></div>`;
+
+function _skelStatCards(n) {
+  return `<div class="prog-summary-row">
+    ${Array.from({ length: n }, () => `<div class="prog-stat-card">
+      <div class="bb-skeleton" style="height:28px;width:56px;border-radius:6px;"></div>
+      <div class="bb-skeleton" style="height:15px;width:76px;border-radius:4px;"></div>
     </div>`).join('')}
   </div>`;
-  // Insights
-  const insights = `<div class="bb-skeleton-card">
-    <div class="bb-skeleton bb-skeleton-title" style="width:20%;"></div>
-    ${[1,2,3].map(() => '<div class="bb-skeleton bb-skeleton-text" style="width:' + (50 + Math.floor(Math.random()*40)) + '%;height:16px;margin-bottom:10px;"></div>').join('')}
+}
+
+function _skelSRDue() {
+  return `<div class="prog-section">
+    ${_skelTitle('42%')}
+    <div class="bb-skeleton" style="height:17px;width:58%;border-radius:4px;margin-bottom:14px;"></div>
+    ${[1,2,3,4].map(() => `<div class="sr-due-row">
+      <div class="bb-skeleton" style="width:7px;height:7px;border-radius:50%;flex-shrink:0;"></div>
+      <div class="bb-skeleton" style="height:16px;flex:1;border-radius:4px;"></div>
+      <div class="bb-skeleton" style="height:15px;width:74px;border-radius:4px;flex-shrink:0;"></div>
+      <div class="bb-skeleton" style="height:15px;width:48px;border-radius:4px;flex-shrink:0;"></div>
+    </div>`).join('')}
+    <!-- the real widget shows a "+N more" line whenever more than 4 are due -->
+    <div class="bb-skeleton" style="height:12px;width:34%;border-radius:4px;margin-top:8px;"></div>
+    <div class="bb-skeleton" style="height:47px;border-radius:11px;margin-top:14px;"></div>
   </div>`;
-  return `<div style="padding:0;">${statCards}${streak}${chart}${subjects}${insights}</div>`;
+}
+
+function _skelSRStats() {
+  return `<div class="prog-section">
+    ${_skelTitle('38%')}
+    <div style="margin-bottom:14px;">${_skelStatCards(4)}</div>
+    <div class="bb-skeleton" style="height:12px;border-radius:6px;margin-bottom:8px;"></div>
+    <div class="bb-skeleton" style="height:16px;width:62%;border-radius:4px;"></div>
+  </div>`;
+}
+
+// The dashboard "body" — everything between the SR due widget and the SR stats
+// block. Kept separate because those two slots are filled independently.
+function skeletonProgressDashboard() {
+  // .prog-streak-display measures 65px tall — pinned explicitly so the flame
+  // placeholder can't drift from the real emoji's line box.
+  const streak = `<div class="prog-section">
+    ${_skelTitle('25%')}
+    <div style="display:flex;align-items:center;gap:12px;height:65px;">
+      <div class="bb-skeleton bb-skeleton-circle" style="width:44px;height:44px;"></div>
+      <div style="flex:1;">
+        <div class="bb-skeleton" style="height:24px;width:44%;border-radius:4px;margin-bottom:6px;"></div>
+        <div class="bb-skeleton" style="height:17px;width:66%;border-radius:4px;"></div>
+      </div>
+    </div>
+  </div>`;
+  const chart = `<div class="prog-section">
+    ${_skelTitle('34%')}
+    <div class="prog-chart-wrap"><div class="bb-skeleton" style="height:100%;border-radius:8px;"></div></div>
+  </div>`;
+  const subjects = `<div class="prog-section">
+    ${_skelTitle('35%')}
+    <div class="prog-subj-list">
+      ${[1,2,3,4,5,6,7,8].map(() => `<div class="prog-subj-row">
+        <div class="bb-skeleton" style="width:110px;height:16px;border-radius:4px;flex-shrink:0;"></div>
+        <div class="bb-skeleton" style="flex:1;height:10px;border-radius:6px;"></div>
+        <div class="bb-skeleton" style="width:38px;height:16px;border-radius:4px;flex-shrink:0;"></div>
+      </div>`).join('')}
+    </div>
+    <div class="bb-skeleton" style="height:11px;width:46%;border-radius:4px;margin-top:12px;"></div>
+  </div>`;
+  const insights = `<div class="prog-section">
+    ${_skelTitle('20%')}
+    <div class="prog-insights-list">
+      ${[1,2,3].map(() => `<div class="bb-skeleton" style="height:46px;width:100%;border-radius:10px;"></div>`).join('')}
+    </div>
+  </div>`;
+  return _skelStatCards(4) + streak + chart + subjects + insights;
 }
 
 function skeletonXPLevel() {
-  // XP hero
-  const hero = `<div class="bb-skeleton-card" style="text-align:center;">
-    <div style="display:flex;align-items:center;gap:16px;justify-content:center;margin-bottom:16px;">
-      <div class="bb-skeleton bb-skeleton-circle" style="width:56px;height:56px;"></div>
-      <div style="text-align:left;"><div class="bb-skeleton bb-skeleton-text" style="width:120px;height:18px;"></div><div class="bb-skeleton bb-skeleton-text" style="width:180px;height:12px;"></div></div>
+  const hero = `<div class="xp-hero">
+    <div class="xp-hero-top">
+      <div class="bb-skeleton" style="width:64px;height:64px;border-radius:50%;flex-shrink:0;"></div>
+      <div style="flex:1;">
+        <div class="bb-skeleton" style="height:22px;width:46%;border-radius:5px;margin-bottom:8px;"></div>
+        <div class="bb-skeleton" style="height:13px;width:68%;border-radius:4px;"></div>
+      </div>
     </div>
-    <div class="bb-skeleton" style="height:10px;border-radius:5px;width:100%;"></div>
+    <div class="xp-bar-wrap">
+      <div class="bb-skeleton" style="height:10px;border-radius:5px;"></div>
+      <div style="display:flex;justify-content:space-between;margin-top:8px;">
+        ${[1,2,3].map(() => '<div class="bb-skeleton" style="height:17px;width:54px;border-radius:4px;"></div>').join('')}
+      </div>
+    </div>
   </div>`;
-  // XP history table rows
-  const rows = [1,2,3,4,5].map(() => `<div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
-    <div class="bb-skeleton" style="width:70px;height:13px;border-radius:4px;flex-shrink:0;"></div>
-    <div class="bb-skeleton bb-skeleton-text" style="flex:1;width:auto;"></div>
-    <div class="bb-skeleton" style="width:60px;height:20px;border-radius:10px;flex-shrink:0;"></div>
-    <div class="bb-skeleton" style="width:50px;height:13px;border-radius:4px;flex-shrink:0;"></div>
-  </div>`).join('');
-  const table = `<div class="bb-skeleton-card">
-    <div class="bb-skeleton bb-skeleton-title" style="width:30%;"></div>
-    ${rows}
+  const stats = `<div class="xp-stats-row">
+    ${[1,2,3].map(() => `<div class="xp-stat-card">
+      <div class="bb-skeleton" style="height:24px;width:62px;border-radius:6px;margin:0 auto 8px;"></div>
+      <div class="bb-skeleton" style="height:16px;width:78px;border-radius:4px;margin:0 auto;"></div>
+    </div>`).join('')}
   </div>`;
-  return `<div style="padding:0;">${hero}${table}</div>`;
+  // Rows are 40px and the header 31px, matching .xp-history-table's real
+  // metrics. Row count is a guess (the API returns up to 20) — 5 keeps the
+  // skeleton honest for a typical account.
+  const table = `<div class="prog-section">
+    ${_skelTitle('30%')}
+    <div class="bb-skeleton" style="height:31px;border-radius:4px;"></div>
+    ${[1,2,3,4,5].map(() => `<div style="display:flex;align-items:center;gap:12px;height:40px;">
+      <div class="bb-skeleton" style="width:88px;height:15px;border-radius:4px;flex-shrink:0;"></div>
+      <div class="bb-skeleton" style="flex:1;height:15px;border-radius:4px;"></div>
+      <div class="bb-skeleton" style="width:74px;height:20px;border-radius:10px;flex-shrink:0;"></div>
+      <div class="bb-skeleton" style="width:54px;height:15px;border-radius:4px;flex-shrink:0;"></div>
+    </div>`).join('')}
+  </div>`;
+  // "How to Earn XP" — omitted by the old skeleton, which is why the page grew
+  // by a full section on load.
+  const earn = `<div class="prog-section">
+    ${_skelTitle('28%')}
+    <div class="prog-subj-list" style="gap:8px;">
+      ${[1,2,3,4,5,6,7].map(() => `<div class="prog-subj-row" style="gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.04);">
+        <div class="bb-skeleton" style="flex:1;height:21px;border-radius:4px;"></div>
+        <div class="bb-skeleton" style="width:118px;height:15px;border-radius:4px;flex-shrink:0;"></div>
+        <div class="bb-skeleton" style="width:60px;height:15px;border-radius:4px;flex-shrink:0;"></div>
+      </div>`).join('')}
+    </div>
+  </div>`;
+  return `<div class="prog-page">${hero}${stats}${table}${earn}</div>`;
 }
 
-async function _renderProgressDashboardInto(container) {
+async function _renderProgressDashboardInto(container, token) {
   if (!container) return;
-  container.innerHTML = skeletonProgressDashboard();
+  const isStale = () => token !== undefined && token !== _progRenderToken;
 
-  let results = [];
+  // ── Paint the shell synchronously ────────────────────────────
+  // Three independent slots. The countdown is real content from the first
+  // frame (it needs no network — _barExamDate is cached at boot), and the two
+  // SR slots paint from cache when we have it. Nothing below ever moves: the
+  // slots keep their position and the skeletons match the real box model, so
+  // filling them in is a pure in-place swap.
+  const srFresh  = _srCacheIsFresh();
+  const cachedRes = _progResultsCache?.data;
+
+  container.innerHTML = `
+    <div class="prog-page">
+      ${_renderCountdownWidget()}
+      <div id="sr-due-container">${srFresh ? _renderSRDueWidget(window._srDueItems) : _skelSRDue()}</div>
+      <div id="prog-body" class="prog-page">${cachedRes ? '' : skeletonProgressDashboard()}</div>
+      <div id="sr-stats-container">${srFresh ? _renderSRStats(window._srStats) : _skelSRStats()}</div>
+    </div>`;
+  _startCountdown();
+
+  // ── Kick off both fetches together ───────────────────────────
+  // These are independent; the old code awaited results, painted, and only
+  // then started the SR round-trip, stacking the two serially.
+  const resultsPromise = (cachedRes && (Date.now() - _progResultsCache.at) < PROG_CACHE_TTL_MS)
+    ? Promise.resolve(cachedRes)
+    : _fetchUserResults();
+
+  const srPromise = srFresh
+    ? Promise.resolve(null)                      // cache is fresh — no request at all
+    : (window._srDueFetchPromise || checkDueReviews());
+
+  // Stale-while-revalidate: if we had cached results, paint them now and let
+  // the fetch above refresh the DOM when it lands.
+  if (cachedRes) _paintProgressBody(container, cachedRes, token);
+
+  srPromise.then(() => {
+    if (isStale()) return;
+    // Scoped to `container`: if the user switched tabs, this queries a detached
+    // node and finds nothing rather than painting over the new tab.
+    const dueEl   = container.querySelector('#sr-due-container');
+    const statsEl = container.querySelector('#sr-stats-container');
+    // On a failed fetch the cache stays unset — collapse the slot instead of
+    // leaving a skeleton shimmering forever or inventing zeroes.
+    if (dueEl)   dueEl.innerHTML   = Array.isArray(window._srDueItems) ? _renderSRDueWidget(window._srDueItems) : '';
+    if (statsEl) statsEl.innerHTML = window._srStats ? _renderSRStats(window._srStats) : '';
+  }).catch(() => { /* non-critical — page works without the SR sections */ });
+
+  let results;
   try {
-    const resp = await fetch('/api/user/results', {
-      headers: { 'x-session-token': sessionToken }
-    });
-    if (!resp.ok) throw new Error('Failed to load results');
-    results = await resp.json();
+    results = await resultsPromise;
   } catch(e) {
-    container.innerHTML = `<div style="text-align:center;padding:60px;color:#e07080;">Could not load progress data.</div>`;
+    if (isStale()) return;
+    // Only blow away the body slot — the countdown and SR sections stay usable.
+    const body = container.querySelector('#prog-body');
+    if (body && !cachedRes) {
+      body.innerHTML = `<div class="prog-section" style="text-align:center;padding:40px 20px;">
+        <div style="font-size:13px;color:#e07080;margin-bottom:14px;">Could not load progress data.</div>
+        <button class="btn-gold" onclick="renderProgressPage()" style="font-size:13px;padding:9px 20px;">↻ Retry</button>
+      </div>`;
+    }
     return;
   }
+  if (isStale()) return;
+  // Revalidated data differs from what we painted from cache — repaint.
+  if (!cachedRes || results !== cachedRes) _paintProgressBody(container, results, token);
+}
+
+// Renders everything between the SR due widget and the SR stats block.
+function _paintProgressBody(container, results, token) {
+  if (token !== undefined && token !== _progRenderToken) return;
+  const body = container.querySelector('#prog-body');
+  if (!body) return;
 
   if (!results.length) {
-    container.innerHTML = `
+    body.innerHTML = `
       <div class="prog-empty">
         <div class="prog-empty-icon">📝</div>
         <div class="prog-empty-title">No Sessions Yet</div>
         <div class="prog-empty-sub">Complete your first Mock Bar to start tracking your progress!</div>
         <button class="btn-gold" onclick="navToOverview()" style="font-size:13px;padding:10px 22px;">🏛 Go to Overview</button>
       </div>`;
+    _destroyProgressChart();
     return;
   }
 
@@ -1700,8 +1960,7 @@ async function _renderProgressDashboardInto(container) {
     return chartData[i-1] >= 70 ? '#2ec4a0' : '#e07080';
   });
 
-  container.innerHTML = `
-    <div class="prog-page">
+  body.innerHTML = `
       <!-- Summary stats row -->
       <div class="prog-summary-row">
         <div class="prog-stat-card">
@@ -1772,20 +2031,26 @@ async function _renderProgressDashboardInto(container) {
         <div class="prog-insights-list">
           ${insights.map(i => `<div class="prog-insight ${i.cls}">${i.text}</div>`).join('')}
         </div>
-      </div>
-    </div>`;
-
-  // ── Render countdown immediately (uses cached _barExamDate) ──
-  const _ppEarly = container.querySelector('.prog-page');
-  if (_ppEarly) {
-    _ppEarly.insertAdjacentHTML('afterbegin', _renderCountdownWidget());
-    _startCountdown();
-  }
+      </div>`;
 
   // ── Draw Chart.js line graph ─────────────────────────────────
-  if (_progScoreChart) { _progScoreChart.destroy(); _progScoreChart = null; }
+  // Wrapped in try/catch and kept last: Chart.js loads from a CDN, and when
+  // that fails `new Chart(...)` throws. This used to abort the whole render
+  // before the Spaced Repetition sections were injected, so a blocked CDN
+  // silently cost the user two entire sections of the page.
+  _drawProgressChart({ chartLabels, chartData, pointColors });
+}
+
+function _drawProgressChart({ chartLabels, chartData, pointColors }) {
+  _destroyProgressChart();
   const ctx = document.getElementById('progScoreChart');
   if (!ctx) return;
+  if (typeof Chart === 'undefined') {
+    const wrap = ctx.closest('.prog-chart-wrap');
+    if (wrap) wrap.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:12px;color:var(--muted);text-align:center;padding:0 20px;">Chart unavailable — could not load the charting library.</div>`;
+    return;
+  }
+  try {
   _progScoreChart = new Chart(ctx, {
     type: 'line',
     data: {
@@ -1869,89 +2134,46 @@ async function _renderProgressDashboardInto(container) {
       }
     }]
   });
-
-  // ── Inject Spaced Repetition sections ────────────────────────
-  // Two-phase render for perceived performance:
-  //   Phase 1: immediately render from window._srDueItems cache (populated
-  //            at boot by checkDueReviews) so the SR card appears with the
-  //            rest of the Progress page, not 400-1000ms later.
-  //   Phase 2: silently re-fetch in background and swap in fresh DOM.
-  //
-  // First-load fix: if the cache is empty but a fetch is already in flight
-  // (onAuthSuccess starts it BEFORE routing to the Progress page), we await
-  // that shared promise so Phase 1 renders with fresh data — no empty slot,
-  // no post-load pop-in. If no fetch is in flight (edge cases like back-
-  // button navigation), we fall through to the pre-fix behavior: skip
-  // Phase 1 and rely on Phase 2.
-  const pp = container.querySelector('.prog-page');
-  if (pp) {
-    // Await any in-flight boot fetch before checking the cache
-    if (!Array.isArray(window._srDueItems) && window._srDueFetchPromise) {
-      try { await window._srDueFetchPromise; } catch(_) { /* proceed with empty cache */ }
-    }
-    const cachedDue = window._srDueItems;
-    // Phase 1 — render immediately from cache (if we have it)
-    if (Array.isArray(cachedDue)) {
-      const cdEl = pp.querySelector('#countdown-section');
-      const dueHtml = _renderSRDueWidget(cachedDue);
-      // Wrap in a marker div so Phase 2 can find and replace it
-      const dueWrap = `<div id="sr-due-container">${dueHtml}</div>`;
-      if (cdEl) cdEl.insertAdjacentHTML('afterend', dueWrap);
-      else pp.insertAdjacentHTML('afterbegin', dueWrap);
-      // Stats: render a lightweight placeholder that looks right structurally
-      // but has zero values — will be replaced in Phase 2. _renderSRStats
-      // handles all-zero input gracefully (no progress bar, "first Mock Bar"
-      // placeholder text). This is briefly misleading but only for ~200-500ms
-      // before the real stats replace it.
-      pp.insertAdjacentHTML('beforeend',
-        `<div id="sr-stats-container">${_renderSRStats({ total:0, mastered:0, dueNow:0, upcomingThisWeek:0 })}</div>`);
-    }
-
-    // Phase 2 — background fetch, swap in fresh data when ready
-    Promise.all([
-      fetch('/api/spaced-repetition/due',   { headers: { 'x-session-token': sessionToken } }),
-      fetch('/api/spaced-repetition/stats',  { headers: { 'x-session-token': sessionToken } }),
-    ]).then(async ([dueResp, statsResp]) => {
-      const dueItems = dueResp.ok   ? await dueResp.json()   : [];
-      const srStats  = statsResp.ok ? await statsResp.json()  : { total:0, mastered:0, dueNow:0, upcomingThisWeek:0 };
-      window._srDueItems = dueItems;
-      window._srDueCounts = {};
-      dueItems.forEach(item => { window._srDueCounts[item.subject] = (window._srDueCounts[item.subject]||0) + 1; });
-      refreshSidebarReviewBadges();
-
-      // Swap in fresh DOM — find our marker containers, replace their innerHTML
-      const dueContainer   = document.getElementById('sr-due-container');
-      const statsContainer = document.getElementById('sr-stats-container');
-      if (dueContainer) {
-        dueContainer.innerHTML = _renderSRDueWidget(dueItems);
-      } else {
-        // Cache was empty at Phase 1 — inject now (fallback path)
-        const pp2 = container.querySelector('.prog-page');
-        if (pp2) {
-          const cdEl2 = pp2.querySelector('#countdown-section');
-          if (cdEl2) cdEl2.insertAdjacentHTML('afterend', `<div id="sr-due-container">${_renderSRDueWidget(dueItems)}</div>`);
-          else pp2.insertAdjacentHTML('afterbegin', `<div id="sr-due-container">${_renderSRDueWidget(dueItems)}</div>`);
-        }
-      }
-      if (statsContainer) {
-        statsContainer.innerHTML = _renderSRStats(srStats);
-      } else {
-        const pp2 = container.querySelector('.prog-page');
-        if (pp2) pp2.insertAdjacentHTML('beforeend', `<div id="sr-stats-container">${_renderSRStats(srStats)}</div>`);
-      }
-    }).catch(() => { /* non-critical — Phase 1 cache already visible, or page works without SR */ });
+  } catch(e) {
+    console.warn('[progress] Chart render failed:', e.message);
+    const wrap = ctx.closest('.prog-chart-wrap');
+    if (wrap) wrap.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:12px;color:var(--muted);">Chart unavailable.</div>`;
   }
 }
 
 // ── XP & Level Tab ────────────────────────────────────────────
-async function renderXPLevelTab() {
+async function renderXPLevelTab(token) {
   const container = document.getElementById('xpLevelContent');
   if (!container) return;
-  try {
-    const r = await fetch('/api/xp/summary', { headers: { 'x-session-token': sessionToken } });
-    if (!r.ok) throw new Error('Failed to load XP');
-    const { xp, level, title, xpToNextLevel, progressPercent, recentTransactions } = await r.json();
+  const isStale = () => token !== undefined && token !== _progRenderToken;
 
+  // Paint from cache first if we have anything — refreshSidebarXP() already
+  // fetched this exact payload at boot, so a first visit to the tab usually
+  // has a warm cache and needs no skeleton at all.
+  const cached = _xpSummaryCache?.data;
+  if (cached) _paintXPLevel(container, cached, token);
+  else container.innerHTML = skeletonXPLevel();
+
+  const fresh = cached && (Date.now() - _xpSummaryCache.at) < PROG_CACHE_TTL_MS;
+  if (fresh) return;
+
+  try {
+    const data = await _fetchXPSummary();
+    if (isStale()) return;
+    _paintXPLevel(container, data, token);
+  } catch(e) {
+    if (isStale() || cached) return;   // keep the cached view on a failed refresh
+    container.innerHTML = `<div class="prog-section" style="text-align:center;padding:40px 20px;">
+      <div style="font-size:13px;color:#e07080;margin-bottom:14px;">Could not load XP data.</div>
+      <button class="btn-gold" onclick="renderProgressPage()" style="font-size:13px;padding:9px 20px;">↻ Retry</button>
+    </div>`;
+  }
+}
+
+function _paintXPLevel(container, data, token) {
+  if (token !== undefined && token !== _progRenderToken) return;
+  const { xp, level, title, xpToNextLevel, progressPercent, recentTransactions } = data;
+  {
     const _ACTION_LABELS = {
       MOCK_BAR_FULL:           'MOCK BAR ★',
       MOCK_BAR_PARTIAL:        'MOCK BAR',
@@ -2063,12 +2285,9 @@ async function renderXPLevelTab() {
 
     // Animate the XP bar
     requestAnimationFrame(() => {
-      const fill = document.getElementById('xpHeroBarFill');
+      const fill = container.querySelector('#xpHeroBarFill');
       if (fill) setTimeout(() => { fill.style.width = progressPercent + '%'; }, 100);
     });
-  } catch(e) {
-    const container2 = document.getElementById('xpLevelContent');
-    if (container2) container2.innerHTML = `<div style="text-align:center;padding:60px;color:#e07080;">Could not load XP data.</div>`;
   }
 }
 
@@ -5805,6 +6024,10 @@ async function endMockSession(){
   saveMock();
   if(mockTimer)clearInterval(mockTimer);
   ExamSession.stopAutoSave();
+  // This session will change results, XP and spaced-repetition state. Drop the
+  // caches up front so anything that reads them mid-evaluation refetches.
+  // showXPPopup() invalidates again for the no-XP-awarded paths that skip it.
+  invalidateProgressCaches();
   // Mark complete and clear saved session
   if (window.activeExamSession) { window.activeExamSession.status = 'completed'; }
   ExamSession.clearAll().catch(() => {});
@@ -7341,9 +7564,10 @@ async function onAuthSuccess(token, user) {
   // the slow /api/kb, which can take 4+ seconds on cold load). If we started
   // it AFTER the allSettled, its ~400ms round-trip would stack serially on
   // top, producing the visible "SR card pops in later" effect on hard
-  // refresh of the Progress page. Not awaited here — the in-flight promise
-  // (window._srDueFetchPromise) lets _renderProgressDashboardInto's Phase 1
-  // await it when the user's last view was Progress.
+  // refresh of the Progress page. Not awaited here — it populates the SR
+  // cache (_srDueItems/_srStats) that the Progress page renders from, and
+  // _renderProgressDashboardInto joins the in-flight promise if it's still
+  // running when the user's last view was Progress.
   checkDueReviews().catch(() => {});
   loadFlashcardBundleOnBoot();
   // Prefetch KB and progress in parallel before rendering
@@ -7404,12 +7628,16 @@ function updateUserDisplay() {
   }
 }
 
-async function refreshSidebarXP() {
+// force=true skips the cache — used after a session awards XP so the sidebar
+// doesn't keep showing pre-session numbers.
+async function refreshSidebarXP(force) {
   if (!sessionToken) return;
   try {
-    const r = await fetch('/api/xp/summary', { headers: { 'x-session-token': sessionToken } });
-    if (!r.ok) return;
-    const { xp, level, title, xpToNextLevel, progressPercent } = await r.json();
+    const cached = _xpSummaryCache?.data;
+    const fresh  = cached && !force && (Date.now() - _xpSummaryCache.at) < PROG_CACHE_TTL_MS;
+    // Shares _xpSummaryCache with the XP & Level tab — boot used to fetch this
+    // payload here and then again the moment the user opened that tab.
+    const { xp, level, title, xpToNextLevel, progressPercent } = fresh ? cached : await _fetchXPSummary();
     const badge  = document.getElementById('sbLevelBadge');
     const lvlEl  = document.getElementById('sbXpLevel');
     const fill   = document.getElementById('sbXpFill');
@@ -8956,6 +9184,13 @@ function goToFlaggedQuestion(idx) {
 function showXPPopup(xpResult, onContinue) {
   const { xpEarned, highScoreCount, highScoreBonus, newLevel, newXP, progressPercent, xpToNextLevel } = xpResult;
   const sessionBase = xpEarned - (highScoreBonus || 0);
+
+  // The session just changed XP, results and spaced-repetition state. Drop the
+  // caches so Progress/XP don't serve pre-session numbers, and repaint the
+  // sidebar bar + topbar level badge, which previously stayed stale until the
+  // next full page load.
+  invalidateProgressCaches();
+  refreshSidebarXP(true).catch(() => {});
 
   const lines = [];
   if (sessionBase > 0)       lines.push({ label: 'Session Complete', value: sessionBase });
