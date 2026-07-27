@@ -394,20 +394,14 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .tb-tab.on{color:var(--gold);background:rgba(201,168,76,.1);border-color:rgba(201,168,76,.2);}
 .tb-tab.mock.on{color:#ff8c42;background:rgba(255,140,66,.1);border-color:rgba(255,140,66,.2);}
 .tb-right{display:flex;align-items:center;gap:10px;flex-shrink:0;}
-.exam-pill{background:rgba(155,35,53,.2);border:1px solid rgba(155,35,53,.4);color:#e07080;font-size:10px;font-weight:700;padding:3px 9px;border-radius:20px;font-family:var(--fm);}
-/* KB indicator */
-.kb-ind{display:flex;align-items:center;gap:5px;font-size:11px;padding:4px 10px;border-radius:8px;font-family:var(--fm);cursor:pointer;border:1px solid;transition:all .2s;}
-.kb-ind.loaded{color:var(--teal);background:rgba(20,180,160,.08);border-color:rgba(20,180,160,.2);}
-.kb-ind.empty{color:var(--muted);background:rgba(255,255,255,.04);border-color:var(--bdr2);}
-.kb-ind.generating{color:#ff8c42;background:rgba(255,140,66,.08);border-color:rgba(255,140,66,.2);}
-.kb-dot{width:6px;height:6px;border-radius:50%;}
-.kb-ind.loaded .kb-dot{background:var(--teal);animation:pulse 2s infinite;}
+/* Removed: .exam-pill ("PH BAR 2026") and .kb-ind/.kb-dot (the "Generating…"
+   status pill). The underlying generation state (KB.genState, the SSE stream)
+   is still live — it drives #pregenBanner, the admin generation panel and the
+   syllabus tree's per-topic indicator. Only the topbar badge is gone.
+   @keyframes pulse went with them; it had no other users. */
 /* API status banner */
 #apiBanner{display:none;position:fixed;top:0;left:0;right:0;z-index:500;background:rgba(155,35,53,.92);backdrop-filter:blur(4px);color:#fff;font-size:12px;font-weight:600;text-align:center;padding:7px 16px;letter-spacing:.02em;}
 #apiBanner button{margin-left:12px;background:transparent;border:1px solid rgba(255,255,255,.45);color:#fff;border-radius:5px;padding:2px 9px;cursor:pointer;font-size:11px;}
-.kb-ind.generating .kb-dot{background:#ff8c42;animation:pulse .6s infinite;}
-.kb-ind.empty .kb-dot{background:var(--muted);}
-@keyframes pulse{0%,100%{opacity:1;}50%{opacity:.3;}}
 .avatar{width:32px;height:32px;background:linear-gradient(135deg,var(--crim),var(--blue));border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;border:2px solid var(--bdr);}
 /* ── CLS prevention: reserve space for dynamically-shown elements ── */
 /* Topbar: contain layout so show/hide of children doesn't shift page content */

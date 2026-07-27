@@ -691,17 +691,11 @@ async function refreshKBState() {
   }
 }
 
+// Previously also drove the topbar "Generating…" pill (#kbInd), which has been
+// removed. KB.genState itself is untouched and still consumed by the pre-gen
+// banner, the admin generation panel (updateGenProgressUI) and the syllabus
+// tree's per-topic "generating now" marker — so nothing here unwinds that.
 function updateKBIndicator() {
-  const ind = document.getElementById('kbInd'), txt = document.getElementById('kbIndTxt');
-  const gs = KB.genState;
-  const n = Object.values(CACHE).reduce((a,s)=>a+Object.keys(s).length, 0);
-  if (ind && txt) {
-    if (gs?.running) { ind.className='kb-ind generating'; txt.textContent=`Generating ${gs.done||0}/${gs.total||0}`; }
-    else if (n > 0) { ind.className='kb-ind loaded'; txt.textContent=`${n} topics ready`; }
-    else if (KB.hasSyllabus) { ind.className='kb-ind generating'; txt.textContent='Generating…'; }
-    else { ind.className='kb-ind empty'; txt.textContent='No KB'; }
-  }
-
   // Mock source stats (null-safe — elements may not exist in new overview layout)
   const pbTotal = KB.pastBar?.reduce((a,p)=>a+(p.qCount||0),0)||0;
   const pgTotal = Object.values(CACHE).reduce((a,s)=>a+Object.keys(s).length,0);
