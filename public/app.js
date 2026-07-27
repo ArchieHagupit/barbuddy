@@ -476,6 +476,7 @@ async function init() {
     if (list) list.innerHTML = cachedSB;
   }
   renderSidebar();
+  initSidebarToggleState();
   updateSidebarAdminVisibility();
   renderSubjectTracker();
   await loadKB();
@@ -3615,6 +3616,44 @@ function nav(id, btn) {
 }
 
 // ══════════════════════════════════
+// SIDEBAR COLLAPSE
+// ══════════════════════════════════
+function setSidebarCollapsed(collapsed) {
+  const sidebar = document.getElementById('mainSidebar');
+  if (!sidebar) return;
+  sidebar.classList.toggle('collapsed', collapsed);
+  document.documentElement.style.setProperty('--sw', collapsed ? '64px' : '220px');
+  const btn = document.getElementById('sbToggleBtn');
+  if (btn) {
+    btn.setAttribute('aria-expanded', String(!collapsed));
+    const label = collapsed ? 'Expand sidebar' : 'Collapse sidebar';
+    btn.title = label;
+    btn.setAttribute('aria-label', label);
+  }
+  try { localStorage.setItem('bb_sidebar_collapsed', collapsed ? '1' : '0'); } catch(e){}
+}
+
+function toggleSidebarCollapse() {
+  const sidebar = document.getElementById('mainSidebar');
+  if (!sidebar) return;
+  setSidebarCollapsed(!sidebar.classList.contains('collapsed'));
+}
+
+// Syncs the toggle button's title/aria to whatever state the early inline
+// script (in index.html, runs before app.js) already applied — avoids
+// re-writing localStorage on every boot.
+function initSidebarToggleState() {
+  const sidebar = document.getElementById('mainSidebar');
+  const btn = document.getElementById('sbToggleBtn');
+  if (!sidebar || !btn) return;
+  const collapsed = sidebar.classList.contains('collapsed');
+  btn.setAttribute('aria-expanded', String(!collapsed));
+  const label = collapsed ? 'Expand sidebar' : 'Collapse sidebar';
+  btn.title = label;
+  btn.setAttribute('aria-label', label);
+}
+
+// ══════════════════════════════════
 // SIDEBAR RENDERER
 // ══════════════════════════════════
 function renderSidebar() {
@@ -3624,12 +3663,12 @@ function renderSidebar() {
     const hasMaterials = (KB.references||[]).some(r=>r.subject===s.key) || (KB.pastBar||[]).some(p=>p.subject===s.key);
     const qCount = (KB.pastBar||[]).filter(p=>p.subject===s.key).reduce((a,p)=>a+(p.qCount||0),0);
     const srDue = window._srDueCounts?.[s.key] || 0;
-    return `<button class="sb-subject" id="sb-subj-${s.key}" style="--subject-color:${s.color};" onclick="navToSubject('${s.key}')">
+    return `<button class="sb-subject" id="sb-subj-${s.key}" style="--subject-color:${s.color};" onclick="navToSubject('${s.key}')" title="${h(s.name)}">
       <span class="sb-subj-dot" style="background:${hasMaterials?s.color:'rgba(248,246,241,.2)'};"></span>
-      <span class="sb-subj-name">${h(s.name)}</span>
-      ${qCount>0?`<span class="sb-subj-qcount">${qCount}q</span>`:''}
-      <span class="sb-sr-badge" id="sb-sr-${s.key}" style="${srDue>0?'':'display:none;'}">${srDue} due</span>
-      <span class="sb-lock-icon" style="display:none;">🔒</span>
+      <span class="sb-subj-name sb-lbl">${h(s.name)}</span>
+      ${qCount>0?`<span class="sb-subj-qcount sb-lbl">${qCount}q</span>`:''}
+      <span class="sb-sr-badge sb-lbl" id="sb-sr-${s.key}" style="${srDue>0?'':'display:none;'}">${srDue} due</span>
+      <span class="sb-lock-icon sb-lbl" style="display:none;">🔒</span>
     </button>`;
   }).join('');
   list.innerHTML = html;
@@ -3660,7 +3699,7 @@ function refreshSidebarDots() {
     const qCount = (KB.pastBar||[]).filter(p=>p.subject===s.key).reduce((a,p)=>a+(p.qCount||0),0);
     let countEl = el.querySelector('.sb-subj-qcount');
     if (qCount > 0) {
-      if (!countEl) { countEl = document.createElement('span'); countEl.className='sb-subj-qcount'; el.insertBefore(countEl, el.querySelector('.sb-lock-icon')); }
+      if (!countEl) { countEl = document.createElement('span'); countEl.className='sb-subj-qcount sb-lbl'; el.insertBefore(countEl, el.querySelector('.sb-lock-icon')); }
       countEl.textContent = qCount + 'q';
     } else if (countEl) { countEl.remove(); }
   });
