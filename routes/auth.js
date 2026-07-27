@@ -82,7 +82,7 @@ module.exports = function createAuthRoutes({
         awardXP(user.id, 'DAILY_LOGIN', 'Daily login bonus').catch(() => {});
       }
       const u = mapUser(user);
-      res.json({ token, user: { id: u.id, name: u.name, email: u.email, role: u.role, isAdmin: u.isAdmin, spacedRepEnabled: u.spacedRepEnabled, customSubjectEnabled: u.customSubjectEnabled } });
+      res.json({ token, user: { id: u.id, name: u.name, email: u.email, role: u.role, isAdmin: u.isAdmin, spacedRepEnabled: u.spacedRepEnabled, customSubjectEnabled: u.customSubjectEnabled, reviewRemindersEnabled: u.reviewRemindersEnabled } });
     } catch(e) { res.status(500).json({ error: e.message }); }
   });
 
@@ -95,7 +95,7 @@ module.exports = function createAuthRoutes({
 
   router.get('/api/auth/me', requireAuth, (req, res) => {
     const u = req.user;
-    res.json({ id: u.id, name: u.name, email: u.email, role: u.role, isAdmin: u.isAdmin || false, spacedRepEnabled: u.spacedRepEnabled !== false, customSubjectEnabled: u.customSubjectEnabled !== false });
+    res.json({ id: u.id, name: u.name, email: u.email, role: u.role, isAdmin: u.isAdmin || false, spacedRepEnabled: u.spacedRepEnabled !== false, customSubjectEnabled: u.customSubjectEnabled !== false, reviewRemindersEnabled: u.reviewRemindersEnabled !== false });
   });
 
   // ── Password reset routes ─────────────────────────────────────

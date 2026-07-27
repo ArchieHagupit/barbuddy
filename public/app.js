@@ -1348,21 +1348,182 @@ function refreshSidebarReviewBadges() {
   });
 }
 
-function showSrReviewBanner(count) {
-  document.getElementById('sr-review-banner')?.remove();
-  if (!isSREnabled()) return;
-  const banner = document.createElement('div');
-  banner.id = 'sr-review-banner';
-  banner.innerHTML = `
-    <div style="font-size:18px;flex-shrink:0;">🧠</div>
-    <div style="flex:1;font-size:13px;color:var(--white);">You have <strong style="color:var(--gold-l);">${count}</strong> question${count!==1?'s':''} due for review today.</div>
-    <button class="sr-banner-btn" onclick="navToProgress()">Start Review Session</button>
-    <button class="sr-banner-dismiss" onclick="dismissSrBanner()">Dismiss</button>`;
-  document.body.appendChild(banner);
+// ── Notification bell ─────────────────────────────────────────
+// Replaces the old full-width #sr-review-banner. The bell carries a count
+// badge; the panel holds the actual notifications plus the student's reminder
+// toggle. Nothing overlays the page and the count persists until the reviews
+// are actually done, instead of vanishing on a one-time Dismiss.
+
+function remindersEnabled() {
+  return currentUser?.reviewRemindersEnabled !== false;
 }
 
-function dismissSrBanner() {
-  document.getElementById('sr-review-banner')?.remove();
+// The set of notifications is derived, not stored — today that's just the due
+// reviews. Add cases here as new notification kinds appear.
+function _collectNotifications() {
+  const out = [];
+  const due = Array.isArray(window._srDueItems) ? window._srDueItems : [];
+  if (isSREnabled() && remindersEnabled() && due.length) {
+    const bySubj = {};
+    due.forEach(i => { bySubj[i.subject] = (bySubj[i.subject] || 0) + 1; });
+    const subjLine = Object.keys(bySubj)
+      .map(k => _SR_SUBJ_NAMES[k] || k)
+      .slice(0, 4).join(' · ');
+    const overdue = due.filter(i => (i.daysOverdue || 0) > 0).length;
+    out.push({
+      id: 'sr-due', icon: '🧠',
+      msg: `<strong style="color:var(--gold-l);">${due.length}</strong> question${due.length!==1?'s':''} due for review today.`,
+      sub: subjLine + (overdue ? ` — ${overdue} overdue` : ''),
+      action: { label: '🚀 Start Review Session', fn: 'startReviewSession()' },
+    });
+  }
+  return out;
+}
+
+function refreshNotifications() {
+  const wrap  = document.getElementById('notifWrap');
+  const bell  = document.getElementById('notifBell');
+  const badge = document.getElementById('notifBadge');
+  if (!wrap || !bell || !badge) return;
+  // Bell only exists for signed-in users
+  wrap.style.display = (sessionToken && currentUser) ? '' : 'none';
+
+  const items = _collectNotifications();
+  const count = items.reduce((n, i) => n + (i.id === 'sr-due' ? (window._srDueItems?.length || 0) : 1), 0);
+  if (count > 0) {
+    badge.textContent = count > 99 ? '99+' : count;
+    badge.style.display = '';
+    bell.classList.add('has-unread');
+    bell.title = `${count} notification${count !== 1 ? 's' : ''}`;
+  } else {
+    badge.style.display = 'none';
+    bell.classList.remove('has-unread');
+    bell.title = 'Notifications';
+  }
+  if (document.getElementById('notifPanel')?.classList.contains('open')) renderNotifPanel();
+}
+
+function renderNotifPanel() {
+  const panel = document.getElementById('notifPanel');
+  if (!panel) return;
+  const items = _collectNotifications();
+  const on = remindersEnabled();
+
+  const body = items.length
+    ? items.map(i => `
+        <div class="notif-item">
+          <div class="notif-ic">${i.icon}</div>
+          <div class="notif-txt">
+            <div class="notif-msg">${i.msg}</div>
+            ${i.sub ? `<div class="notif-sub">${h(i.sub)}</div>` : ''}
+            ${i.action ? `<button class="notif-act" onclick="closeNotifPanel();${i.action.fn}">${i.action.label}</button>` : ''}
+          </div>
+        </div>`).join('')
+    : `<div class="notif-empty">
+         <div class="notif-empty-ic">${on ? '✅' : '🔕'}</div>
+         ${on ? "You're all caught up — no reviews due today."
+              : 'Review reminders are off. Turn them back on below to be notified when questions are due.'}
+       </div>`;
+
+  panel.innerHTML = `
+    <div class="notif-head"><div class="notif-title">Notifications</div></div>
+    <div class="notif-body">${body}</div>
+    <div class="notif-foot">
+      <div class="notif-foot-lbl">Review reminders<br><span style="opacity:.75;">Notify me when questions are due</span></div>
+      <button class="notif-switch" id="notifReminderSwitch" role="switch"
+              aria-checked="${on}" aria-label="Review reminders"
+              onclick="toggleReviewReminders(event)"></button>
+    </div>`;
+  // Content height changes with the notification count — re-anchor so the
+  // panel doesn't drift off the bell after a re-render.
+  if (panel.classList.contains('open')) _positionNotifPanel();
+}
+
+// The panel is body-level and fixed, so it has to be positioned under the bell
+// manually. Right-aligned to the bell, clamped to stay on screen.
+function _positionNotifPanel() {
+  const panel = document.getElementById('notifPanel');
+  const bell  = document.getElementById('notifBell');
+  if (!panel || !bell) return;
+  const b = bell.getBoundingClientRect();
+  const w = panel.offsetWidth || 330;
+  const left = Math.max(10, Math.min(b.right - w, window.innerWidth - w - 10));
+  panel.style.left = left + 'px';
+  panel.style.top  = (b.bottom + 9) + 'px';
+}
+
+function toggleNotifPanel(ev) {
+  ev?.stopPropagation();
+  const panel = document.getElementById('notifPanel');
+  if (!panel) return;
+  if (panel.classList.contains('open')) { closeNotifPanel(); return; }
+  renderNotifPanel();
+  panel.classList.add('open');
+  _positionNotifPanel();
+  document.getElementById('notifBell')?.setAttribute('aria-expanded', 'true');
+  // Close on outside click / Escape. Registered late so this click doesn't
+  // immediately close the panel it just opened.
+  setTimeout(() => {
+    document.addEventListener('click', _notifOutsideClick);
+    document.addEventListener('keydown', _notifEscape);
+    window.addEventListener('resize', _positionNotifPanel);
+  }, 0);
+}
+
+function closeNotifPanel() {
+  const panel = document.getElementById('notifPanel');
+  if (!panel) return;
+  panel.classList.remove('open');
+  document.getElementById('notifBell')?.setAttribute('aria-expanded', 'false');
+  document.removeEventListener('click', _notifOutsideClick);
+  document.removeEventListener('keydown', _notifEscape);
+  window.removeEventListener('resize', _positionNotifPanel);
+}
+
+function _notifOutsideClick(e) {
+  // Both targets matter: the panel is body-level, not a descendant of the
+  // wrap, so clicks inside it (e.g. the reminders switch) would otherwise
+  // read as "outside" and close the panel out from under the user.
+  if (!e.target.closest('#notifWrap') && !e.target.closest('#notifPanel')) closeNotifPanel();
+}
+function _notifEscape(e) {
+  if (e.key === 'Escape') closeNotifPanel();
+}
+
+async function toggleReviewReminders(ev) {
+  // Must stop here: renderNotifPanel() below replaces the panel's innerHTML,
+  // detaching this very button. By the time the click reaches the document,
+  // e.target has no ancestors, so _notifOutsideClick's closest('#notifPanel')
+  // returns null and the panel closes out from under the user.
+  ev?.stopPropagation();
+  const sw = document.getElementById('notifReminderSwitch');
+  const next = !remindersEnabled();
+  // Optimistic: flip immediately, roll back if the save fails.
+  if (currentUser) currentUser.reviewRemindersEnabled = next;
+  if (sw) { sw.setAttribute('aria-checked', String(next)); sw.disabled = true; }
+  renderNotifPanel();
+  refreshNotifications();
+  try {
+    const r = await fetch('/api/user/preferences', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'x-session-token': sessionToken },
+      body: JSON.stringify({ reviewRemindersEnabled: next }),
+    });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'save failed');
+    try {
+      const cached = JSON.parse(localStorage.getItem('bb_user') || 'null');
+      if (cached) { cached.reviewRemindersEnabled = next; localStorage.setItem('bb_user', JSON.stringify(cached)); }
+    } catch(_) {}
+    showToast(next ? 'Review reminders on' : 'Review reminders off', 'success');
+  } catch(e) {
+    if (currentUser) currentUser.reviewRemindersEnabled = !next;   // roll back
+    renderNotifPanel();
+    refreshNotifications();
+    showToast('Could not save that preference — please try again', 'error');
+  } finally {
+    const sw2 = document.getElementById('notifReminderSwitch');
+    if (sw2) sw2.disabled = false;
+  }
 }
 
 // How long a cached SR due/stats payload is considered fresh enough to render
@@ -1410,7 +1571,7 @@ async function checkDueReviews() {
         window._srDueCounts[item.subject] = (window._srDueCounts[item.subject] || 0) + 1;
       });
       refreshSidebarReviewBadges();
-      if (dueItems.length > 0) showSrReviewBanner(dueItems.length);
+      refreshNotifications();
     } catch(e) { /* non-critical */ }
     finally {
       // Leave cache populated but allow subsequent explicit calls to refetch
@@ -1464,7 +1625,7 @@ async function startReviewSession() {
   });
   window.isReviewSession = true;
   window.isSpeedDrill    = false;
-  dismissSrBanner();
+  closeNotifPanel();
   clearSidebarActive();
   document.getElementById('sb-progress')?.classList.add('active');
   showPage('mockbar');
@@ -6172,6 +6333,10 @@ async function endMockSession(){
 
   function _renderResults() {
     hideSessionOverlay();
+    // The session just changed spaced-repetition state (mastery, next review
+    // dates). Refetch so the bell badge reflects what's actually still due
+    // rather than the pre-session count.
+    checkDueReviews().catch(() => {});
     res.innerHTML=`<div class="mock-results">
     ${currentUser?`<div style="background:rgba(201,168,76,.07);border:1px solid rgba(201,168,76,.18);border-radius:9px;padding:8px 14px;margin-bottom:14px;text-align:left;"><div class="result-user">👤 ${h(currentUser.name)}</div><div style="font-size:11px;color:var(--muted);">${new Date().toLocaleDateString('en-PH',{timeZone:'Asia/Manila'})}</div></div>`:''}
     <div style="font-size:32px;margin-bottom:8px;">🏛</div>
@@ -6656,8 +6821,8 @@ async function applyTabSettings() {
     }
     // Enforce spaced repetition toggle (global + per-user)
     if (!isSREnabled()) {
-      document.getElementById('sr-review-banner')?.remove();
       refreshSidebarReviewBadges();
+      refreshNotifications();   // drops the due-review notification + badge
     }
     updateAccessControlBadge();
   } catch(e) { console.warn('Tab settings load failed:', e.message); }
@@ -7625,7 +7790,9 @@ function updateUserDisplay() {
     logBtn.style.display = 'none';
     if (cpBtn) cpBtn.style.display = 'none';
     if (sbXp) sbXp.style.display = 'none';
+    closeNotifPanel();
   }
+  refreshNotifications();
 }
 
 // force=true skips the cache — used after a session awards XP so the sidebar
