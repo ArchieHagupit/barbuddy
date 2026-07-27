@@ -768,6 +768,10 @@ function showPage(id) {
 
 function clearSidebarActive() {
   document.querySelectorAll('.sb-overview-btn,.sb-subject,.sb-sub-item').forEach(el => el.classList.remove('active'));
+  // Every top-level nav (Overview/Progress/Admin/Custom/subject) routes
+  // through here, so this is the one place that reliably sees the user
+  // leave Flashcards — reset their opt-out of sidebar auto-expand.
+  _fcSidebarUserCollapsed = false;
 }
 
 function updateBreadcrumb(subj, mode) {
@@ -2210,7 +2214,7 @@ function switchSubjectTab(subj, mode) {
     }
   }
   updateBreadcrumb(subj, mode);
-  maybeAutoExpandSidebarForFlashcards(subj, mode);
+  maybeAutoExpandSidebarForFlashcards(mode);
   const content = document.getElementById('subject-tab-content');
   if (!content) return;
   // Guard: block rendering if tab is restricted for this user (defense-in-depth)
@@ -2641,7 +2645,13 @@ function paintFlashcardsTabFromBundle(subj) {
 // Visual convention matches the Learn tab (Roman-numeral section headers,
 // collapsible groups, clickable leaves) but filters to ONLY topics that
 // have at least one enabled card.
-function renderFlashcardTopicTree(container, subj, sections, countsByNodeId) {
+// opts.showLabel — the in-session outline column supplies its own sticky
+// "Browse by Topic" header, so it renders the tree without the inline one.
+function renderFlashcardTopicTree(container, subj, sections, countsByNodeId, opts = {}) {
+  const showLabel = opts.showLabel !== false;
+  const labelHtml = showLabel
+    ? '<div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin:18px 0 10px;">Browse by Topic</div>'
+    : '';
   // Recursively filter: keep nodes that either (a) have cards attached
   // directly OR (b) have at least one surviving descendant with cards.
   // CRITICAL: A node can have BOTH its own cards AND children. We must
@@ -2671,8 +2681,7 @@ function renderFlashcardTopicTree(container, subj, sections, countsByNodeId) {
   const filtered = prune(sections);
 
   if (!filtered.length) {
-    container.innerHTML = `
-      <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin:18px 0 10px;">Browse by Topic</div>
+    container.innerHTML = labelHtml + `
       <div style="padding:24px;text-align:center;color:var(--muted);font-size:12px;background:var(--card2);border:1px solid var(--bdr2);border-radius:10px;">
         No topics have flashcards yet. Use the due-queue button above to study cards as they get imported.
       </div>
@@ -2680,8 +2689,7 @@ function renderFlashcardTopicTree(container, subj, sections, countsByNodeId) {
     return;
   }
 
-  container.innerHTML = `
-    <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin:18px 0 10px;">Browse by Topic</div>
+  container.innerHTML = labelHtml + `
     <div class="fc-topic-tree" id="fc-topic-tree-${h(subj)}"></div>
   `;
 
@@ -3042,6 +3050,12 @@ function renderFlashcardCardViewer() {
   }
 
   container.innerHTML = `
+    <div class="fc-study-layout">
+    <aside class="fc-study-outline">
+      <div class="fc-outline-head">Browse by Topic</div>
+      <div class="fc-outline-scroll" id="fc-session-outline"></div>
+    </aside>
+    <div class="fc-study-main">
     <div class="fc-viewer-wrap">
       <div class="fc-viewer-topbar" style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap;">
         <div style="display:flex;align-items:center;gap:12px;min-width:0;flex:1;">
@@ -3084,7 +3098,15 @@ function renderFlashcardCardViewer() {
         </button>
       </div>
     </div>
+    </div>
+    </div>
   `;
+
+  // Widens .pg-inner and sticks the title + tab row while studying.
+  document.getElementById('page-subject')?.classList.add('fc-session-active');
+  _fcRenderSessionOutline(_fcSession.subject);
+  _fcSizeStudyLayout();
+  _fcBindStudyLayoutResize();
 
   const q = sel => container.querySelector(sel);
   _fcEls = {
@@ -3105,6 +3127,80 @@ function renderFlashcardCardViewer() {
 
   _attachFlashcardTapHandlers(_fcEls.card);
   _fcPaintCard({ animate: false });
+}
+
+// Fit the two-column study frame to whatever space is left below the
+// sticky title/tab block, so the page itself doesn't scroll while studying.
+// Measured rather than hard-coded because the subject header's height moves
+// with its metadata line and the tab row wraps on narrower widths.
+function _fcSizeStudyLayout() {
+  const layout = document.querySelector('.fc-study-layout');
+  if (!layout) return;
+  if (window.innerWidth <= 900) { layout.style.height = ''; return; } // stacked
+  const top = layout.getBoundingClientRect().top;
+  layout.style.height = Math.max(380, window.innerHeight - top - 18) + 'px';
+}
+
+let _fcResizeHandler = null;
+function _fcBindStudyLayoutResize() {
+  if (_fcResizeHandler) return;
+  _fcResizeHandler = () => _fcSizeStudyLayout();
+  window.addEventListener('resize', _fcResizeHandler);
+}
+function _fcUnbindStudyLayoutResize() {
+  if (!_fcResizeHandler) return;
+  window.removeEventListener('resize', _fcResizeHandler);
+  _fcResizeHandler = null;
+}
+
+// Paint the topic outline that sits beside the card during a session. It's
+// the same tree (and the same green completion roll-ups) as the overview
+// screen, so refreshFlashcardTreeCompletion keeps updating it live as cards
+// are marked done — clicking a row restarts the session on that topic.
+function _fcRenderSessionOutline(subj) {
+  const slot = document.getElementById('fc-session-outline');
+  if (!slot || !subj) return;
+  const sections = syllabusCache[subj]?.sections || [];
+  const counts = _fcBundleCache?.topicCountsBySubject?.[subj] || {};
+  if (!sections.length) {
+    slot.innerHTML = '<div style="color:var(--muted);font-size:11px;padding:12px;">Loading topics…</div>';
+    // Syllabus isn't cached yet — paint once it lands, if still studying.
+    loadSubjectSyllabus(subj).then(() => {
+      if (_fcSession && document.getElementById('fc-session-outline')) {
+        _fcRenderSessionOutline(subj);
+      }
+    });
+    return;
+  }
+  renderFlashcardTopicTree(slot, subj, sections, counts, { showLabel: false });
+  _fcSyncOutlineActiveTopic();
+}
+
+// Mark which topic the visible card belongs to and keep it in view. Only
+// scrolls the outline's own container, never the page.
+function _fcSyncOutlineActiveTopic() {
+  const slot = document.getElementById('fc-session-outline');
+  if (!slot || !_fcSession) return;
+  const card = _fcSession.cards[_fcSession.position];
+  slot.querySelectorAll('.fc-active-topic').forEach(el => el.classList.remove('fc-active-topic'));
+  if (!card?.node_id) return;
+  const row = slot.querySelector('[data-fc-node="' + CSS.escape(card.node_id) + '"]');
+  if (!row) return;
+  row.classList.add('fc-active-topic');
+  // Reveal it if a collapsed ancestor is hiding it.
+  let p = row.parentElement;
+  while (p && p !== slot) {
+    if (p.classList.contains('tl-group-body') && !p.classList.contains('open')) {
+      p.classList.add('open');
+      p.previousElementSibling?.querySelector('.tl-expand-arrow')?.classList.add('open');
+    }
+    p = p.parentElement;
+  }
+  const box = slot.getBoundingClientRect();
+  const r = row.getBoundingClientRect();
+  if (r.top < box.top || r.bottom > box.bottom) {
+    slot.scrollTop += (r.top - box.top) - box.height / 2 + r.height / 2;
+  }
 }
 
 // Flip on pointerup rather than click: it fires at the moment the finger
@@ -3149,6 +3245,7 @@ function _fcPaintCard({ animate = true } = {}) {
   if (!card) return;
 
   _fcPaintDoneState();
+  _fcSyncOutlineActiveTopic();
   _fcEls.frontBody.textContent = card.front || '';
   _fcEls.backBody.innerHTML = formatFlashcardBack(card.back);
   _fcEls.path.textContent = card.node_path || '';
@@ -3328,6 +3425,9 @@ function renderFlashcardSessionSummary() {
   const doneInSession = cards.filter(isFlashcardDone).length;
   const total = cards.length;
   _fcEls = null;
+  // Summary is a single centred panel — drop the two-column study frame.
+  document.getElementById('page-subject')?.classList.remove('fc-session-active');
+  _fcUnbindStudyLayoutResize();
   const elapsedMs = Date.now() - startedAt.getTime();
   const elapsedMin = Math.max(1, Math.round(elapsedMs / 60000));
   const pct = total > 0 ? Math.round((doneInSession / total) * 100) : 0;
@@ -3367,6 +3467,8 @@ function endFlashcardSession() {
   const nodeIdToRestore = _fcLastClickedNodeId; // captured before _fcSession is cleared
   _fcSession = null;
   _fcEls = null;
+  document.getElementById('page-subject')?.classList.remove('fc-session-active');
+  _fcUnbindStudyLayoutResize();
   detachFlashcardKeyboardListener();
   // Safety: reconcile the bundle with the server. Waits for any in-flight
   // mark-done writes first — refetching mid-write would pull a stale count
@@ -3721,25 +3823,26 @@ function setSidebarCollapsed(collapsed) {
 }
 
 function toggleSidebarCollapse() {
-  setSidebarCollapsed(!document.documentElement.classList.contains('sb-collapsed'));
+  const collapsing = !document.documentElement.classList.contains('sb-collapsed');
+  // A deliberate collapse while studying opts out of auto-expand until the
+  // user navigates somewhere else.
+  if (collapsing && currentMode === 'flashcards') _fcSidebarUserCollapsed = true;
+  setSidebarCollapsed(collapsing);
 }
 
-// Which `subject::flashcards` view we last auto-expanded the sidebar for.
-// Navigating into Flashcards opens the rail so "Browse by Topic" sits
-// side-by-side with the cards; re-renders and a manual re-collapse while
-// staying on the tab must NOT re-open it, so the key is only cleared when
-// the user leaves Flashcards.
-let _fcSidebarAutoExpandKey = null;
+// True when the user manually collapsed the rail while ON the Flashcards
+// tab. Auto-expand honours that for the rest of the visit; any navigation
+// away clears it (see clearSidebarActive), so coming back re-opens.
+//
+// This replaced a "last auto-expanded subject::flashcards key" gate, which
+// was only cleared by switchSubjectTab. Leaving via Overview/Progress/Admin
+// never went through there, so the stale key made every later return to
+// Flashcards a silent no-op.
+let _fcSidebarUserCollapsed = false;
 
-function maybeAutoExpandSidebarForFlashcards(subj, mode) {
-  if (mode !== 'flashcards') {
-    // Left the tab — a later return counts as fresh navigation.
-    _fcSidebarAutoExpandKey = null;
-    return;
-  }
-  const key = subj + '::flashcards';
-  if (_fcSidebarAutoExpandKey === key) return; // same view, just a re-render
-  _fcSidebarAutoExpandKey = key;
+function maybeAutoExpandSidebarForFlashcards(mode) {
+  if (mode !== 'flashcards') { _fcSidebarUserCollapsed = false; return; }
+  if (_fcSidebarUserCollapsed) return;
   if (document.documentElement.classList.contains('sb-collapsed')) {
     setSidebarCollapsed(false);
   }
