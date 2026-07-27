@@ -38,6 +38,18 @@ new PerformanceObserver((list) => {
 </script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" defer></script>
 <link rel="stylesheet" href="/styles.css?v=__APP_VERSION__">
+<script id="sidebar-state">
+/* Restore the sidebar collapse preference BEFORE <body> is parsed, so the
+   sidebar paints at its correct width instead of flashing the 220px pane
+   and snapping to the rail. Must stay above <body> and after styles.css. */
+(function(){
+  try{
+    var stored = localStorage.getItem('bb_sidebar_collapsed');
+    var collapsed = stored !== null ? stored === '1' : window.innerWidth < 900;
+    if (collapsed) document.documentElement.classList.add('sb-collapsed');
+  }catch(e){}
+})();
+</script>
 </head>
 <body>
 <div id="bb-loading-screen" style="
@@ -176,9 +188,6 @@ new PerformanceObserver((list) => {
 
 <div id="apiBanner">⚠️ Claude API is currently overloaded — some features may be slow or unavailable. <button onclick="document.getElementById('apiBanner').style.display='none'">Dismiss</button></div>
 <aside class="sidebar" id="mainSidebar">
-  <button class="sb-toggle-btn" id="sbToggleBtn" onclick="toggleSidebarCollapse()" title="Collapse sidebar" aria-label="Collapse sidebar" aria-expanded="true">
-    <span class="sb-toggle-icon">‹</span>
-  </button>
   <div class="sb-logo-section">
     <div class="s-logo">⚖️</div>
     <div>
@@ -231,18 +240,9 @@ new PerformanceObserver((list) => {
     </div>
   </div>
 </aside>
-<script>
-(function(){
-  try{
-    var stored = localStorage.getItem('bb_sidebar_collapsed');
-    var collapsed = stored !== null ? stored === '1' : window.innerWidth < 900;
-    if (collapsed) {
-      document.documentElement.style.setProperty('--sw','64px');
-      document.getElementById('mainSidebar').classList.add('collapsed');
-    }
-  } catch(e){}
-})();
-</script>
+<button class="sb-toggle-btn" id="sbToggleBtn" onclick="toggleSidebarCollapse()" title="Collapse sidebar" aria-label="Collapse sidebar" aria-expanded="true" aria-controls="mainSidebar">
+  <svg class="sb-toggle-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
+</button>
 
 <main id="main-content" role="main" class="main">
 <header class="topbar">

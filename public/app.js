@@ -3618,11 +3618,10 @@ function nav(id, btn) {
 // ══════════════════════════════════
 // SIDEBAR COLLAPSE
 // ══════════════════════════════════
+// State lives on <html> (not .sidebar) so the pre-body script in index.html
+// can restore it before any layout happens — see #sidebar-state.
 function setSidebarCollapsed(collapsed) {
-  const sidebar = document.getElementById('mainSidebar');
-  if (!sidebar) return;
-  sidebar.classList.toggle('collapsed', collapsed);
-  document.documentElement.style.setProperty('--sw', collapsed ? '64px' : '220px');
+  document.documentElement.classList.toggle('sb-collapsed', collapsed);
   const btn = document.getElementById('sbToggleBtn');
   if (btn) {
     btn.setAttribute('aria-expanded', String(!collapsed));
@@ -3634,19 +3633,16 @@ function setSidebarCollapsed(collapsed) {
 }
 
 function toggleSidebarCollapse() {
-  const sidebar = document.getElementById('mainSidebar');
-  if (!sidebar) return;
-  setSidebarCollapsed(!sidebar.classList.contains('collapsed'));
+  setSidebarCollapsed(!document.documentElement.classList.contains('sb-collapsed'));
 }
 
 // Syncs the toggle button's title/aria to whatever state the early inline
 // script (in index.html, runs before app.js) already applied — avoids
 // re-writing localStorage on every boot.
 function initSidebarToggleState() {
-  const sidebar = document.getElementById('mainSidebar');
   const btn = document.getElementById('sbToggleBtn');
-  if (!sidebar || !btn) return;
-  const collapsed = sidebar.classList.contains('collapsed');
+  if (!btn) return;
+  const collapsed = document.documentElement.classList.contains('sb-collapsed');
   btn.setAttribute('aria-expanded', String(!collapsed));
   const label = collapsed ? 'Expand sidebar' : 'Collapse sidebar';
   btn.title = label;
