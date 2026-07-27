@@ -13,8 +13,18 @@ module.exports = function createSpacedRepRoutes({ requireAuth }) {
   const router = express.Router();
 
   // ── Spaced repetition: due reviews ────────────────────────────
+  //
+  // ?summary=1 returns metadata only (subject / lastScore / daysOverdue) and
+  // skips the questions table entirely. The Progress page's due widget and the
+  // sidebar "X due" badges render from exactly those fields, so the default
+  // full payload — which carries question_text, model_answer, both cached model
+  // answer blobs and all 5 alternative answers + their ALAC blobs per row — was
+  // being downloaded and parsed on every boot for nothing. Callers that need the
+  // real questions (startReviewSession) omit the flag and get the full payload.
   router.get('/api/spaced-repetition/due', requireAuth, async (req, res) => {
     try {
+      const summaryOnly = req.query.summary === '1' || req.query.summary === 'true';
+
       // Step 1: Get due spaced repetition records (no JOIN — no FK relationship)
       const { data: dueRecords, error: srError } = await supabase
         .from('spaced_repetition')
@@ -30,6 +40,20 @@ module.exports = function createSpacedRepRoutes({ requireAuth }) {
       }
       if (!dueRecords || dueRecords.length === 0) return res.json([]);
 
+      const _daysOverdue = row => row.next_review_at
+        ? Math.max(0, Math.floor((Date.now() - new Date(row.next_review_at)) / 86400000))
+        : 0;
+
+      // Summary mode: return metadata only — no second query, no question bodies
+      if (summaryOnly) {
+        return res.json(dueRecords.map(row => ({
+          srId: row.id, questionId: row.question_id, subject: row.subject,
+          lastScore: row.last_score, lastAttemptedAt: row.last_attempted_at,
+          nextReviewAt: row.next_review_at, reviewCount: row.review_count,
+          daysOverdue: _daysOverdue(row), summary: true,
+        })));
+      }
+
       // Step 2: Fetch question details for each due record
       const questionIds = dueRecords.map(r => r.question_id).filter(Boolean);
       const { data: questions, error: qError } = await supabase
@@ -43,9 +67,7 @@ module.exports = function createSpacedRepRoutes({ requireAuth }) {
       // Step 3: Merge and return
       const items = dueRecords.map(row => {
         const q = qMap[row.question_id] || {};
-        const daysOverdue = row.next_review_at
-          ? Math.max(0, Math.floor((Date.now() - new Date(row.next_review_at)) / 86400000))
-          : 0;
+        const daysOverdue = _daysOverdue(row);
         return {
           srId: row.id, questionId: row.question_id, subject: row.subject,
           lastScore: row.last_score, lastAttemptedAt: row.last_attempted_at,
