@@ -176,6 +176,9 @@ new PerformanceObserver((list) => {
 
 <div id="apiBanner">⚠️ Claude API is currently overloaded — some features may be slow or unavailable. <button onclick="document.getElementById('apiBanner').style.display='none'">Dismiss</button></div>
 <aside class="sidebar" id="mainSidebar">
+  <button class="sb-toggle-btn" id="sbToggleBtn" onclick="toggleSidebarCollapse()" title="Collapse sidebar" aria-label="Collapse sidebar" aria-expanded="true">
+    <span class="sb-toggle-icon">‹</span>
+  </button>
   <div class="sb-logo-section">
     <div class="s-logo">⚖️</div>
     <div>
@@ -184,42 +187,42 @@ new PerformanceObserver((list) => {
     </div>
   </div>
 
-  <button class="sb-overview-btn" id="sb-overview" onclick="navToOverview()">🏛 <span>Overview</span><span id="sidebarFlashcardBadge" class="sb-fc-badge-inline" style="display:none;"></span></button>
-  <button class="sb-overview-btn" id="sb-progress" onclick="navToProgress()">📊 <span>My Progress</span></button>
+  <button class="sb-overview-btn" id="sb-overview" onclick="navToOverview()" title="Overview"><span class="sb-ic">🏛</span><span class="sb-lbl">Overview</span><span id="sidebarFlashcardBadge" class="sb-fc-badge-inline sb-lbl" style="display:none;"></span></button>
+  <button class="sb-overview-btn" id="sb-progress" onclick="navToProgress()" title="My Progress"><span class="sb-ic">📊</span><span class="sb-lbl">My Progress</span></button>
 
   <hr class="sb-divider">
-  <div class="sb-section-label">SUBJECTS</div>
+  <div class="sb-section-label sb-lbl">SUBJECTS</div>
   <div id="sbSubjectList"><div class="subject-skeleton"></div><div class="subject-skeleton"></div><div class="subject-skeleton"></div><div class="subject-skeleton"></div><div class="subject-skeleton"></div><div class="subject-skeleton"></div><div class="subject-skeleton"></div><div class="subject-skeleton"></div></div>
 
   <hr class="sb-divider">
-  <button class="sb-subject" id="sb-subj-custom" style="border-left-color:var(--c-custom);" onclick="navToCustom()">
-    <span class="sb-arrow" style="visibility:hidden;">▶</span>
-    <span>📁 Custom Subject</span>
-    <span class="sb-custom-count" id="sbCustomCount" style="display:none;margin-left:auto;font-size:10px;opacity:.6;font-family:var(--fm);"></span>
-    <span class="sb-lock-icon" style="display:none;">🔒</span>
+  <button class="sb-subject" id="sb-subj-custom" style="border-left-color:var(--c-custom);" onclick="navToCustom()" title="Custom Subject">
+    <span class="sb-arrow sb-lbl" style="visibility:hidden;">▶</span>
+    <span class="sb-ic">📁</span><span class="sb-lbl">Custom Subject</span>
+    <span class="sb-custom-count sb-lbl" id="sbCustomCount" style="display:none;margin-left:auto;font-size:10px;opacity:.6;font-family:var(--fm);"></span>
+    <span class="sb-lock-icon sb-lbl" style="display:none;">🔒</span>
   </button>
 
   <hr class="sb-divider" style="margin-top:auto;">
-  <button class="sb-subject" id="sb-admin" style="display:none;" onclick="navToAdmin()">
-    <span style="visibility:hidden;width:8px;">▶</span>
-    <span>⚙️ Admin</span>
+  <button class="sb-subject" id="sb-admin" style="display:none;" onclick="navToAdmin()" title="Admin">
+    <span class="sb-arrow sb-lbl" style="visibility:hidden;width:8px;">▶</span>
+    <span class="sb-ic">⚙️</span><span class="sb-lbl">Admin</span>
   </button>
 
-  <div id="accessControlBadge" style="display:none;margin:8px 12px;padding:8px 12px;background:rgba(155,35,53,0.15);border:1px solid rgba(155,35,53,0.3);border-radius:10px;font-size:11px;color:#e07080;cursor:pointer;" onclick="scrollToTabControl()">
+  <div id="accessControlBadge" class="sb-lbl" style="display:none;margin:8px 12px;padding:8px 12px;background:rgba(155,35,53,0.15);border:1px solid rgba(155,35,53,0.3);border-radius:10px;font-size:11px;color:#e07080;cursor:pointer;" onclick="scrollToTabControl()">
     🔒 Some sections disabled — <u>Manage access</u>
   </div>
 
   <!-- Sidebar XP mini-bar -->
-  <div id="sbXpSection" style="display:none;margin:8px 12px 12px;min-height:106px;">
+  <div id="sbXpSection" style="display:none;margin:8px 12px 12px;min-height:106px;" title="My Progress">
     <div class="dash-xp-bar" onclick="navToProgress('xp')" style="cursor:pointer;">
       <div class="dash-xp-row">
-        <div>
+        <div class="sb-lbl">
           <div class="dash-xp-name" id="sbXpName"></div>
           <div class="dash-xp-level" id="sbXpLevel"></div>
         </div>
         <div class="sb-level-badge" id="sbLevelBadge"></div>
       </div>
-      <div style="display:flex;align-items:center;gap:8px;">
+      <div class="sb-lbl" style="display:flex;align-items:center;gap:8px;">
         <div class="dash-xp-track" style="flex:1;">
           <div class="dash-xp-fill" id="sbXpFill" style="width:0%"></div>
         </div>
@@ -228,6 +231,18 @@ new PerformanceObserver((list) => {
     </div>
   </div>
 </aside>
+<script>
+(function(){
+  try{
+    var stored = localStorage.getItem('bb_sidebar_collapsed');
+    var collapsed = stored !== null ? stored === '1' : window.innerWidth < 900;
+    if (collapsed) {
+      document.documentElement.style.setProperty('--sw','64px');
+      document.getElementById('mainSidebar').classList.add('collapsed');
+    }
+  } catch(e){}
+})();
+</script>
 
 <main id="main-content" role="main" class="main">
 <header class="topbar">
