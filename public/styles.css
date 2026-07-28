@@ -455,7 +455,11 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 /* legacy s-btn kept for JS compat, hidden */
 .s-btn{display:none;}.s-div{display:none;}
 /* Topbar breadcrumb */
-.tb-breadcrumb{flex:1;font-size:12px;color:var(--muted);padding:0 16px;display:flex;align-items:center;gap:6px;}
+/* No left padding: the topbar already provides a 22px gutter, and the extra
+   16px double-indented the breadcrumb so it sat 38px from the sidebar edge
+   while the controls opposite sat 22px from theirs. Right padding stays as
+   breathing room before those controls. */
+.tb-breadcrumb{flex:1;min-width:0;font-size:12px;color:var(--muted);padding:0 16px 0 0;display:flex;align-items:center;gap:6px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;}
 .tb-bc-sep{opacity:.4;}
 .tb-bc-subj{font-weight:600;color:rgba(var(--txt2-rgb),.75);}
 .tb-bc-mode{color:var(--gold-l);}
@@ -1051,7 +1055,11 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .q-marker.done{background:rgba(var(--warn-rgb),.15);border-color:rgba(var(--warn-rgb),.4);color:var(--warn);}
 .q-marker.current{background:rgba(var(--warn-rgb),.25);border-color:var(--warn);color:var(--warn);}
 .q-marker.flagged{background:rgba(249,115,22,.2);border-color:var(--warn);color:var(--warn);}
-.exam-highlight{border-radius:3px;padding:0 2px;cursor:pointer;}
+/* The swatches are all bright pastels, so the text on them must stay dark in
+   both themes. applyHighlight sets this inline as well, but the rule is the
+   floor: a highlight restored from saved HTML that predates that inline style
+   would otherwise inherit the theme's text colour and vanish on dark. */
+.exam-highlight{border-radius:3px;padding:0 2px;cursor:pointer;color:#111;}
 /* EVAL PROGRESS SCREEN */
 #eval-progress-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;gap:16px;text-align:center;padding:40px 20px;}
 .eval-icon{font-size:3rem;animation:evalPulse 2s infinite;}

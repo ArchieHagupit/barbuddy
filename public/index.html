@@ -1101,13 +1101,15 @@ new PerformanceObserver((list) => {
 </div>
 
 <!-- Highlight color picker toolbar — shown on text selection inside exam-content -->
-<div id="highlight-toolbar" style="display:none;position:fixed;z-index:9999;background:#1a2235;border:1px solid var(--bdr2);border-radius:8px;padding:6px 10px;box-shadow:0 4px 20px rgba(0,0,0,0.4);align-items:center;gap:6px;">
-  <span style="font-size:11px;color:var(--muted);margin-right:2px;">Highlight:</span>
+<!-- background was a hardcoded #1a2235, which stayed dark in light mode while
+     the label resolves var(--muted) — dark text on a dark panel, 1.14:1. -->
+<div id="highlight-toolbar" style="display:none;position:fixed;z-index:9999;background:var(--card);border:1px solid var(--bdr2);border-radius:8px;padding:6px 10px;box-shadow:0 4px 20px rgba(0,0,0,0.28);align-items:center;gap:6px;">
+  <span style="font-size:11px;color:var(--text-muted);margin-right:2px;">Highlight:</span>
   <button class="hl-color-btn" data-color="#ffd700" style="width:18px;height:18px;border-radius:50%;background:#ffd700;border:2px solid transparent;cursor:pointer;" title="Yellow"></button>
   <button class="hl-color-btn" data-color="#90ee90" style="width:18px;height:18px;border-radius:50%;background:#90ee90;border:2px solid transparent;cursor:pointer;" title="Green"></button>
   <button class="hl-color-btn" data-color="#ffb6c1" style="width:18px;height:18px;border-radius:50%;background:#ffb6c1;border:2px solid transparent;cursor:pointer;" title="Pink"></button>
   <button class="hl-color-btn" data-color="#87ceeb" style="width:18px;height:18px;border-radius:50%;background:#87ceeb;border:2px solid transparent;cursor:pointer;" title="Blue"></button>
-  <button id="hl-remove-btn" style="display:none;margin-left:4px;padding:2px 8px;font-size:11px;background:rgba(239,68,68,0.2);color:#f87171;border:1px solid rgba(239,68,68,0.3);border-radius:6px;cursor:pointer;">Remove</button>
+  <button id="hl-remove-btn" style="display:none;margin-left:4px;padding:2px 8px;font-size:11px;background:rgba(var(--danger-rgb),.14);color:var(--danger-fg);border:1px solid rgba(var(--danger-rgb),.35);border-radius:6px;cursor:pointer;">Remove</button>
 </div>
 
 <!-- BOOKMARKS PANEL -->
