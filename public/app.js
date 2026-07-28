@@ -5395,7 +5395,7 @@ function renderQuizQ(){
       ? `<div class="facts-box"><div class="facts-label">📋 Facts</div><div class="facts-text">${h(cur.context)}</div></div>
          <div class="question-label">❓ Question</div>
          <div class="question-text">${h(cur.prompt||cur.q||'')}</div>`
-      : `<div class="question-text" style="font-size:17px;">${h(cur.prompt||cur.q||'')}</div>`
+      : `<div class="question-text">${h(cur.prompt||cur.q||'')}</div>`
     }
     <textarea class="essay-box" id="essayBox" placeholder="Write your answer…"></textarea>
     <div style="display:flex;gap:8px;margin-top:10px;">
@@ -6093,7 +6093,7 @@ function renderMockQ(){
       ? `<div class="facts-box"><div class="facts-label">📋 Facts</div><div class="facts-text">${h(q.context)}</div></div>
          <div class="question-label">❓ Question</div>
          <div class="question-text">${h(qText)}</div>`
-      : `<div class="question-text" style="font-size:17px;">${h(qText)}</div>`
+      : `<div class="question-text">${h(qText)}</div>`
     }
     </div>
     <div style="font-size:11px;color:var(--muted);margin:8px 0 10px;">Write a complete bar exam answer. Navigate freely between questions before submitting.</div>
@@ -6480,8 +6480,8 @@ async function endMockSession(){
                <div class="facts-text" style="font-size:15px;">${h(q.context)}</div>
              </div>
              <div class="question-label">❓ Question</div>
-             <div class="question-text" style="font-size:14px;margin-bottom:10px;">${h(qText)}</div>`
-          : `<div class="question-text" style="font-size:14px;margin-bottom:10px;">${h(qText)}</div>`
+             <div class="question-text" style="font-size:var(--fs-read-sm);margin-bottom:10px;">${h(qText)}</div>`
+          : `<div class="question-text" style="font-size:var(--fs-read-sm);margin-bottom:10px;">${h(qText)}</div>`
         }
         ${s.grade==='Not Answered'?'':`
         <div id="eval-card-${i}" class="ai-fb show" style="margin-top:8px;">${renderEvalCard(s)}</div>`}
