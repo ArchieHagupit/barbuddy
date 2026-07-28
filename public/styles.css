@@ -593,11 +593,16 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .subj-ov-btn:hover{background:rgba(var(--ovl),.1);color:rgba(var(--txt2-rgb),.9);}
 /* TOPBAR */
 .topbar{position:sticky;top:0;z-index:200;background:rgba(var(--srf-rgb),.92);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-bottom:1px solid rgba(var(--gold-rgb),.1);height:58px;display:flex;align-items:center;padding:0 22px;}
-.tb-brand{height:56px;min-height:56px;display:flex;align-items:center;}
-.tb-brand h1{font-family:var(--fd);font-size:24px;font-weight:700;color:var(--gold);line-height:1;}
+/* Hidden by default: the sidebar already carries the wordmark, and the second
+   copy plus its two-line subtitle was the one element in the bar taller than
+   a single row — which is what made everything look unaligned. It reappears
+   only when the sidebar collapses to its icon rail and the name would
+   otherwise disappear entirely. */
+.tb-brand{display:none;align-items:center;gap:7px;margin-right:14px;}
+:root.sb-collapsed .tb-brand{display:flex;}
+.tb-brand h1{font-family:var(--fd);font-size:20px;font-weight:700;color:var(--gold);line-height:1;}
 .tb-brand h1 em{font-style:italic;color:var(--gold-l);}
-.tb-sub{font-size:10px;color:var(--muted);letter-spacing:.04em;}
-.ph-flag{display:flex;gap:2px;margin-left:5px;}
+.ph-flag{display:flex;gap:2px;}
 .pf-b{width:11px;height:6px;background:var(--blue);border-radius:2px 0 0 2px;}
 .pf-r{width:11px;height:6px;background:var(--crim);border-radius:0 2px 2px 0;}
 .tb-tabs{display:flex;gap:2px;margin:0 20px;flex:1;}
@@ -605,7 +610,16 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .tb-tab:hover{color:var(--white);background:rgba(var(--ovl),.05);}
 .tb-tab.on{color:var(--gold);background:rgba(var(--gold-rgb),.1);border-color:rgba(var(--gold-rgb),.2);}
 .tb-tab.mock.on{color:var(--warn);background:rgba(var(--warn-rgb),.1);border-color:rgba(var(--warn-rgb),.2);}
-.tb-right{display:flex;align-items:center;gap:10px;flex-shrink:0;}
+/* Every control on one 32px baseline. Previously the theme toggle and bell
+   were 32px while the name pill, Password and Log Out each sized themselves
+   from their own padding, so the row read as ragged rather than aligned. */
+.tb-right{display:flex;align-items:center;gap:8px;flex-shrink:0;}
+.tb-right > *{height:32px;}
+.tb-right > button,
+.tb-right > span{display:inline-flex;align-items:center;justify-content:center;}
+/* .btn-og's default 9px/18px padding is sized for page buttons, not a 32px
+   toolbar row. */
+.tb-right .btn-og{padding:0 14px;font-size:12px;border-radius:8px;}
 /* Removed: .exam-pill ("PH BAR 2026") and .kb-ind/.kb-dot (the "Generating…"
    status pill). The underlying generation state (KB.genState, the SSE stream)
    is still live — it drives #pregenBanner, the admin generation panel and the
@@ -614,7 +628,8 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 /* API status banner */
 #apiBanner{display:none;position:fixed;top:0;left:0;right:0;z-index:500;background:rgba(var(--crim-rgb),.92);backdrop-filter:blur(4px);color:#fff;font-size:12px;font-weight:600;text-align:center;padding:7px 16px;letter-spacing:.02em;}
 #apiBanner button{margin-left:12px;background:transparent;border:1px solid rgba(255,255,255,.45);color:#fff;border-radius:5px;padding:2px 9px;cursor:pointer;font-size:11px;}
-.avatar{width:32px;height:32px;background:linear-gradient(135deg,var(--crim),var(--blue));color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;border:2px solid var(--bdr);}
+/* .avatar removed with the topbar's "BB" circle — it duplicated the user
+   name pill sitting right beside it. */
 /* ── CLS prevention: reserve space for dynamically-shown elements ── */
 /* Topbar: contain layout so show/hide of children doesn't shift page content */
 .topbar{contain:layout style;overflow:hidden;}
@@ -1185,7 +1200,7 @@ select.form-input{cursor:pointer;}
 .subject-skeleton{height:40px;background:linear-gradient(90deg,rgba(var(--ovl),.04) 25%,rgba(var(--ovl),.08) 50%,rgba(var(--ovl),.04) 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:8px;margin-bottom:4px;}
 @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
 /* Topbar user display */
-#userNameDisplay{font-size:12px;font-weight:700;color:var(--gold);background:rgba(var(--gold-rgb),.1);border:1px solid rgba(var(--gold-rgb),.25);border-radius:8px;padding:5px 10px;white-space:nowrap;}
+#userNameDisplay{font-size:12px;font-weight:700;color:var(--gold);background:rgba(var(--gold-rgb),.1);border:1px solid rgba(var(--gold-rgb),.25);border-radius:8px;padding:0 11px;white-space:nowrap;gap:6px;}
 /* Results detail modal */
 .res-detail-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:18px;}
 .res-dstat{background:rgba(var(--ovl),.04);border:1px solid var(--bdr2);border-radius:10px;padding:12px;text-align:center;}
@@ -1371,7 +1386,7 @@ select.form-input{cursor:pointer;}
 @media(max-width:640px){.lesson-content{padding:24px 20px;font-size:15.5px;}}
 .cp-error{background:rgba(180,40,60,.15);border:1px solid rgba(180,40,60,.3);color:var(--danger);padding:10px 14px;border-radius:10px;font-size:13px;margin-top:4px;}
 .cp-success{background:rgba(20,180,120,.15);border:1px solid rgba(20,180,120,.3);color:#34d399;padding:10px 14px;border-radius:10px;font-size:13px;text-align:center;margin-top:4px;}
-.cp-btn{background:none;border:none;color:var(--muted);font-size:11px;cursor:pointer;padding:3px 8px;border-radius:6px;transition:all .18s;letter-spacing:.02em;}
+.cp-btn{background:none;border:none;color:var(--muted);font-size:11.5px;cursor:pointer;padding:0 10px;border-radius:8px;transition:all .18s;letter-spacing:.02em;white-space:nowrap;}
 .cp-btn:hover{background:rgba(var(--gold-rgb),.12);color:var(--gold-l);}
 /* Admin tab bar */
 #adminTabBar{display:flex;flex-wrap:wrap;gap:4px;padding:14px 16px 0;border-bottom:1px solid #1e2a3a;margin-bottom:20px;background:#0d1b2a;}

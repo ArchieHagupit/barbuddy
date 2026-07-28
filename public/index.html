@@ -253,8 +253,11 @@ new PerformanceObserver((list) => {
 
 <main id="main-content" role="main" class="main">
 <header class="topbar">
-  <div class="tb-brand" style="margin-right:10px;">
-    <div><h1>Bar<em>Buddy</em></h1><div class="tb-sub">Philippine Bar Exam Companion</div></div>
+  <!-- The wordmark duplicates the sidebar's, so it only appears when the
+       sidebar is collapsed to its icon rail and the name would otherwise be
+       lost. See .tb-brand in styles.css. -->
+  <div class="tb-brand">
+    <h1>Bar<em>Buddy</em></h1>
     <div class="ph-flag"><div class="pf-b"></div><div class="pf-r"></div></div>
   </div>
   <div class="tb-breadcrumb" id="breadcrumb"></div>
@@ -274,8 +277,7 @@ new PerformanceObserver((list) => {
     </div>
     <span id="userNameDisplay" style="display:none;"></span>
     <button class="cp-btn" id="changePwdBtn" style="display:none;" onclick="openChangePassword()" title="Change Password">🔒 Password</button>
-    <button class="btn-og" id="logoutBtn" style="display:none;font-size:11px;padding:5px 10px;" onclick="doLogout()">Log Out</button>
-    <div class="avatar">BB</div>
+    <button class="btn-og" id="logoutBtn" style="display:none;" onclick="doLogout()">Log Out</button>
   </div>
 </header>
 
