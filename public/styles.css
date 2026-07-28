@@ -26,7 +26,9 @@
   /* accent */
   --crim:#8b1f35;--crim-l:#c0304f;--blue:#0038a8;--blue-l:#1a52d4;
   --teal:#2ec4a0;--teal-d:#14b4a0;--teal-l:#4dd4b0;--og:#e8904a;
-  --danger:#e07080;--danger-d:#e05060;--warn:#ff8c42;--amber:#f0c040;
+  --danger:#e07080;--danger-d:#e05060;--warn:#ff8c42;--amber:#f0c040;--danger-crit:#ff4444;
+  /* warm surface behind the exam header and generation banners */
+  --exam-head:linear-gradient(135deg,#1a0a00,#2a1400);--exam-head-muted:#a08060;
   /* text */
   --white:#f0ece3;--text:#f0ece3;--text-muted:rgba(var(--txt-rgb),.55);
   --muted:rgba(var(--txt-rgb),.4);
@@ -67,11 +69,15 @@
   /* accent */
   --crim:#7d1a2e;--crim-l:#95233a;--blue:#0038a8;--blue-l:#12409c;
   --teal:#0b5e4c;--teal-d:#095444;--teal-l:#0d6a55;--og:#9c5013;
-  --danger:#a72a1e;--danger-d:#8f2218;--warn:#924005;--amber:#6d5106;
-  /* text — near-black on warm paper. #0f131b sits around 16:1 on the card
-     surface, which is what makes body copy feel solid rather than washed. */
-  --white:#0f131b;--text:#0f131b;--text-muted:rgba(var(--txt-rgb),.86);
-  --muted:rgba(var(--txt-rgb),.72);
+  --danger:#a72a1e;--danger-d:#8f2218;--warn:#924005;--amber:#6d5106;--danger-crit:#c11d1d;
+  /* Exam header: a warm amber tint instead of the dark slab, so the Exit and
+     Flag controls (which use --muted) stay legible on it. */
+  --exam-head:linear-gradient(135deg,#fdf3e6,#fbe9d6);--exam-head-muted:#7a4a1c;
+  /* text — near-black on warm paper. Solid rather than washed: body copy sits
+     around 18:1 on card surfaces and the muted tiers stay high because low
+     alpha is what makes light themes feel faded. */
+  --white:#0b0e14;--text:#0b0e14;--text-muted:rgba(var(--txt-rgb),.92);
+  --muted:rgba(var(--txt-rgb),.78);
   /* borders — need more weight than on dark to read at all */
   --bdr:rgba(var(--txt-rgb),.16);--bdr2:rgba(var(--txt-rgb),.26);--bdr-gold:rgba(var(--gold-rgb),.38);
   /* page wash — barely-there on light, or it muddies the paper */
@@ -571,8 +577,8 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .pb-prog-wrap{flex:1;max-width:300px;}
 .pb-track{height:5px;background:rgba(var(--ovl),.08);border-radius:3px;overflow:hidden;}
 .pb-fill{height:100%;background:linear-gradient(90deg,#d4621a,var(--warn));border-radius:3px;transition:width .4s;}
-.pb-meta{font-size:11px;color:#a08060;font-family:var(--fm);margin-top:4px;}
-.pb-cur{font-size:11px;color:#a08060;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.pb-meta{font-size:11px;color:var(--exam-head-muted);font-family:var(--fm);margin-top:4px;}
+.pb-cur{font-size:11px;color:var(--exam-head-muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .pb-done-badge{font-size:11px;font-weight:700;color:var(--teal);background:rgba(var(--teal-d-rgb),.1);border:1px solid rgba(var(--teal-d-rgb),.3);border-radius:6px;padding:3px 9px;white-space:nowrap;}
 /* LAYOUT */
 .pg-inner{padding:32px 26px 60px;max-width:860px;width:100%;margin:0 auto;}
@@ -930,10 +936,10 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .mock-hero::after{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--warn),var(--gold),var(--warn));}
 .mock-hero h2{font-family:var(--fd);font-size:26px;font-weight:700;margin-bottom:6px;color:var(--warn);}
 .mock-hero h2 em{font-style:italic;color:var(--gold-l);}
-.mock-hero p{font-size:13px;color:#a08060;line-height:1.6;margin-bottom:18px;max-width:600px;}
+.mock-hero p{font-size:13px;color:var(--exam-head-muted);line-height:1.6;margin-bottom:18px;max-width:600px;}
 .mock-config-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px;}
 .mc-card{background:rgba(var(--ovl),.04);border:1px solid rgba(var(--warn-rgb),.15);border-radius:13px;padding:14px;}
-.mc-label{font-size:11px;color:#a08060;font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;}
+.mc-label{font-size:11px;color:var(--exam-head-muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;}
 .mc-select{width:100%;background:rgba(var(--ovl),.06);border:1px solid rgba(var(--warn-rgb),.25);border-radius:8px;padding:8px 10px;color:var(--white);font-family:var(--fb);font-size:13px;outline:none;}
 .mc-subj-tag{font-size:10px;font-weight:700;padding:3px 8px;border-radius:5px;cursor:pointer;transition:all .2s;border:1px solid transparent;font-family:var(--fm);}
 .mc-subj-tag.on{background:rgba(var(--warn-rgb),.2);border-color:rgba(var(--warn-rgb),.4);color:var(--warn);}
@@ -943,15 +949,19 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .topbar.session-locked{opacity:0.35;pointer-events:none;transition:opacity 0.2s ease;}
 /* SESSION */
 .mock-session{display:none;} .mock-session.on{display:block;}
-.ms-header{background:linear-gradient(135deg,#1a0a00,#2a1400);border:1px solid rgba(var(--warn-rgb),.2);border-radius:13px;padding:15px 20px;display:flex;align-items:center;gap:16px;margin-bottom:18px;position:sticky;top:58px;z-index:100;backdrop-filter:blur(10px);}
+/* --exam-head is the sticky exam bar's own surface. It was a hardcoded near
+   black gradient, which stayed dark in light mode while the controls on it
+   (Exit, Flag, the save indicator) use var(--muted) — dark text on a dark
+   slab, invisible. It now follows the theme. */
+.ms-header{background:var(--exam-head);border:1px solid rgba(var(--warn-rgb),.2);border-radius:13px;padding:15px 20px;display:flex;align-items:center;gap:16px;margin-bottom:18px;position:sticky;top:58px;z-index:100;backdrop-filter:blur(10px);}
 .ms-q-num{font-family:var(--fd);font-size:22px;font-weight:700;color:var(--warn);}
-.ms-of{font-size:12px;color:#a08060;font-family:var(--fm);}
+.ms-of{font-size:12px;color:var(--exam-head-muted);font-family:var(--fm);}
 .ms-timer{display:flex;align-items:center;gap:6px;font-size:22px;font-weight:700;color:var(--warn);font-family:var(--fm);margin-left:auto;}
 .ms-timer.warn{color:var(--danger);animation:blink 1s infinite;}
-.ms-timer.critical{color:#ff4444;animation:timerPulse .8s infinite;}
+.ms-timer.critical{color:var(--danger-crit);animation:timerPulse .8s infinite;}
 @keyframes blink{0%,100%{opacity:1;}50%{opacity:.4;}}
 @keyframes timerPulse{0%,100%{opacity:1;}50%{opacity:.6;}}
-.ms-source{font-size:10px;color:#a08060;background:rgba(var(--warn-rgb),.1);border-radius:5px;padding:2px 7px;font-family:var(--fm);}
+.ms-source{font-size:10px;color:var(--exam-head-muted);background:rgba(var(--warn-rgb),.1);border-radius:5px;padding:2px 7px;font-family:var(--fm);}
 .q-markers{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:16px;}
 .q-marker{width:26px;height:26px;border-radius:6px;border:1px solid var(--bdr2);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;cursor:pointer;transition:all .18s;color:var(--muted);}
 .q-marker.done{background:rgba(var(--warn-rgb),.15);border-color:rgba(var(--warn-rgb),.4);color:var(--warn);}
@@ -1217,8 +1227,8 @@ select.form-input{cursor:pointer;}
 .gpp-title{font-family:var(--fd);font-size:17px;font-weight:700;color:var(--warn);}
 .gpp-track{height:6px;background:rgba(var(--ovl),.08);border-radius:3px;overflow:hidden;margin-bottom:7px;}
 .gpp-fill{height:100%;background:linear-gradient(90deg,#d4621a,var(--warn));border-radius:3px;transition:width .4s;}
-.gpp-meta{font-size:12px;color:#a08060;font-family:var(--fm);}
-.gpp-cur{font-size:11px;color:#a08060;margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.gpp-meta{font-size:12px;color:var(--exam-head-muted);font-family:var(--fm);}
+.gpp-cur{font-size:11px;color:var(--exam-head-muted);margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 /* MODALS */
 .overlay{display:none;position:fixed;inset:0;background:rgba(5,10,18,.85);z-index:1000;align-items:center;justify-content:center;backdrop-filter:blur(8px);}
 .overlay.on{display:flex;}

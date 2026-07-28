@@ -225,8 +225,8 @@ function showToast(message, type = 'info') {
   if (existing) existing.remove();
   const c = { success:{bg:'rgba(20,180,160,.15)',border:'rgba(20,180,160,.3)',color:'var(--teal)'},
                error:  {bg:'rgba(224,80,96,.12)', border:'rgba(224,80,96,.25)', color:'var(--danger-d)'},
-               info:   {bg:'rgba(255,255,255,.07)',border:'var(--bdr2)',        color:'var(--muted)'},
-               warning:{bg:'rgba(232,144,74,.12)', border:'rgba(232,144,74,.25)',color:'var(--og)'} }[type] || {bg:'rgba(255,255,255,.07)',border:'var(--bdr2)',color:'var(--muted)'};
+               info:   {bg:'rgba(var(--ovl),.07)',border:'var(--bdr2)',        color:'var(--muted)'},
+               warning:{bg:'rgba(232,144,74,.12)', border:'rgba(232,144,74,.25)',color:'var(--og)'} }[type] || {bg:'rgba(var(--ovl),.07)',border:'var(--bdr2)',color:'var(--muted)'};
   const toast = document.createElement('div');
   toast.id = 'bb-toast';
   toast.style.cssText = `position:fixed;top:72px;left:50%;transform:translateX(-50%);z-index:9999;background:${c.bg};border:1px solid ${c.border};color:${c.color};padding:10px 20px;border-radius:10px;font-size:13px;font-weight:600;font-family:var(--fb);box-shadow:0 4px 16px rgba(0,0,0,.2);animation:slideDown .2s ease;white-space:nowrap;max-width:calc(100vw - 48px);text-align:center;`;
@@ -1424,14 +1424,9 @@ function toggleTheme() {
   applyTheme(next);
 }
 
-// Follow the OS only while the user hasn't made an explicit choice.
-if (window.matchMedia) {
-  window.matchMedia('(prefers-color-scheme: light)').addEventListener?.('change', e => {
-    let stored = null;
-    try { stored = localStorage.getItem('bb_theme'); } catch(_) {}
-    if (stored !== 'light' && stored !== 'dark') applyTheme(e.matches ? 'light' : 'dark');
-  });
-}
+// No prefers-color-scheme listener: night mode is the product default and
+// light is opt-in, so the OS switching themes must not move the app off dark
+// for someone who never chose light.
 
 function remindersEnabled() {
   return currentUser?.reviewRemindersEnabled !== false;
@@ -2831,7 +2826,7 @@ async function renderMockBarTab(subj, container) {
           ${presets.map(([n,l])=>`<button class="mb-preset-btn${mbCount===n?' active':''}" onclick="stSetMbCount(${n},this)">${l}</button>`).join('')}
           <input type="number" id="stMbCustomCount" min="1" max="100" placeholder="Custom"
             value="${![5,10,20].includes(mbCount)?mbCount:''}"
-            style="width:64px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:7px 10px;color:var(--white);font-size:13px;font-family:var(--fb);"
+            style="width:64px;background:rgba(var(--ovl),.06);border:1px solid rgba(var(--ovl),.12);border-radius:8px;padding:7px 10px;color:var(--white);font-size:13px;font-family:var(--fb);"
             oninput="stSetMbCount(parseInt(this.value)||20)">
         </div>
       </div>
@@ -2946,7 +2941,7 @@ function renderSpeedDrillTab(subj, container) {
             <div style="font-size:11px;color:var(--muted);margin-top:2px;">Scored</div>
           </div>
         </div>
-        <div style="font-size:12px;color:var(--muted);line-height:1.65;margin-bottom:18px;padding:10px 12px;background:rgba(255,255,255,.03);border-radius:8px;border-left:3px solid rgba(139,92,246,.4);">
+        <div style="font-size:12px;color:var(--muted);line-height:1.65;margin-bottom:18px;padding:10px 12px;background:rgba(var(--ovl),.03);border-radius:8px;border-left:3px solid rgba(139,92,246,.4);">
           Same scoring rules as Mock Bar (0–10 pts per question). Timer turns red with 60 seconds remaining. When time runs out, your answer is auto-submitted.
         </div>
         <div id="sdStartError" style="display:none;margin-bottom:12px;padding:10px 14px;background:rgba(224,112,128,.12);border:1px solid rgba(224,112,128,.35);border-radius:10px;color:var(--danger);font-size:13px;"></div>
@@ -3107,7 +3102,7 @@ function paintFlashcardsTabFromBundle(subj) {
           <div class="fc-stat-label">Complete</div>
         </div>
       </div>
-      <div style="height:6px;background:rgba(255,255,255,.06);border-radius:3px;overflow:hidden;margin-bottom:16px;">
+      <div style="height:6px;background:rgba(var(--ovl),.06);border-radius:3px;overflow:hidden;margin-bottom:16px;">
         <div style="height:100%;width:${pct}%;background:linear-gradient(90deg,var(--gold),var(--gold-l));transition:width .4s;"></div>
       </div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
@@ -3552,7 +3547,7 @@ function renderFlashcardCardViewer() {
       <div class="fc-viewer-topbar" style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap;">
         <div style="display:flex;align-items:center;gap:12px;min-width:0;flex:1;">
           <div class="fc-count" style="font-size:11px;color:var(--muted);white-space:nowrap;"></div>
-          <div style="flex:1;min-width:80px;max-width:220px;height:4px;background:rgba(255,255,255,.06);border-radius:2px;overflow:hidden;">
+          <div style="flex:1;min-width:80px;max-width:220px;height:4px;background:rgba(var(--ovl),.06);border-radius:2px;overflow:hidden;">
             <div class="fc-progress-fill" style="height:100%;background:linear-gradient(90deg,var(--gold),var(--gold-l));width:0%;transition:width .25s;"></div>
           </div>
         </div>
@@ -4342,7 +4337,7 @@ function renderSidebar() {
     // The per-subject "N due" badge lives in the notification panel now, where
     // it comes with a review action instead of just a number.
     return `<button class="sb-subject" id="sb-subj-${s.key}" style="--subject-color:${s.color};" onclick="navToSubject('${s.key}')" title="${h(s.name)}">
-      <span class="sb-subj-dot" style="background:${hasMaterials?s.color:'rgba(248,246,241,.2)'};"></span>
+      <span class="sb-subj-dot" style="background:${hasMaterials?s.color:'rgba(var(--txt2-rgb),.2)'};"></span>
       <span class="sb-subj-name sb-lbl">${h(s.name)}</span>
       ${qCount>0?`<span class="sb-subj-qcount sb-lbl">${qCount}q</span>`:''}
       <span class="sb-lock-icon sb-lbl" style="display:none;">🔒</span>
@@ -4370,7 +4365,7 @@ function refreshSidebarDots() {
     if (!el) return;
     const hasMaterials = (KB.references||[]).some(r=>r.subject===s.key) || (KB.pastBar||[]).some(p=>p.subject===s.key);
     const dot = el.querySelector('.sb-subj-dot');
-    if (dot) dot.style.background = hasMaterials ? s.color : 'rgba(248,246,241,.2)';
+    if (dot) dot.style.background = hasMaterials ? s.color : 'rgba(var(--txt2-rgb),.2)';
     const qCount = (KB.pastBar||[]).filter(p=>p.subject===s.key).reduce((a,p)=>a+(p.qCount||0),0);
     let countEl = el.querySelector('.sb-subj-qcount');
     if (qCount > 0) {
@@ -4998,7 +4993,7 @@ function renderLesson(data, topicName, subjKey, source) {
     <h2>${h(topicName)}</h2>
     <div class="lc-meta">
       <span style="font-size:12px;color:var(--muted);font-family:var(--fm);">Page ${curPage+1} of ${total}</span>
-      <div style="height:4px;width:110px;background:rgba(255,255,255,.07);border-radius:2px;overflow:hidden;">
+      <div style="height:4px;width:110px;background:rgba(var(--ovl),.07);border-radius:2px;overflow:hidden;">
         <div style="height:100%;width:${((curPage+1)/total)*100}%;background:linear-gradient(90deg,var(--gold-d),var(--gold));border-radius:2px;"></div>
       </div>
     </div>
@@ -5462,18 +5457,18 @@ function renderDefCard(ev){
     <td style="color:var(--white);font-weight:600;">${label}</td>
     <td><span class="alac-score ${cls(c.score??0,max)}">${c.score!=null?c.score:'—'}</span></td>
     <td style="color:var(--muted);font-size:12px;white-space:nowrap;">/${max}</td>
-    <td style="color:rgba(248,246,241,.8);">${h(c.feedback||'')}</td>
+    <td style="color:rgba(var(--txt2-rgb),.8);">${h(c.feedback||'')}</td>
   </tr>`).join('');
-  return `<div class="ai-fb-head">${evalFormatBadge(ev.format)}<span class="ai-fb-score">${h(ev.score||'?/10')}</span><span style="background:rgba(255,255,255,.08);border-radius:5px;padding:2px 7px;font-family:var(--fm);color:${gc};">${h(ev.grade||'')}</span></div>
+  return `<div class="ai-fb-head">${evalFormatBadge(ev.format)}<span class="ai-fb-score">${h(ev.score||'?/10')}</span><span style="background:rgba(var(--ovl),.08);border-radius:5px;padding:2px 7px;font-family:var(--fm);color:${gc};">${h(ev.grade||'')}</span></div>
   <div class="ai-fb-content">
     <table class="alac-table">
       <thead><tr><th>Component</th><th>Score</th><th>Max</th><th>Feedback</th></tr></thead>
-      <tbody>${tableRows}<tr class="alac-total-row"><td style="color:${gc};">Total</td><td style="color:${gc};">${h(ev.score||'?/10')}</td><td style="color:var(--muted);font-size:12px;">/10</td><td style="color:rgba(248,246,241,.6);font-size:12px;">${h(overallFeedback)}</td></tr></tbody>
+      <tbody>${tableRows}<tr class="alac-total-row"><td style="color:${gc};">Total</td><td style="color:${gc};">${h(ev.score||'?/10')}</td><td style="color:var(--muted);font-size:12px;">/10</td><td style="color:rgba(var(--txt2-rgb),.6);font-size:12px;">${h(overallFeedback)}</td></tr></tbody>
     </table>
     ${keyMissedArr.length?`<p style="margin-top:10px;"><strong>📚 Missed:</strong></p><ul>${keyMissedArr.map(s=>`<li>${h(s)}</li>`).join('')}</ul>`:''}
     ${renderWritingFeedback(ev)}
     <details style="margin-top:12px;"><summary style="cursor:pointer;color:var(--gold);font-weight:600;font-size:13px;">📖 Model Answer</summary>
-    <div style="margin-top:8px;padding:12px;background:rgba(255,255,255,.03);border-radius:9px;">${renderModelAnswer(ev)}</div></details>
+    <div style="margin-top:8px;padding:12px;background:rgba(var(--ovl),.03);border-radius:9px;">${renderModelAnswer(ev)}</div></details>
   </div>`;
 }
 // Returns the authoritative numeric score for one question:
@@ -5621,23 +5616,23 @@ function renderAlacCard(ev){
     <td style="color:var(--white);font-weight:600;">${label}</td>
     <td><span class="alac-score ${alacScoreCls(c.score??0,key)}">${c.score!=null?c.score:'—'}</span></td>
     <td style="color:var(--muted);font-size:12px;white-space:nowrap;">/${maxPts}</td>
-    <td style="color:rgba(248,246,241,.8);">${h(c.feedback||'')}</td>
+    <td style="color:rgba(var(--txt2-rgb),.8);">${h(c.feedback||'')}</td>
   </tr>`:''
   ).join('');
   const computedTotal=(al.answer?.score??0)+(al.legalBasis?.score??0)+(al.application?.score??0)+(al.conclusion?.score??0);
   const totalDisplay=computedTotal>0?`${+computedTotal.toFixed(1)}/10`:(ev.score||'?/10');
-  return `<div class="ai-fb-head">${evalFormatBadge(ev.format||ev.questionType||'essay')}<span class="ai-fb-score">${h(totalDisplay)}</span><span style="background:rgba(255,255,255,.08);border-radius:5px;padding:2px 7px;font-family:var(--fm);color:${gc};">${h(ev.grade||'')}</span></div>
+  return `<div class="ai-fb-head">${evalFormatBadge(ev.format||ev.questionType||'essay')}<span class="ai-fb-score">${h(totalDisplay)}</span><span style="background:rgba(var(--ovl),.08);border-radius:5px;padding:2px 7px;font-family:var(--fm);color:${gc};">${h(ev.grade||'')}</span></div>
   <div class="ai-fb-content">
     <table class="alac-table">
       <thead><tr><th>Component</th><th>Score</th><th>Max</th><th>Feedback</th></tr></thead>
-      <tbody>${tableRows}<tr class="alac-total-row"><td style="color:${gc};">Total</td><td style="color:${gc};">${h(totalDisplay)}</td><td style="color:var(--muted);font-size:12px;">/10</td><td style="color:rgba(248,246,241,.6);font-size:12px;">${h(ev.overallFeedback||'')}</td></tr></tbody>
+      <tbody>${tableRows}<tr class="alac-total-row"><td style="color:${gc};">Total</td><td style="color:${gc};">${h(totalDisplay)}</td><td style="color:var(--muted);font-size:12px;">/10</td><td style="color:rgba(var(--txt2-rgb),.6);font-size:12px;">${h(ev.overallFeedback||'')}</td></tr></tbody>
     </table>
     ${ev.strengths?.length?`<p style="margin-top:10px;"><strong>✅ Strengths:</strong></p><ul>${ev.strengths.map(s=>`<li>${h(s)}</li>`).join('')}</ul>`:''}
     ${ev.improvements?.length?`<p><strong>⚠️ Improve:</strong></p><ul>${ev.improvements.map(s=>`<li>${h(s)}</li>`).join('')}</ul>`:''}
     ${ev.keyMissed?.length?`<p><strong>📚 Missed:</strong></p><ul>${ev.keyMissed.map(s=>`<li>${h(s)}</li>`).join('')}</ul>`:''}
     ${renderWritingFeedback(ev)}
     <details style="margin-top:12px;"><summary style="cursor:pointer;color:var(--gold);font-weight:600;font-size:13px;">📖 Model Answer (ALAC Format)</summary>
-    <div style="margin-top:8px;padding:12px;background:rgba(255,255,255,.03);border-radius:9px;">${renderModelAnswer(ev)}</div></details>
+    <div style="margin-top:8px;padding:12px;background:rgba(var(--ovl),.03);border-radius:9px;">${renderModelAnswer(ev)}</div></details>
   </div>`;
 }
 async function submitEssay(){
@@ -5935,7 +5930,7 @@ function updateTopicFilter(subj) {
   if (!sylSubj || !sylSubj.topics?.length) { card.style.display='none'; return; }
   card.style.display = 'block';
   document.getElementById('mbTopicCheckboxes').innerHTML = sylSubj.topics.map(t =>
-    `<label style="display:flex;align-items:center;gap:7px;font-size:12px;color:rgba(248,246,241,.75);cursor:pointer;padding:3px 0;">
+    `<label style="display:flex;align-items:center;gap:7px;font-size:12px;color:rgba(var(--txt2-rgb),.75);cursor:pointer;padding:3px 0;">
       <input type="checkbox" class="mb-source-check mb-topic-chk" value="${h(t.name)}" checked onchange="updateMockBarPreview()">
       ${h(t.name)}
     </label>`).join('');
@@ -6492,7 +6487,7 @@ async function endMockSession(){
         <div id="eval-card-${i}" class="ai-fb show" style="margin-top:8px;">${renderEvalCard(s)}</div>`}
         ${(()=>{const srPrev=window._srReviewData?.[q.id];if(srPrev==null)return'';const ns=effectiveScore(s);if(ns>=8)return'<div class="sr-motivation sr-mastered">🎉 Mastered! This question won\'t resurface</div>';if(ns>srPrev)return`<div class="sr-motivation sr-improved">📈 Great improvement! Up from ${(+srPrev).toFixed(1)} to ${ns.toFixed(1)}</div>`;return`<div class="sr-motivation sr-retry">Keep practicing — rescheduled for 3 days (${(+srPrev).toFixed(1)} → ${ns.toFixed(1)})</div>`;})()}
         <details style="margin-top:8px;"><summary style="cursor:pointer;color:var(--muted);font-size:12px;font-weight:600;">Your answer</summary>
-          <div style="margin-top:6px;padding:10px;background:rgba(255,255,255,.03);border-radius:8px;font-size:12px;line-height:1.7;color:rgba(248,246,241,.8);">${h(mockAnswers[i]||'(no answer)')}</div>
+          <div style="margin-top:6px;padding:10px;background:rgba(var(--ovl),.03);border-radius:8px;font-size:12px;line-height:1.7;color:rgba(var(--txt2-rgb),.8);">${h(mockAnswers[i]||'(no answer)')}</div>
         </details>
       </div>`;
     }).join('')}
@@ -7256,7 +7251,7 @@ async function uploadSyllabus(){
     if(r.error){
       const staEl=document.getElementById('syl-status');
       let msg=h(r.error);
-      if(r.raw){msg+=`<br><br><span style="color:rgba(248,246,241,.4);font-size:11px;">Claude returned: &ldquo;${h(r.raw)}&hellip;&rdquo;</span><br><span style="color:rgba(248,246,241,.4);font-size:11px;">Tip: Try uploading again. If this keeps happening, try breaking the syllabus into smaller sections by subject.</span>`;}
+      if(r.raw){msg+=`<br><br><span style="color:rgba(var(--txt2-rgb),.4);font-size:11px;">Claude returned: &ldquo;${h(r.raw)}&hellip;&rdquo;</span><br><span style="color:rgba(var(--txt2-rgb),.4);font-size:11px;">Tip: Try uploading again. If this keeps happening, try breaking the syllabus into smaller sections by subject.</span>`;}
       staEl.innerHTML=`<div style="color:var(--danger);font-size:13px;line-height:1.7;padding:12px;background:rgba(155,35,53,.1);border:1px solid rgba(155,35,53,.3);border-radius:10px;">⚠️ ${msg}</div>`;
       return;
     }
@@ -7267,7 +7262,7 @@ async function uploadSyllabus(){
     const bdEl=document.getElementById('syl-breakdown');
     if(r.parseMethod==='subject-override'){
       // Single-subject confirmation card
-      document.getElementById('syl-status').innerHTML=`<div style="background:rgba(20,180,160,.1);border:1px solid rgba(20,180,160,.3);border-radius:12px;padding:16px;"><div style="font-family:var(--fd);font-size:16px;font-weight:700;color:var(--teal-d);margin-bottom:8px;">✅ ${h(r.breakdown[0].name)} syllabus saved</div><div style="font-size:13px;color:rgba(248,246,241,.7);">${r.totalTopics} topics loaded · Pre-generation queued</div></div>`;
+      document.getElementById('syl-status').innerHTML=`<div style="background:rgba(20,180,160,.1);border:1px solid rgba(20,180,160,.3);border-radius:12px;padding:16px;"><div style="font-family:var(--fd);font-size:16px;font-weight:700;color:var(--teal-d);margin-bottom:8px;">✅ ${h(r.breakdown[0].name)} syllabus saved</div><div style="font-size:13px;color:rgba(var(--txt2-rgb),.7);">${r.totalTopics} topics loaded · Pre-generation queued</div></div>`;
       if(bdEl) bdEl.style.display='none';
     } else {
       // Multi-subject success
@@ -7276,14 +7271,14 @@ async function uploadSyllabus(){
       document.getElementById('syl-status').innerHTML=`<div style="color:var(--teal);font-size:13px;padding:8px;">✅ Saved! ${r.subjects} subjects, ${r.totalTopics} topics. Pre-generating content now…${_methodLabel}</div>`;
       if(bdEl && r.breakdown?.length){
         const clr={civil:'#4a9eff',criminal:'var(--danger)',political:'#50d090',labor:'#f0a040',commercial:'#a070e0',taxation:'#40c0b0',remedial:'#e0c050',ethics:'#c0a080',custom:'#8899aa'};
-        const rows=r.breakdown.map(s=>`<div style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12px;"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${clr[s.key]||'#888'};flex-shrink:0;"></span><span style="flex:1;color:rgba(248,246,241,.8);">${h(s.name)}</span><span style="color:var(--muted);font-family:var(--fm);">${s.topicCount} topics</span></div>`).join('');
+        const rows=r.breakdown.map(s=>`<div style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12px;"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${clr[s.key]||'#888'};flex-shrink:0;"></span><span style="flex:1;color:rgba(var(--txt2-rgb),.8);">${h(s.name)}</span><span style="color:var(--muted);font-family:var(--fm);">${s.topicCount} topics</span></div>`).join('');
         const unknownHtml=r.unknownTopics?.length?`<div style="margin-top:8px;padding:8px;background:rgba(155,35,53,.1);border-radius:6px;font-size:11px;color:var(--danger);">⚠️ ${r.unknownTopics.length} unrecognized subject(s) skipped: ${r.unknownTopics.map(h).join(', ')}</div>`:'';
         let warningsHtml='';
         if(r.warnings?.length){
           const items=r.warnings.map(w=>`<div class="sw-item">⚠ <strong>${h(w.topic)}</strong> is under <em>${h(w.assignedTo)}</em> but keywords suggest <em>${h(w.possiblyBelongsTo)}</em> (matched: ${w.matchedKeywords.map(h).join(', ')})</div>`).join('');
           warningsHtml=`<div class="syllabus-warnings" style="margin-top:10px;"><div class="sw-header" onclick="this.nextElementSibling.classList.toggle('open')">⚠️ ${r.warningCount} topic assignment warning${r.warningCount>1?'s':''} — click to review<span style="margin-left:auto;font-size:10px;opacity:.6;">Topics kept as-is. Review if needed.</span></div><div class="sw-body">${items}</div></div>`;
         }
-        bdEl.innerHTML=`<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:12px 14px;"><div style="font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;margin-bottom:8px;">Subjects Parsed</div>${rows}${unknownHtml}</div>${warningsHtml}`;
+        bdEl.innerHTML=`<div style="background:rgba(var(--ovl),.03);border:1px solid rgba(var(--ovl),.07);border-radius:10px;padding:12px 14px;"><div style="font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;margin-bottom:8px;">Subjects Parsed</div>${rows}${unknownHtml}</div>${warningsHtml}`;
         bdEl.style.display='';
       }
     }
@@ -7453,10 +7448,10 @@ async function loadStorageInfo(){
     el.innerHTML=`<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
       <span style="color:${persistColor};font-weight:600;">${persistLabel}</span>
     </div>
-    <div style="color:rgba(248,246,241,.6);line-height:1.7;">
+    <div style="color:rgba(var(--txt2-rgb),.6);line-height:1.7;">
       📄 kb.json: ${kb.exists?fmt(kb.bytes):'not found'} &nbsp;|&nbsp;
       📄 content.json: ${ct.exists?fmt(ct.bytes):'not found'}<br>
-      📁 Path: <code style="font-size:11px;background:rgba(255,255,255,.06);padding:1px 5px;border-radius:4px;">${h(d.storageDir)}</code>
+      📁 Path: <code style="font-size:11px;background:rgba(var(--ovl),.06);padding:1px 5px;border-radius:4px;">${h(d.storageDir)}</code>
     </div>
     ${!d.persistent?`<div style="margin-top:8px;padding:8px 10px;background:rgba(224,144,80,.08);border:1px solid rgba(224,144,80,.25);border-radius:8px;color:#e09050;line-height:1.6;">
       <strong>To enable persistent storage on Railway:</strong><br>
@@ -8888,12 +8883,12 @@ function renderUserAccessGrid() {
       const personalEnabled = s.subjects?.[subj.key]?.[mode] !== false;
       const enabled = personalEnabled && !globalLocked;
       const lockTip = globalLocked ? ' title="Disabled globally — cannot override"' : '';
-      return `<label style="display:flex;align-items:center;gap:5px;font-size:12px;color:${enabled ? 'var(--text,var(--white))' : 'var(--muted)'};cursor:${globalLocked ? 'not-allowed' : 'pointer'};background:${enabled ? 'rgba(255,255,255,.05)' : 'transparent'};border:1px solid ${enabled ? 'var(--bdr2)' : 'transparent'};border-radius:6px;padding:4px 9px;transition:all .15s;"${lockTip}>
+      return `<label style="display:flex;align-items:center;gap:5px;font-size:12px;color:${enabled ? 'var(--text,var(--white))' : 'var(--muted)'};cursor:${globalLocked ? 'not-allowed' : 'pointer'};background:${enabled ? 'rgba(var(--ovl),.05)' : 'transparent'};border:1px solid ${enabled ? 'var(--bdr2)' : 'transparent'};border-radius:6px;padding:4px 9px;transition:all .15s;"${lockTip}>
         <input type="checkbox" ${enabled ? 'checked' : ''} ${globalLocked ? 'disabled' : ''} onchange="toggleUserSubjTab('${subj.key}','${mode}',this.checked)" style="accent-color:var(--gold);cursor:${globalLocked ? 'not-allowed' : 'pointer'};">
         ${modeLabels[mode]}${globalLocked ? ' 🔒' : ''}
       </label>`;
     }).join('');
-    html += `<div style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:10px;background:rgba(255,255,255,.025);border:1px solid var(--bdr2);margin-bottom:6px;flex-wrap:wrap;">
+    html += `<div style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:10px;background:rgba(var(--ovl),.025);border:1px solid var(--bdr2);margin-bottom:6px;flex-wrap:wrap;">
       <div style="flex:1;min-width:120px;font-size:13px;font-weight:600;color:var(--text,var(--white));">${subj.name}</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;">${pillsHtml}</div>
     </div>`;
@@ -9115,7 +9110,7 @@ function _renderImproveInsights(filtered) {
         <span style="font-size:12px;color:var(--text);flex:1;">${h(item.text)}</span>
         <span style="font-size:12px;font-weight:700;color:var(--gold);min-width:32px;text-align:right;">${item.count}×</span>
       </div>
-      <div style="height:5px;background:rgba(255,255,255,.07);border-radius:3px;margin-left:36px;">
+      <div style="height:5px;background:rgba(var(--ovl),.07);border-radius:3px;margin-left:36px;">
         <div style="height:100%;width:${barW}%;background:var(--gold);border-radius:3px;transition:width .3s;"></div>
       </div>
     </div>`;
@@ -9394,7 +9389,7 @@ function showSubmitConfirmModal(onConfirm) {
       ${unanswered > 0 ? `<p style="color:#ff9800;font-size:13px;margin:0 0 16px;">⚠️ ${unanswered} unanswered — will be scored 0</p>` : '<div style="margin-bottom:16px;"></div>'}
       <p style="color:#888;font-size:12px;margin:0 0 24px;">This action cannot be undone.</p>
       <div style="display:flex;gap:12px;justify-content:center;">
-        <button onclick="document.getElementById('submit-confirm-modal')?.remove();" style="flex:1;padding:12px 20px;border-radius:10px;border:1px solid rgba(255,255,255,0.2);background:transparent;color:#ccd;cursor:pointer;font-size:14px;">Cancel</button>
+        <button onclick="document.getElementById('submit-confirm-modal')?.remove();" style="flex:1;padding:12px 20px;border-radius:10px;border:1px solid rgba(var(--ovl),0.2);background:transparent;color:#ccd;cursor:pointer;font-size:14px;">Cancel</button>
         <button id="confirmSubmitYes" style="flex:1;padding:12px 20px;border-radius:10px;border:none;background:linear-gradient(135deg,var(--amber),#d4a017);color:#1a1200;cursor:pointer;font-size:14px;font-weight:bold;">Yes, Submit</button>
       </div>
     </div>
