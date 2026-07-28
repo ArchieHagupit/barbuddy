@@ -48,6 +48,16 @@ new PerformanceObserver((list) => {
     var collapsed = stored !== null ? stored === '1' : window.innerWidth < 900;
     if (collapsed) document.documentElement.classList.add('sb-collapsed');
   }catch(e){}
+  /* Theme, same reasoning: set data-theme before <body> is parsed so the page
+     paints in the right palette instead of flashing dark then repainting.
+     Falls back to the OS preference when the user hasn't chosen. */
+  try{
+    var t = localStorage.getItem('bb_theme');
+    if (t !== 'light' && t !== 'dark') {
+      t = (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) ? 'light' : 'dark';
+    }
+    document.documentElement.setAttribute('data-theme', t);
+  }catch(e){ document.documentElement.setAttribute('data-theme','dark'); }
 })();
 </script>
 </head>
@@ -55,7 +65,7 @@ new PerformanceObserver((list) => {
 <div id="bb-loading-screen" style="
   position: fixed;
   inset: 0;
-  background: #0D1B2A;
+  background: var(--ink);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -252,6 +262,9 @@ new PerformanceObserver((list) => {
   </div>
   <div class="tb-breadcrumb" id="breadcrumb"></div>
   <div class="tb-right">
+    <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" role="switch" aria-checked="false" title="Switch theme">
+      <span class="theme-toggle-ic" id="themeToggleIc" aria-hidden="true">🌙</span>
+    </button>
     <div class="notif-wrap" id="notifWrap" style="display:none;">
       <button class="notif-bell" id="notifBell" onclick="toggleNotifPanel(event)" title="Notifications" aria-haspopup="true" aria-expanded="false">
         <span aria-hidden="true">🔔</span>
