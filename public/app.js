@@ -1533,7 +1533,7 @@ function renderNotifPanel() {
     <div class="notif-head"><div class="notif-title">Notifications</div></div>
     <div class="notif-body">${body}</div>
     <div class="notif-foot">
-      <div class="notif-foot-lbl">Review reminders<br><span style="opacity:.75;">Notify me when questions are due</span></div>
+      <div class="notif-foot-lbl">Review reminders<br><span style="opacity:.92;">Notify me when questions are due</span></div>
       <button class="notif-switch" id="notifReminderSwitch" role="switch"
               aria-checked="${on}" aria-label="Review reminders"
               onclick="toggleReviewReminders(event)"></button>
@@ -3592,7 +3592,17 @@ function renderFlashcardCardViewer() {
   // Widens .pg-inner and sticks the title + tab row while studying.
   document.getElementById('page-subject')?.classList.add('fc-session-active');
   _fcRenderSessionOutline(_fcSession.subject);
+  // Start from the top of the page. A session is usually launched by clicking
+  // a topic partway down a long outline, so the page is scrolled — and
+  // _fcSizeStudyLayout measures a viewport-relative top, which would then be
+  // wrong and leave the nav row below the fold.
+  window.scrollTo(0, 0);
+  // Size immediately so there is always a sane height, then again once the
+  // sticky header and widened .pg-inner have settled. The second pass is not
+  // relied on alone: rAF is throttled in a background tab, and a session can
+  // be started and left before it ever fires.
   _fcSizeStudyLayout();
+  requestAnimationFrame(() => _fcSizeStudyLayout());
   _fcBindStudyLayoutResize();
 
   const q = sel => container.querySelector(sel);
@@ -3625,7 +3635,10 @@ function _fcSizeStudyLayout() {
   if (!layout) return;
   if (window.innerWidth <= 900) { layout.style.height = ''; return; } // stacked
   const top = layout.getBoundingClientRect().top;
-  layout.style.height = Math.max(380, window.innerHeight - top - 18) + 'px';
+  // Floor low enough that the card can still shrink on short viewports. Above
+  // it the card's own scroller takes over, so the nav row stays put instead of
+  // the whole page scrolling and pushing the buttons out of view.
+  layout.style.height = Math.max(300, window.innerHeight - top - 18) + 'px';
 }
 
 let _fcResizeHandler = null;
