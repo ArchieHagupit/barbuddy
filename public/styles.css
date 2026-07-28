@@ -37,7 +37,27 @@
   /* page wash */
   --wash-gold:rgba(var(--gold-rgb),.07);--wash-crim:rgba(139,31,53,.06);--wash-blue:rgba(91,168,255,.04);
   /* layout & fonts */
-  --sw:220px;--fd:'Cormorant Garamond','Cormorant Garamond Fallback',Georgia,serif;--fb:'DM Sans','DM Sans Fallback',sans-serif;--fm:'DM Mono','DM Mono Fallback',monospace;
+  --sw:220px;
+  /* ── One typeface ────────────────────────────────────────────
+     --fd (display), --fb (body) and --fm (numeric) all resolve to the same
+     family. The three tokens are kept rather than collapsed so the ~150 call
+     sites don't churn, and so a future change of heart is a one-line edit
+     here instead of a sweep. --fm keeps its own name because the elements
+     using it also get tabular figures below. */
+  --fsans:'DM Sans','DM Sans Fallback',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  --fd:var(--fsans);--fb:var(--fsans);--fm:var(--fsans);
+  /* ── Reading scale ──────────────────────────────────────────
+     One rhythm shared by every long-form surface: flashcards, lesson
+     content, exam questions, AI feedback. With a single typeface, hierarchy
+     comes from size, weight and colour rather than from switching family.
+     --measure caps line length: past roughly 75 characters the eye loses
+     its place returning to the next line, which matters most for the
+     people who read this app for hours. */
+  --fr:var(--fb);
+  --fs-read:16.5px;      /* body copy on reading surfaces */
+  --fs-read-sm:15px;     /* secondary copy: feedback, captions */
+  --lh-read:1.72;
+  --measure:68ch;
   /* subject colors (brighter) */
   --c-civil:#5ba8ff;--c-criminal:#ff6b7a;--c-political:#5dd89a;
   --c-labor:#ffaa50;--c-commercial:#b87fff;--c-taxation:#50d0c0;
@@ -96,7 +116,37 @@
    paint — see #sidebar-state. */
 :root.sb-collapsed{--sw:64px;}
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+
+/* Form controls do not inherit font-family from their parent — the UA sets
+   its own. Every button that didn't name a family explicitly was rendering
+   in the system font (Arial here) rather than the app's, which is most of
+   why the UI never looked typographically uniform. Only the family is
+   inherited; sizes stay with each component. */
+button,input,select,textarea{font-family:inherit;}
+/* code/pre default to a UA monospace. With no mono family loaded any more,
+   letting that stand would pull in a random system face — the opposite of
+   uniform. They keep their distinct look through background and colour. */
+code,kbd,samp,pre{font-family:var(--fm);}
+
+/* Figures that need to line up or not jitter. DM Sans ships proportional
+   numerals by default, so a running countdown would visibly reflow as digits
+   change width — the job the monospace face used to do. tabular-nums buys
+   that back without a second typeface. Scoped to numeric UI rather than set
+   globally, since tabular figures read worse inside prose. */
+.ms-timer,.cd-num,.ov-cd-num,.timer-val,
+.prog-stat-value,.xp-stat-val,.fc-stat-num,.scorecard-score,
+.ov-prog-meta,.ov-subj-stats,.ov-subj-pct,.prog-subj-pct,
+.sb-subj-qcount,.notif-badge,.sr-subj-counts,.ov-subjects-count,
+.alac-score,.ai-fb-score,.q-score-badge,.xp-line-value,.q-prog-meta,
+.subject-card-stats,.gpp-meta,.pb-meta{
+  font-variant-numeric:tabular-nums;
+  font-feature-settings:'tnum' 1;
+}
 body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:100vh;display:flex;overflow-x:hidden;
+  /* Subpixel smoothing renders DM Sans heavier than designed on macOS; the
+     antialiased pair keeps stems even between the two themes. */
+  -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;
+  text-rendering:optimizeLegibility;
   background-image:radial-gradient(ellipse 80% 50% at 50% -10%,var(--wash-gold) 0%,transparent 70%),radial-gradient(ellipse 60% 40% at 90% 90%,var(--wash-crim) 0%,transparent 60%),radial-gradient(ellipse 40% 30% at 10% 80%,var(--wash-blue) 0%,transparent 50%);
   background-attachment:fixed;}
 /* SIDEBAR — subject-first navigation */
@@ -763,7 +813,7 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .subj-progress-bar-wrap{display:flex;align-items:center;gap:10px;margin-top:8px;}
 .subj-progress-bar-track{flex:1;max-width:240px;height:6px;background:rgba(var(--ovl),.08);border-radius:3px;overflow:hidden;}
 .subj-progress-bar-fill{height:100%;border-radius:3px;transition:width .4s ease;}
-.subj-progress-text{font-size:11px;color:var(--muted);font-family:var(--fm,monospace);white-space:nowrap;}
+.subj-progress-text{font-size:11px;color:var(--muted);font-family:var(--fm);white-space:nowrap;}
 .tl-cached-badge{font-size:9px;padding:1px 5px;border-radius:3px;font-family:var(--fm);flex-shrink:0;background:rgba(var(--teal-d-rgb),.15);color:var(--teal);}
 /* SYLLABUS WARNINGS PANEL */
 .syllabus-warnings{margin-top:10px;border:1px solid rgba(255,160,64,.25);border-radius:10px;overflow:hidden;}
@@ -849,10 +899,13 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .facts-box,.essay-ctx{background:rgba(var(--txt2-rgb),.07);border-left:4px solid var(--gold);border-radius:0 12px 12px 0;padding:20px 22px;margin-bottom:22px;}
 .facts-label{font-family:var(--fd);font-size:11px;font-weight:800;letter-spacing:.12em;color:var(--gold);text-transform:uppercase;margin-bottom:12px;display:flex;align-items:center;gap:7px;}
 .facts-label::before{content:'';display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--gold);}
-.facts-text{font-size:16px;font-style:normal;font-weight:400;line-height:1.85;color:rgba(var(--txt2-rgb),.95);font-family:var(--fb);white-space:pre-wrap;}
+.facts-text{font-family:var(--fr);font-size:var(--fs-read);font-style:normal;font-weight:400;line-height:var(--lh-read);letter-spacing:.005em;color:rgba(var(--txt2-rgb),.95);white-space:pre-wrap;max-width:var(--measure);}
 .question-label{font-family:var(--fd);font-size:11px;font-weight:800;letter-spacing:.12em;color:var(--og);text-transform:uppercase;margin-bottom:10px;margin-top:20px;display:flex;align-items:center;gap:7px;}
 .question-label::before{content:'';display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--og);}
-.question-text{font-size:15px;font-weight:700;line-height:1.75;color:rgba(var(--txt2-rgb),1);font-family:var(--fb);white-space:pre-wrap;}
+/* Exam prompts: the single most-read text in the app. Weight dropped from
+   700 to 600 — a full paragraph set in bold is harder to read, not easier,
+   and the size increase carries the emphasis instead. */
+.question-text{font-family:var(--fr);font-size:var(--fs-read);font-weight:600;line-height:var(--lh-read);letter-spacing:.005em;color:rgba(var(--txt2-rgb),1);white-space:pre-wrap;max-width:var(--measure);}
 .q-label{font-size:10px;font-weight:700;color:var(--gold);text-transform:uppercase;letter-spacing:.09em;margin-bottom:5px;display:block;}
 .alac-table{width:100%;border-collapse:collapse;font-size:13px;margin:10px 0;}
 .alac-table th{text-align:left;padding:6px 10px;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--bdr2);}
@@ -883,14 +936,16 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .writing-feedback-section ul{margin:0;padding-left:18px;line-height:1.65;}
 .writing-feedback-section li{margin:2px 0;}
 .writing-feedback-overall{font-size:.88rem;color:var(--text);font-style:italic;line-height:1.65;opacity:.9;}
-.essay-box{width:100%;min-height:200px;background:var(--card3);border:1px solid var(--bdr2);border-radius:12px;padding:16px;color:var(--white);font-family:var(--fb);font-size:14px;line-height:1.75;outline:none;resize:vertical;transition:border-color .2s,box-shadow .2s;}
+.essay-box{width:100%;min-height:200px;background:var(--card3);border:1px solid var(--bdr2);border-radius:12px;padding:18px 20px;color:var(--white);font-family:var(--fr);font-size:var(--fs-read);line-height:var(--lh-read);outline:none;resize:vertical;transition:border-color .2s,box-shadow .2s;}
 .essay-box:focus{border-color:rgba(var(--gold-rgb),.4);box-shadow:0 0 0 3px rgba(var(--gold-rgb),.08);}
 .essay-box:focus{border-color:rgba(var(--gold-rgb),.4);}
 .ai-fb{background:rgba(var(--gold-rgb),.06);border:1px solid rgba(var(--gold-rgb),.2);border-radius:13px;padding:16px;margin-top:14px;display:none;}
 .ai-fb.show{display:block;}
 .ai-fb-head{font-size:12px;font-weight:700;color:var(--gold);text-transform:uppercase;letter-spacing:.06em;margin-bottom:9px;display:flex;align-items:center;gap:7px;flex-wrap:wrap;}
 .ai-fb-score{background:rgba(var(--gold-rgb),.15);border-radius:5px;padding:2px 7px;font-family:var(--fm);}
-.ai-fb-content{font-size:14px;line-height:1.75;color:rgba(var(--txt2-rgb),.85);}
+.ai-fb-content{font-family:var(--fr);font-size:var(--fs-read-sm);line-height:var(--lh-read);color:rgba(var(--txt2-rgb),.92);max-width:var(--measure);}
+.ai-fb-content p{margin-bottom:.8em;}
+.ai-fb-content p:last-child{margin-bottom:0;}
 /* SCORECARD — type-aware evaluation display */
 .scorecard{background:var(--card);border:1px solid var(--bdr2);border-radius:16px;overflow:hidden;margin-top:16px;}
 .scorecard-header{padding:18px 20px 14px;border-bottom:1px solid var(--bdr);}
@@ -1287,10 +1342,19 @@ select.form-input{cursor:pointer;}
 /* LEARN TAB ENHANCEMENTS */
 .topic-list-container{background:var(--card);border:1px solid var(--bdr);border-radius:14px;overflow:hidden;}
 .tl-topic:hover{background:rgba(var(--gold-rgb),.05);}
-.lesson-content{background:var(--card);border:1px solid var(--bdr);border-radius:14px;padding:28px 32px;line-height:1.85;font-size:14px;color:var(--text);}
-.lesson-content h2{font-family:var(--fd);font-size:20px;color:var(--gold-l);margin:24px 0 10px;padding-bottom:8px;border-bottom:1px solid rgba(var(--gold-rgb),.15);}
-.lesson-content h3{font-family:var(--fd);font-size:16px;color:var(--text);margin:18px 0 8px;}
+/* Long-form lesson copy. Was 14px with no cap on line length; both are the
+   usual reasons a text-heavy page feels like work to read. */
+.lesson-content{background:var(--card);border:1px solid var(--bdr);border-radius:16px;padding:34px 38px;font-family:var(--fr);font-size:var(--fs-read);line-height:var(--lh-read);color:var(--text);}
+.lesson-content > *{max-width:var(--measure);}
+.lesson-content p{margin-bottom:1.05em;}
+.lesson-content p:last-child{margin-bottom:0;}
+.lesson-content ul,.lesson-content ol{margin:.7em 0 1.05em 1.3em;}
+.lesson-content li{margin-bottom:.5em;}
+.lesson-content h2{font-family:var(--fd);font-size:26px;font-weight:700;color:var(--gold-l);margin:32px 0 12px;padding-bottom:9px;border-bottom:1px solid rgba(var(--gold-rgb),.15);line-height:1.25;}
+.lesson-content h2:first-child{margin-top:0;}
+.lesson-content h3{font-family:var(--fd);font-size:20px;font-weight:700;color:var(--text);margin:24px 0 8px;line-height:1.3;}
 .lesson-content strong{color:var(--gold-l);font-weight:700;}
+@media(max-width:640px){.lesson-content{padding:24px 20px;font-size:15.5px;}}
 .cp-error{background:rgba(180,40,60,.15);border:1px solid rgba(180,40,60,.3);color:#f87171;padding:10px 14px;border-radius:10px;font-size:13px;margin-top:4px;}
 .cp-success{background:rgba(20,180,120,.15);border:1px solid rgba(20,180,120,.3);color:#34d399;padding:10px 14px;border-radius:10px;font-size:13px;text-align:center;margin-top:4px;}
 .cp-btn{background:none;border:none;color:var(--muted);font-size:11px;cursor:pointer;padding:3px 8px;border-radius:6px;transition:all .18s;letter-spacing:.02em;}
@@ -1572,7 +1636,7 @@ button[onclick*="switchSubjectTab(currentSubject,'learn')"] { display: none !imp
 
 /* Card viewer */
 .fc-viewer-wrap {
-  max-width: 720px;
+  max-width: 760px;
   margin: 0 auto;
   padding: 8px 4px 20px;
 }
@@ -1585,7 +1649,7 @@ button[onclick*="switchSubjectTab(currentSubject,'learn')"] { display: none !imp
 .fc-card {
   position: relative;
   width: 100%;
-  min-height: 320px;
+  min-height: 360px;
   cursor: pointer;
   transition: transform .42s cubic-bezier(.4,0,.2,1), scale .12s ease;
   transform-style: preserve-3d;
@@ -1628,11 +1692,13 @@ button[onclick*="switchSubjectTab(currentSubject,'learn')"] { display: none !imp
   -webkit-backface-visibility: hidden;
   background: var(--card);
   border: 1px solid var(--bdr2);
-  border-radius: 16px;
-  padding: 28px 28px 22px;
+  border-radius: 20px;
+  /* Roomier than the old 28/22: generous gutters are most of what makes the
+     card feel calm to read from rather than cramped. */
+  padding: 34px 38px 26px;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 4px 18px rgba(0,0,0,.25);
+  box-shadow: 0 10px 34px rgba(0,0,0,.18), 0 2px 6px rgba(0,0,0,.08);
 }
 
 .fc-card-front {}
@@ -1643,50 +1709,60 @@ button[onclick*="switchSubjectTab(currentSubject,'learn')"] { display: none !imp
 }
 
 .fc-card-type-badge {
-  font-size: 10px;
+  font-size: 10.5px;
   color: var(--gold-l);
   text-transform: uppercase;
-  letter-spacing: .1em;
+  letter-spacing: .12em;
   font-weight: 700;
-  margin-bottom: 14px;
-  opacity: .85;
+  margin-bottom: 18px;
+  opacity: .9;
 }
 
+/* Was 16px Cormorant Garamond — a display serif, so at reading size its small
+   x-height and thin strokes made cards genuinely tiring. Now the humanist
+   sans at the shared reading scale. */
 .fc-card-content {
   flex: 1;
-  font-size: 16px;
-  line-height: 1.65;
+  font-family: var(--fr);
+  font-size: var(--fs-read);
+  line-height: var(--lh-read);
+  letter-spacing: .005em;
   color: var(--text);
-  font-family: var(--fd);
   overflow-y: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
   max-height: 48vh;
 }
+.fc-card-content strong,.fc-card-content b{font-weight:700;color:var(--text);}
+.fc-card-content p{margin-bottom:.85em;}
+.fc-card-content p:last-child{margin-bottom:0;}
+.fc-card-content ul,.fc-card-content ol{margin:.5em 0 .85em 1.25em;}
+.fc-card-content li{margin-bottom:.4em;}
 
 .fc-card-hint {
-  font-size: 10px;
+  font-size: 10.5px;
   color: var(--muted);
   text-align: center;
-  margin-top: 14px;
+  margin-top: 18px;
   text-transform: uppercase;
-  letter-spacing: .08em;
-  opacity: .55;
+  letter-spacing: .1em;
+  opacity: .7;
 }
 
 .fc-card-source {
-  font-size: 11px;
+  font-size: 12px;
+  line-height: 1.55;
   color: var(--muted);
-  padding: 8px 10px;
-  background: rgba(var(--gold-rgb),.05);
-  border-left: 2px solid var(--gold-l);
-  border-radius: 4px;
-  margin-top: 12px;
+  padding: 10px 13px;
+  background: rgba(var(--gold-rgb),.06);
+  border-left: 3px solid var(--gold-l);
+  border-radius: 0 6px 6px 0;
+  margin-top: 16px;
 }
 
 @media (max-width: 540px) {
-  .fc-card-content { font-size: 15px; }
-  .fc-card-face { padding: 20px 18px 16px; }
+  .fc-card-content { font-size: 15.5px; }
+  .fc-card-face { padding: 24px 20px 18px; }
 }
 
 /* The standalone "Flashcards Progress" overview card is gone — its aggregate
