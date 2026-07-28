@@ -6468,8 +6468,8 @@ async function endMockSession(){
              <button class="btn-ghost" onclick="window.isSpeedDrill=false;navToSubject(window.lastExamSubject||'overview','speeddrill')">⏱ Back to Setup</button>`
           : `<button class="btn-mock" onclick="navToSubject(window.lastExamSubject||'overview','mockbar')">⏱ New Session</button>`
       }
-      <button class="btn-ghost" onclick="nav('learn',document.getElementById('tab-learn'))">📖 Back to Learn</button>
-      <button class="btn-ghost" onclick="printMockResults()">🖨️ Print</button>
+      <button class="btn-ghost" onclick="backToFlashcards()">🎴 Back to Flashcards</button>
+      <button class="btn-ghost" onclick="downloadMockResults()">⬇️ Save</button>
       <button class="btn-ghost" onclick="openModal('emailOverlay')">📧 Email</button>
     </div>
     <h3 style="font-family:var(--fd);font-size:20px;font-weight:700;color:var(--gold-l);margin-bottom:14px;text-align:left;">📋 Question Review</h3>
@@ -6794,12 +6794,15 @@ function buildResultsHtml(){
   </div>`;
 }
 
-function printMockResults(){
-  if(!mockQs.length)return;
+// Standalone HTML document wrapping the results body. Shared by the download
+// and by printMockResults, so a saved file and a printed page look identical.
+// Deliberately self-contained with inline styles and no app CSS: the file has
+// to survive being opened from disk months later with no network.
+function _buildResultsDocument(){
   const body=buildResultsHtml();
-  const w=window.open('','_blank');
-  if(!w){alert('Pop-up blocked. Please allow pop-ups to print results.');return;}
-  w.document.write(`<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>BarBuddy Results</title><style>
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>BarBuddy Results</title><style>
     body{font-family:Georgia,serif;color:#111;}
     @media print{@page{margin:1.5cm;} .alac-model-answer,.alac-section{page-break-inside:avoid;break-inside:avoid;max-height:none;overflow:visible;height:auto;}}
     ul{margin:4px 0 8px 0;padding-left:20px;}
@@ -6815,9 +6818,48 @@ function printMockResults(){
     .alac-section-label{font-size:.78rem;font-weight:700;color:#5a3e1b;text-transform:uppercase;margin-bottom:4px;}
     .alac-section-content{font-size:.88rem;color:#333;line-height:1.6;white-space:pre-line;padding-left:10px;border-left:2px solid #d4c5a0;}
     .plain-model-answer{font-size:.88rem;color:#333;line-height:1.6;white-space:pre-line;}
-  </style></head><body>${body}</body></html>`);
+  </style></head><body>${body}</body></html>`;
+}
+
+// Saves the results as a file instead of routing through the print dialog.
+// A pop-up blocker can silently kill window.open; a blob download cannot.
+function downloadMockResults(){
+  if(!mockQs.length)return;
+  const subj = (window.lastExamSubject || currentSubject || 'results')
+    .replace(/[^a-z0-9]+/gi,'-').replace(/^-|-$/g,'');
+  const date = new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Manila'}); // YYYY-MM-DD
+  const name = `BarBuddy-${subj}-${date}.html`;
+  try{
+    const blob = new Blob([_buildResultsDocument()], {type:'text/html;charset=utf-8'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    // Revoke on the next tick — revoking synchronously can cancel the download.
+    setTimeout(()=>URL.revokeObjectURL(url), 1000);
+    showToast(`Saved ${name}`, 'success');
+  }catch(e){
+    showToast('Could not save the file — please try again', 'error');
+  }
+}
+
+// Kept for the browser's own print path and any future caller.
+function printMockResults(){
+  if(!mockQs.length)return;
+  const w=window.open('','_blank');
+  if(!w){alert('Pop-up blocked. Please allow pop-ups to print results.');return;}
+  w.document.write(_buildResultsDocument());
   w.document.close();w.focus();
   setTimeout(()=>w.print(),600);
+}
+
+// Mock Bar is launched from a subject, so "back" means that subject's
+// flashcards. Falls back to Overview when the subject is unknown (for example
+// a resumed session after a reload).
+function backToFlashcards(){
+  const subj = window.lastExamSubject || currentSubject;
+  if (subj && subj !== 'overview') navToSubject(subj, 'flashcards');
+  else navToOverview();
 }
 
 async function sendEmailResults(){
