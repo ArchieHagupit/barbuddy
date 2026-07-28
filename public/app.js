@@ -94,7 +94,7 @@ let mbCount = 20, mbTimeMins = 0, mbDifficulty = 'balanced';  // mock bar setup 
 
 const SUBJS=[
   {key:'civil',    name:'Civil Law',               cls:'sg-civ',f:'bf-g', color:'#4a9eff'},
-  {key:'criminal', name:'Criminal Law',             cls:'sg-cri',f:'bf-r', color:'#e07080'},
+  {key:'criminal', name:'Criminal Law',             cls:'sg-cri',f:'bf-r', color:'var(--danger)'},
   {key:'political',name:'Political Law',            cls:'sg-pol',f:'bf-b', color:'#50d090'},
   {key:'labor',    name:'Labor & Social Leg.',      cls:'sg-lab',f:'bf-t', color:'#f0a040'},
   {key:'commercial',name:'Commercial Law',          cls:'sg-com',f:'bf-g', color:'#a070e0'},
@@ -224,7 +224,7 @@ function showToast(message, type = 'info') {
   const existing = document.getElementById('bb-toast');
   if (existing) existing.remove();
   const c = { success:{bg:'rgba(20,180,160,.15)',border:'rgba(20,180,160,.3)',color:'var(--teal)'},
-               error:  {bg:'rgba(224,80,96,.12)', border:'rgba(224,80,96,.25)', color:'#e05060'},
+               error:  {bg:'rgba(224,80,96,.12)', border:'rgba(224,80,96,.25)', color:'var(--danger-d)'},
                info:   {bg:'rgba(255,255,255,.07)',border:'var(--bdr2)',        color:'var(--muted)'},
                warning:{bg:'rgba(232,144,74,.12)', border:'rgba(232,144,74,.25)',color:'var(--og)'} }[type] || {bg:'rgba(255,255,255,.07)',border:'var(--bdr2)',color:'var(--muted)'};
   const toast = document.createElement('div');
@@ -456,6 +456,9 @@ function setLoadingMsg(text) {
 // INIT
 // ══════════════════════════════════
 async function init() {
+  // data-theme is already on <html> from the pre-body script; this only points
+  // the toggle's icon and labels at it. No _forceRestyle — nothing changed.
+  syncThemeButton();
   loadLocalCache();
   // Show cached sidebar instantly while fresh data loads
   const cachedSB = sessionStorage.getItem('bb_sidebar_cache');
@@ -893,7 +896,7 @@ async function loadFlashcardsAdmin() {
       sumEl.textContent = `${n} leaf topic${n !== 1 ? 's' : ''} · ${c} total card${c !== 1 ? 's' : ''}`;
     }
   } catch(e) {
-    if (topicsEl) topicsEl.innerHTML = `<div style="color:#e07080;padding:20px;">Error: ${h(e.message)}</div>`;
+    if (topicsEl) topicsEl.innerHTML = `<div style="color:var(--danger);padding:20px;">Error: ${h(e.message)}</div>`;
   }
 }
 
@@ -907,7 +910,7 @@ function renderFlashcardTopics() {
   el.innerHTML = _fcTopicsCache.map(t => {
     const count = t.cardCount || 0;
     const status = count > 0
-      ? `<span style="color:#2ec4a0;">✓ ${count} card${count !== 1 ? 's' : ''}</span>`
+      ? `<span style="color:var(--teal);">✓ ${count} card${count !== 1 ? 's' : ''}</span>`
       : `<span style="color:var(--muted);">no cards yet</span>`;
     const titleEsc = h(t.title).replace(/'/g, "&#39;");
     const pathEsc  = h(t.pathLabel || '').replace(/'/g, "&#39;");
@@ -947,7 +950,7 @@ async function openCardReview(nodeId, topicTitle, pathLabel) {
     _fcReviewCards = data.cards || [];
     renderCardReview();
   } catch(e) {
-    if (listEl) listEl.innerHTML = `<div style="color:#e07080;padding:20px;">Error: ${h(e.message)}</div>`;
+    if (listEl) listEl.innerHTML = `<div style="color:var(--danger);padding:20px;">Error: ${h(e.message)}</div>`;
   }
 }
 
@@ -1095,9 +1098,9 @@ function openFcImportModal(preview) {
     <div style="margin-top:6px;">
       ${preview.stats.totalCards} valid card${preview.stats.totalCards !== 1 ? 's' : ''} ready to import ·
       ${preview.stats.topicsCovered} topic${preview.stats.topicsCovered !== 1 ? 's' : ''} matched ·
-      ${preview.stats.topicsUnmatched > 0 ? `<span style="color:#e07080;">${preview.stats.topicsUnmatched} topic path${preview.stats.topicsUnmatched !== 1 ? 's' : ''} unmatched</span>` : '0 unmatched'}
+      ${preview.stats.topicsUnmatched > 0 ? `<span style="color:var(--danger);">${preview.stats.topicsUnmatched} topic path${preview.stats.topicsUnmatched !== 1 ? 's' : ''} unmatched</span>` : '0 unmatched'}
     </div>
-    ${fatalCount > 0 ? `<div style="color:#e07080;margin-top:6px;"><strong>⚠ ${fatalCount} fatal error${fatalCount !== 1 ? 's' : ''}</strong> — fix and re-upload.</div>` : ''}
+    ${fatalCount > 0 ? `<div style="color:var(--danger);margin-top:6px;"><strong>⚠ ${fatalCount} fatal error${fatalCount !== 1 ? 's' : ''}</strong> — fix and re-upload.</div>` : ''}
     ${errorCount > 0 ? `<div style="color:#d4a843;margin-top:4px;">⚠ ${errorCount} error${errorCount !== 1 ? 's' : ''} (affected cards are skipped).</div>` : ''}
     ${warningCount > 0 ? `<div style="color:var(--muted);margin-top:4px;">${warningCount} warning${warningCount !== 1 ? 's' : ''}.</div>` : ''}
   `;
@@ -1105,7 +1108,7 @@ function openFcImportModal(preview) {
   if ((preview.errors || []).length) {
     errorsEl.style.display = '';
     errorsEl.innerHTML = preview.errors.map(e => {
-      const color = e.severity === 'fatal' ? '#e07080' : e.severity === 'error' ? '#d4a843' : 'var(--muted)';
+      const color = e.severity === 'fatal' ? 'var(--danger)' : e.severity === 'error' ? '#d4a843' : 'var(--muted)';
       const label = e.severity === 'fatal' ? 'FATAL' : e.severity.toUpperCase();
       return `<div style="margin-bottom:4px;"><span style="color:${color};font-weight:700;">[${label}]</span> <span style="color:var(--muted);">line ${e.line}:</span> ${h(e.message)}</div>`;
     }).join('');
@@ -1279,7 +1282,7 @@ async function saveBarExamDate() {
   const input  = document.getElementById('adminBarExamDateInput');
   const status = document.getElementById('adminBarExamDateStatus');
   const dateVal = input?.value;
-  if (!dateVal) { if (status) status.innerHTML = '<span style="color:#e07080;">⚠️ Please select a date.</span>'; return; }
+  if (!dateVal) { if (status) status.innerHTML = '<span style="color:var(--danger);">⚠️ Please select a date.</span>'; return; }
   if (status) status.innerHTML = '<span style="color:var(--muted);">Saving…</span>';
   try {
     const r = await fetch('/api/admin/settings', {
@@ -1293,10 +1296,10 @@ async function saveBarExamDate() {
     const fmt = new Date(dateVal + 'T00:00:00+08:00').toLocaleDateString('en-PH', { year:'numeric', month:'long', day:'numeric' });
     const display = document.getElementById('adminBarExamDateDisplay');
     if (display) display.textContent = 'Current: ' + fmt;
-    if (status) status.innerHTML = '<span style="color:#2ec4a0;">✅ Bar exam date updated.</span>';
+    if (status) status.innerHTML = '<span style="color:var(--teal);">✅ Bar exam date updated.</span>';
     setTimeout(() => { if (status) status.innerHTML = ''; }, 4000);
   } catch(e) {
-    if (status) status.innerHTML = `<span style="color:#e07080;">⚠️ ${h(e.message)}</span>`;
+    if (status) status.innerHTML = `<span style="color:var(--danger);">⚠️ ${h(e.message)}</span>`;
   }
 }
 
@@ -1356,6 +1359,79 @@ function _renderSRSubjectRows(dueItems) {
 // badge; the panel holds the actual notifications plus the student's reminder
 // toggle. Nothing overlays the page and the count persists until the reviews
 // are actually done, instead of vanishing on a one-time Dismiss.
+
+// ── Theme ─────────────────────────────────────────────────────
+// Resolves a CSS custom property to its computed value. Canvas (Chart.js)
+// can't consume var() — it needs a real colour string at construction.
+function _cssVar(name) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || '#888';
+}
+
+// data-theme is set on <html> pre-body (see #sidebar-state in index.html) so
+// the first paint is already correct. This only handles the runtime switch.
+// Stored per device in localStorage; with nothing stored we follow the OS.
+function currentTheme() {
+  return document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+}
+
+// Point the button at whatever theme is actually active. Called at boot too:
+// the pre-body script sets data-theme before any JS runs, so without this the
+// button keeps the icon hardcoded in the markup and can contradict the page.
+function syncThemeButton() {
+  const light = currentTheme() === 'light';
+  const btn = document.getElementById('themeToggle');
+  const ic  = document.getElementById('themeToggleIc');
+  // The icon shows the theme you're currently in, the tooltip what you'd get.
+  if (ic)  ic.textContent = light ? '☀️' : '🌙';
+  if (btn) {
+    btn.setAttribute('aria-checked', String(light));
+    btn.title = light ? 'Switch to night mode' : 'Switch to light mode';
+    btn.setAttribute('aria-label', btn.title);
+  }
+}
+
+function applyTheme(theme) {
+  const light = theme === 'light';
+  document.documentElement.setAttribute('data-theme', light ? 'light' : 'dark');
+  syncThemeButton();
+  _forceRestyle();
+  // Chart.js bakes colours in at construction, so an open chart has to be
+  // rebuilt to pick up the new palette.
+  if (_progScoreChart && document.getElementById('page-progress')?.classList.contains('on')) {
+    renderProgressPage();
+  }
+}
+
+// Blink does not re-resolve a var()-dependent property on an element that
+// carries its own inline custom property when an *inherited* custom property
+// changes further up. The sidebar buttons set --subject-color inline and the
+// overview cards set --subj-color, so on a theme switch their --txt2-rgb
+// updated but the color built from it kept its old value — dark text left on
+// the dark sidebar. Detaching the root from the render tree and reattaching
+// forces a clean recompute. Only runs on an explicit toggle, so the reflow
+// cost is irrelevant.
+function _forceRestyle() {
+  const el = document.documentElement;
+  const prev = el.style.display;
+  el.style.display = 'none';
+  void el.offsetHeight;            // flush
+  el.style.display = prev;
+}
+
+function toggleTheme() {
+  const next = currentTheme() === 'light' ? 'dark' : 'light';
+  try { localStorage.setItem('bb_theme', next); } catch(_) {}
+  applyTheme(next);
+}
+
+// Follow the OS only while the user hasn't made an explicit choice.
+if (window.matchMedia) {
+  window.matchMedia('(prefers-color-scheme: light)').addEventListener?.('change', e => {
+    let stored = null;
+    try { stored = localStorage.getItem('bb_theme'); } catch(_) {}
+    if (stored !== 'light' && stored !== 'dark') applyTheme(e.matches ? 'light' : 'dark');
+  });
+}
 
 function remindersEnabled() {
   return currentUser?.reviewRemindersEnabled !== false;
@@ -1695,7 +1771,7 @@ function _renderSRDueWidget(dueItems) {
   if (!dueItems.length) {
     return `<div class="prog-section">
       <div class="prog-section-title">🧠 Questions Due for Review</div>
-      <div style="font-size:13px;color:#4dd4b0;">✅ You're all caught up! No reviews due today.</div>
+      <div style="font-size:13px;color:var(--teal-l);">✅ You're all caught up! No reviews due today.</div>
     </div>`;
   }
   const overdue = dueItems.filter(i => (i.daysOverdue || 0) > 0).length;
@@ -1703,7 +1779,7 @@ function _renderSRDueWidget(dueItems) {
   // subject rather than a single button that hands over every due question.
   return `<div class="prog-section sr-due-widget">
     <div class="prog-section-title">🧠 Questions Due for Review</div>
-    <div style="font-size:13px;color:var(--gold-l);margin-bottom:12px;">You have <strong>${dueItems.length}</strong> question${dueItems.length!==1?'s':''} to revisit${overdue > 0 ? ` · <span style="color:#e07080;">${overdue} overdue</span>` : ''}</div>
+    <div style="font-size:13px;color:var(--gold-l);margin-bottom:12px;">You have <strong>${dueItems.length}</strong> question${dueItems.length!==1?'s':''} to revisit${overdue > 0 ? ` · <span style="color:var(--danger);">${overdue} overdue</span>` : ''}</div>
     <div class="sr-subj-list">${_renderSRSubjectRows(dueItems)}</div>
   </div>`;
 }
@@ -1716,13 +1792,13 @@ function _renderSRStats(srStats) {
     <div class="prog-section-title">📊 Spaced Repetition Stats</div>
     <div class="prog-summary-row" style="margin-bottom:${total>0?'14px':'0'};">
       <div class="prog-stat-card"><div class="prog-stat-value">${total}</div><div class="prog-stat-label">Total Tracked</div></div>
-      <div class="prog-stat-card"><div class="prog-stat-value" style="color:#2ec4a0;">${mastered}</div><div class="prog-stat-label">Mastered</div></div>
-      <div class="prog-stat-card"><div class="prog-stat-value" style="color:${dueNow>0?'#e07080':'var(--gold-l)'};">${dueNow}</div><div class="prog-stat-label">Due Now</div></div>
+      <div class="prog-stat-card"><div class="prog-stat-value" style="color:var(--teal);">${mastered}</div><div class="prog-stat-label">Mastered</div></div>
+      <div class="prog-stat-card"><div class="prog-stat-value" style="color:${dueNow>0?'var(--danger)':'var(--gold-l)'};">${dueNow}</div><div class="prog-stat-label">Due Now</div></div>
       <div class="prog-stat-card"><div class="prog-stat-value" style="color:var(--gold-l);">${upcomingThisWeek}</div><div class="prog-stat-label">Due This Week</div></div>
     </div>
     ${total > 0 ? `
     <div class="prog-subj-bar-wrap" style="height:12px;margin-bottom:8px;">
-      <div class="prog-subj-bar" style="width:${pct}%;background:linear-gradient(90deg,#2ec4a0,#4dd4b0);"></div>
+      <div class="prog-subj-bar" style="width:${pct}%;background:linear-gradient(90deg,var(--teal),var(--teal-l));"></div>
     </div>
     <div style="font-size:12px;color:var(--muted);">You have mastered ${pct}% of your attempted questions (${mastered}/${total})</div>
     ` : `<div style="font-size:13px;color:var(--muted);">Complete your first Mock Bar or Speed Drill to start tracking mastery.</div>`}
@@ -1966,7 +2042,7 @@ function skeletonXPLevel() {
   const earn = `<div class="prog-section">
     ${_skelTitle('28%')}
     <div class="prog-subj-list" style="gap:8px;">
-      ${[1,2,3,4,5,6,7].map(() => `<div class="prog-subj-row" style="gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.04);">
+      ${[1,2,3,4,5,6,7].map(() => `<div class="prog-subj-row" style="gap:10px;padding:8px 0;border-bottom:1px solid var(--bdr);">
         <div class="bb-skeleton" style="flex:1;height:21px;border-radius:4px;"></div>
         <div class="bb-skeleton" style="width:118px;height:15px;border-radius:4px;flex-shrink:0;"></div>
         <div class="bb-skeleton" style="width:60px;height:15px;border-radius:4px;flex-shrink:0;"></div>
@@ -2034,7 +2110,7 @@ async function _renderProgressDashboardInto(container, token) {
     const body = container.querySelector('#prog-body');
     if (body && !cachedRes) {
       body.innerHTML = `<div class="prog-section" style="text-align:center;padding:40px 20px;">
-        <div style="font-size:13px;color:#e07080;margin-bottom:14px;">Could not load progress data.</div>
+        <div style="font-size:13px;color:var(--danger);margin-bottom:14px;">Could not load progress data.</div>
         <button class="btn-gold" onclick="renderProgressPage()" style="font-size:13px;padding:9px 20px;">↻ Retry</button>
       </div>`;
     }
@@ -2139,8 +2215,8 @@ function _paintProgressBody(container, results, token) {
   if (strongest) insights.push({ cls:'blue', text:`🎯 Your strongest subject is ${strongest.name} at ${strongest.avg}%` });
 
   // ── Render ───────────────────────────────────────────────────
-  const barColor = p => p >= 85 ? '#2ec4a0' : p >= 70 ? '#d4a843' : '#e07080';
-  const pctColor = p => p >= 85 ? '#2ec4a0' : p >= 70 ? '#d4a843' : '#e07080';
+  const barColor = p => p >= 85 ? 'var(--teal)' : p >= 70 ? 'var(--gold)' : 'var(--danger)';
+  const pctColor = p => p >= 85 ? 'var(--teal)' : p >= 70 ? 'var(--gold)' : 'var(--danger)';
 
   // Score history for chart — last 15 sessions only
   const chartResults = [...results]
@@ -2151,10 +2227,10 @@ function _paintProgressBody(container, results, token) {
     return d.toLocaleDateString('en-US',{timeZone:'Asia/Manila',month:'numeric',day:'numeric'});
   });
   const chartData = chartResults.map(pct);
-  const pointColors = chartData.map(p => p >= 70 ? '#2ec4a0' : '#e07080');
+  const pointColors = chartData.map(p => p >= 70 ? 'var(--teal)' : 'var(--danger)');
   const segColors   = chartData.map((p,i) => {
-    if (i === 0) return p >= 70 ? '#2ec4a0' : '#e07080';
-    return chartData[i-1] >= 70 ? '#2ec4a0' : '#e07080';
+    if (i === 0) return p >= 70 ? 'var(--teal)' : 'var(--danger)';
+    return chartData[i-1] >= 70 ? 'var(--teal)' : 'var(--danger)';
   });
 
   body.innerHTML = `
@@ -2258,10 +2334,10 @@ function _drawProgressChart({ chartLabels, chartData, pointColors }) {
         borderColor: function(ctx2) {
           const chart = ctx2.chart;
           const { ctx: c, chartArea } = chart;
-          if (!chartArea) return '#d4a843';
+          if (!chartArea) return _cssVar('--gold');
           const gradient = c.createLinearGradient(chartArea.left, 0, chartArea.right, 0);
           chartData.forEach((p,i) => {
-            gradient.addColorStop(i / Math.max(chartData.length-1,1), p >= 70 ? '#2ec4a0' : '#e07080');
+            gradient.addColorStop(i / Math.max(chartData.length-1,1), p >= 70 ? _cssVar('--teal') : _cssVar('--danger'));
           });
           return gradient;
         },
@@ -2283,28 +2359,28 @@ function _drawProgressChart({ chartLabels, chartData, pointColors }) {
           callbacks: {
             label: ctx3 => `Score: ${ctx3.parsed.y}%`,
           },
-          backgroundColor: 'rgba(15,20,35,.95)',
-          borderColor: 'rgba(212,168,67,.3)',
+          backgroundColor: _cssVar('--card'),
+          borderColor: _cssVar('--bdr-gold'),
           borderWidth: 1,
-          titleColor: '#f0ece3',
-          bodyColor: '#f0ece3',
+          titleColor: _cssVar('--white'),
+          bodyColor: _cssVar('--white'),
         },
         annotation: undefined,
       },
       scales: {
         x: {
-          ticks: { color: 'rgba(240,236,227,.45)', font: { size: 11 } },
-          grid: { color: 'rgba(255,255,255,.04)' },
+          ticks: { color: _cssVar('--muted'), font: { size: 11 } },
+          grid: { color: _cssVar('--bdr') },
         },
         y: {
           min: 0, max: 100,
           ticks: {
-            color: 'rgba(240,236,227,.45)',
+            color: _cssVar('--muted'),
             font: { size: 11 },
             callback: v => v + '%',
             stepSize: 20,
           },
-          grid: { color: 'rgba(255,255,255,.04)' },
+          grid: { color: _cssVar('--bdr') },
         }
       }
     },
@@ -2317,14 +2393,14 @@ function _drawProgressChart({ chartLabels, chartData, pointColors }) {
         const y = scales.y.getPixelForValue(70);
         c.save();
         c.setLineDash([6,4]);
-        c.strokeStyle = 'rgba(212,168,67,.5)';
+        c.strokeStyle = _cssVar('--gold');
         c.lineWidth = 1.5;
         c.beginPath();
         c.moveTo(chartArea.left, y);
         c.lineTo(chartArea.right, y);
         c.stroke();
         c.setLineDash([]);
-        c.fillStyle = 'rgba(212,168,67,.7)';
+        c.fillStyle = _cssVar('--gold');
         c.font = '10px DM Sans, sans-serif';
         c.fillText('70% passing', chartArea.left + 4, y - 5);
         c.restore();
@@ -2361,7 +2437,7 @@ async function renderXPLevelTab(token) {
   } catch(e) {
     if (isStale() || cached) return;   // keep the cached view on a failed refresh
     container.innerHTML = `<div class="prog-section" style="text-align:center;padding:40px 20px;">
-      <div style="font-size:13px;color:#e07080;margin-bottom:14px;">Could not load XP data.</div>
+      <div style="font-size:13px;color:var(--danger);margin-bottom:14px;">Could not load XP data.</div>
       <button class="btn-gold" onclick="renderProgressPage()" style="font-size:13px;padding:9px 20px;">↻ Retry</button>
     </div>`;
   }
@@ -2471,10 +2547,10 @@ function _paintXPLevel(container, data, token) {
               ['Master a Question',              XP_CLIENT.MASTER_SPACED_REP,      'first mastery only'],
               ['Daily Login',                    XP_CLIENT.DAILY_LOGIN,            'once per day'],
             ].map(([label, val, note]) => `
-              <div class="prog-subj-row" style="gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.04);">
+              <div class="prog-subj-row" style="gap:10px;padding:8px 0;border-bottom:1px solid var(--bdr);">
                 <div style="flex:1;font-size:13px;color:var(--white);">${label}</div>
                 <div style="font-size:11px;color:var(--muted);">${note}</div>
-                <div style="font-family:var(--fm);font-weight:700;color:#4dd4b0;min-width:60px;text-align:right;">+${val} XP</div>
+                <div style="font-family:var(--fm);font-weight:700;color:var(--teal-l);min-width:60px;text-align:right;">+${val} XP</div>
               </div>`).join('')}
           </div>
         </div>
@@ -2873,7 +2949,7 @@ function renderSpeedDrillTab(subj, container) {
         <div style="font-size:12px;color:var(--muted);line-height:1.65;margin-bottom:18px;padding:10px 12px;background:rgba(255,255,255,.03);border-radius:8px;border-left:3px solid rgba(139,92,246,.4);">
           Same scoring rules as Mock Bar (0–10 pts per question). Timer turns red with 60 seconds remaining. When time runs out, your answer is auto-submitted.
         </div>
-        <div id="sdStartError" style="display:none;margin-bottom:12px;padding:10px 14px;background:rgba(224,112,128,.12);border:1px solid rgba(224,112,128,.35);border-radius:10px;color:#e07080;font-size:13px;"></div>
+        <div id="sdStartError" style="display:none;margin-bottom:12px;padding:10px 14px;background:rgba(224,112,128,.12);border:1px solid rgba(224,112,128,.35);border-radius:10px;color:var(--danger);font-size:13px;"></div>
         <button id="sdStartBtn" onclick="startSubjectSpeedDrill('${subj}')"
           style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px;padding:14px;font-family:var(--fd);font-size:15px;font-weight:700;color:#fff;background:linear-gradient(135deg,#6a3de8,#8b5cf6);border:none;border-radius:11px;cursor:pointer;box-shadow:0 4px 18px rgba(106,61,232,.4);transition:opacity .2s;">
           ⚡ Start ${subjName} Speed Drill
@@ -3015,7 +3091,7 @@ function paintFlashcardsTabFromBundle(subj) {
     <div class="fc-study-card" style="background:var(--card);border:1px solid var(--bdr2);border-radius:14px;padding:22px;margin-bottom:16px;">
       <div style="display:flex;gap:24px;flex-wrap:wrap;margin-bottom:14px;">
         <div class="fc-stat">
-          <div class="fc-stat-num" style="color:#2ec4a0;">${done}</div>
+          <div class="fc-stat-num" style="color:var(--teal);">${done}</div>
           <div class="fc-stat-label">Done</div>
         </div>
         <div class="fc-stat">
@@ -3703,7 +3779,7 @@ function _fcPaintDoneState() {
 
   const isDone = isFlashcardDone(card);
   const badge = FC_TYPE_BADGES[card.card_type] || card.card_type || '';
-  const badgeHtml = h(badge) + (isDone ? '<span style="color:#2ec4a0;margin-left:6px;">✓ Done</span>' : '');
+  const badgeHtml = h(badge) + (isDone ? '<span style="color:var(--teal);margin-left:6px;">✓ Done</span>' : '');
 
   _fcEls.frontBadge.innerHTML = badgeHtml;
   _fcEls.backBadge.innerHTML = badgeHtml;
@@ -3858,7 +3934,7 @@ function renderFlashcardSessionSummary() {
 
       <div class="fc-summary-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;max-width:520px;margin:0 auto 24px;">
         <div class="fc-summary-stat" style="background:rgba(46,196,160,.08);border:1px solid rgba(46,196,160,.2);border-radius:10px;padding:14px;">
-          <div style="font-size:28px;font-weight:700;color:#2ec4a0;">${doneInSession}</div>
+          <div style="font-size:28px;font-weight:700;color:var(--teal);">${doneInSession}</div>
           <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;">Marked Done</div>
         </div>
         <div class="fc-summary-stat" style="background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.2);border-radius:10px;padding:14px;">
@@ -4909,7 +4985,7 @@ function renderLesson(data, topicName, subjKey, source) {
   const lpContent = document.getElementById('lpContent');
   if (!lpContent) return; // tab no longer active (async race)
   const pages = data.lesson?.pages;
-  if (!pages?.length) { lpContent.innerHTML=`<div style="padding:30px;text-align:center;color:#e07080;">⚠️ No lesson content found. Try regenerating.</div>`; return; }
+  if (!pages?.length) { lpContent.innerHTML=`<div style="padding:30px;text-align:center;color:var(--danger);">⚠️ No lesson content found. Try regenerating.</div>`; return; }
   const page = pages[curPage], total=pages.length;
   const sub=SUBJS.find(s=>s.key===subjKey)||{cls:'sg-gen',name:subjKey};
   const hasRef=KB.references?.some(r=>r.subject===subjKey);
@@ -4976,7 +5052,7 @@ Respond ONLY with valid JSON (no markdown):
     renderSyllabusTree(document.getElementById('topicSearch')?.value||'');
     renderLesson(data,topicName,subjKey,'generated');
   }catch(err){
-    if(lpContent())lpContent().innerHTML=`<div style="padding:36px;text-align:center;color:#e07080;"><div style="font-size:36px;margin-bottom:10px;">⚠️</div><p style="margin-bottom:14px;">${h(err.message)}</p><button class="btn-gold" onclick="genOnDemand('${subjKey}','${h(topicName)}')">Retry</button></div>`;
+    if(lpContent())lpContent().innerHTML=`<div style="padding:36px;text-align:center;color:var(--danger);"><div style="font-size:36px;margin-bottom:10px;">⚠️</div><p style="margin-bottom:14px;">${h(err.message)}</p><button class="btn-gold" onclick="genOnDemand('${subjKey}','${h(topicName)}')">Retry</button></div>`;
   }
 }
 
@@ -5338,7 +5414,7 @@ function renderQuizQ(){
 function evalFormatBadge(format){
   const isSit=format==='essay'||format==='situational'||format==='alac';
   const [label,color,bg]=isSit
-    ?['📝 ALAC Scoring','#ff8c42','rgba(255,140,66,.12)']
+    ?['📝 ALAC Scoring','var(--warn)','rgba(255,140,66,.12)']
     :['💡 Conceptual Scoring','#c9a84c','rgba(201,168,76,.12)'];
   return `<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;background:${bg};color:${color};letter-spacing:.04em;margin-right:6px;">${label}</span>`;
 }
@@ -5348,7 +5424,7 @@ function renderErrorCard(ev){
   const retryBtn=idx>=0
     ?`<button onclick="retryEvaluation(${idx})" style="background:rgba(201,168,76,.2);border:1px solid rgba(201,168,76,.4);color:#c9a84c;border-radius:6px;padding:3px 11px;font-size:12px;font-weight:700;cursor:pointer;margin-left:8px;">↺ Retry</button>`
     :'';
-  return `<div class="ai-fb-head" style="color:#e07080;flex-wrap:wrap;gap:8px;">⚠️ Evaluation unavailable.${retryBtn}<div style="font-size:11px;color:var(--muted);width:100%;margin-top:2px;">${h(ev.overallFeedback||'Click Retry to re-evaluate.')}</div></div>`;
+  return `<div class="ai-fb-head" style="color:var(--danger);flex-wrap:wrap;gap:8px;">⚠️ Evaluation unavailable.${retryBtn}<div style="font-size:11px;color:var(--muted);width:100%;margin-top:2px;">${h(ev.overallFeedback||'Click Retry to re-evaluate.')}</div></div>`;
 }
 // ── Writing & Mechanics card (non-scoring, shared by ALAC + conceptual) ──
 function renderWritingFeedback(ev){
@@ -5375,7 +5451,7 @@ function renderEvalCard(ev){
 }
 // ── Conceptual card ────────────────────────────────────────
 function renderDefCard(ev){
-  const gc=ev.grade==='Excellent'?'#14b4a0':ev.grade==='Good'?'#50d090':ev.grade==='Satisfactory'?'#c9a84c':ev.grade==='Needs Improvement'?'#e09050':'#e07080';
+  const gc=ev.grade==='Excellent'?'var(--teal-d)':ev.grade==='Good'?'#50d090':ev.grade==='Satisfactory'?'#c9a84c':ev.grade==='Needs Improvement'?'#e09050':'var(--danger)';
   const bd=ev.breakdown||{};
   // Normalise fields the AI sometimes nests inside breakdown instead of top-level
   const overallFeedback=ev.overallFeedback||(typeof bd.overallFeedback==='string'?bd.overallFeedback:'')||'';
@@ -5446,7 +5522,7 @@ function renderALACSections(components, headerLabel){
   if(!components) return '';
   const DEFS=[
     {field:'answer',      label:'A — Answer',      color:'#4a9eff', icon:'⚖️'},
-    {field:'legalBasis',  label:'L — Legal Basis',  color:'#f0c040', icon:'📜'},
+    {field:'legalBasis',  label:'L — Legal Basis',  color:'var(--amber)', icon:'📜'},
     {field:'application', label:'A — Application',  color:'#4caf50', icon:'🔍'},
     {field:'conclusion',  label:'C — Conclusion',   color:'#ff9800', icon:'✅'},
   ];
@@ -5533,7 +5609,7 @@ function renderModelAnswer(evaluation, questionType){
   return altBanner + `<div class="plain-model-answer">${h(text)}</div>`;
 }
 function renderAlacCard(ev){
-  const gc=ev.grade==='Excellent'?'#14b4a0':ev.grade==='Good'?'#50d090':ev.grade==='Satisfactory'?'#c9a84c':ev.grade==='Needs Improvement'?'#e09050':'#e07080';
+  const gc=ev.grade==='Excellent'?'var(--teal-d)':ev.grade==='Good'?'#50d090':ev.grade==='Satisfactory'?'#c9a84c':ev.grade==='Needs Improvement'?'#e09050':'var(--danger)';
   const al=ev.alac||{};
   const rows=[
     ['A — Answer',      'answer',      al.answer,      1.5],
@@ -5595,7 +5671,7 @@ async function submitEssay(){
   }
   if(lastErr){
     console.error('[submitEssay] all 3 retries failed:',lastErr.message);
-    fb.innerHTML=`<div class="ai-fb-head" style="color:#e07080;flex-wrap:wrap;gap:8px;">⚠️ Evaluation unavailable. <button onclick="submitEssay()" style="background:rgba(201,168,76,.2);border:1px solid rgba(201,168,76,.4);color:#c9a84c;border-radius:6px;padding:3px 11px;font-size:12px;font-weight:700;cursor:pointer;">↺ Click to retry</button><div style="font-size:11px;color:var(--muted);width:100%;margin-top:2px;">${h(lastErr.message)}</div></div>`;
+    fb.innerHTML=`<div class="ai-fb-head" style="color:var(--danger);flex-wrap:wrap;gap:8px;">⚠️ Evaluation unavailable. <button onclick="submitEssay()" style="background:rgba(201,168,76,.2);border:1px solid rgba(201,168,76,.4);color:#c9a84c;border-radius:6px;padding:3px 11px;font-size:12px;font-weight:700;cursor:pointer;">↺ Click to retry</button><div style="font-size:11px;color:var(--muted);width:100%;margin-top:2px;">${h(lastErr.message)}</div></div>`;
   }
   btn.disabled=false;btn.textContent='🤖 Get AI Feedback';
 }
@@ -5645,7 +5721,7 @@ function recomputeResultsDisplay(idx,ev){
   // Update percentage/verdict line
   const pctEl=document.getElementById('mock-pct-display');
   if(pctEl){
-    pctEl.style.color=pct>=70?'#14b4a0':pct>=55?'#c9a84c':'#e07080';
+    pctEl.style.color=pct>=70?'var(--teal-d)':pct>=55?'#c9a84c':'var(--danger)';
     pctEl.textContent=pct+'% — '+(pct>=70?'✅ PASSED':pct>=55?'📖 Keep Studying':'❌ Needs More Review');
   }
   // Update percentage stat card
@@ -6366,9 +6442,9 @@ async function endMockSession(){
     res.innerHTML=`<div class="mock-results">
     ${currentUser?`<div style="background:rgba(201,168,76,.07);border:1px solid rgba(201,168,76,.18);border-radius:9px;padding:8px 14px;margin-bottom:14px;text-align:left;"><div class="result-user">👤 ${h(currentUser.name)}</div><div style="font-size:11px;color:var(--muted);">${new Date().toLocaleDateString('en-PH',{timeZone:'Asia/Manila'})}</div></div>`:''}
     <div style="font-size:32px;margin-bottom:8px;">🏛</div>
-    <div style="font-family:var(--fd);font-size:20px;font-weight:700;color:#ff8c42;margin-bottom:4px;">Mock Bar Results</div>
+    <div style="font-family:var(--fd);font-size:20px;font-weight:700;color:var(--warn);margin-bottom:4px;">Mock Bar Results</div>
     <div class="mr-grade"><span class="score-fraction">${fmt(rawScore)}/${maxScore}</span></div>
-    <div id="mock-pct-display" style="font-size:16px;font-weight:700;color:${pct>=70?'#14b4a0':pct>=55?'#c9a84c':'#e07080'};margin-bottom:4px;">${pct}% — ${pct>=70?'✅ PASSED':pct>=55?'📖 Keep Studying':'❌ Needs More Review'}</div>
+    <div id="mock-pct-display" style="font-size:16px;font-weight:700;color:${pct>=70?'var(--teal-d)':pct>=55?'#c9a84c':'var(--danger)'};margin-bottom:4px;">${pct}% — ${pct>=70?'✅ PASSED':pct>=55?'📖 Keep Studying':'❌ Needs More Review'}</div>
     <div style="font-size:12px;color:var(--muted);font-family:var(--fm);margin-bottom:18px;">Passing score: 70% (${Math.ceil(maxScore*0.7)} / ${maxScore} points)</div>
     <div class="mr-stats">
       <div class="mr-stat"><div class="n"><span class="score-fraction">${fmt(rawScore)}/${maxScore}</span></div><div class="l">Score</div></div>
@@ -6454,7 +6530,7 @@ function removeManualQ(i){
 }
 function addManualQ(){
   const qText=document.getElementById('mn-q').value.trim();
-  if(!qText){document.getElementById('mn-q').focus();document.getElementById('mn-status').innerHTML='<div style="color:#e07080;font-size:12px;padding:4px 0;">⚠️ Enter the question text first.</div>';return;}
+  if(!qText){document.getElementById('mn-q').focus();document.getElementById('mn-status').innerHTML='<div style="color:var(--danger);font-size:12px;padding:4px 0;">⚠️ Enter the question text first.</div>';return;}
   const type=document.querySelector('input[name="mn-type"]:checked')?.value||'situational';
   const context=type==='situational'?document.getElementById('mn-context').value.trim():'';
   const rawPoints=document.getElementById('mn-points').value.trim();
@@ -6485,9 +6561,9 @@ function onMnSubjectChange(val) {
 }
 
 async function saveManualBatch(){
-  if(!manualBatch.length){document.getElementById('mn-status').innerHTML='<div style="color:#e07080;font-size:12px;padding:4px 0;">⚠️ Add at least one question first.</div>';return;}
+  if(!manualBatch.length){document.getElementById('mn-status').innerHTML='<div style="color:var(--danger);font-size:12px;padding:4px 0;">⚠️ Add at least one question first.</div>';return;}
   const name=document.getElementById('mn-name').value.trim();
-  if(!name){document.getElementById('mn-name').focus();document.getElementById('mn-status').innerHTML='<div style="color:#e07080;font-size:12px;padding:4px 0;">⚠️ Enter a batch name.</div>';return;}
+  if(!name){document.getElementById('mn-name').focus();document.getElementById('mn-status').innerHTML='<div style="color:var(--danger);font-size:12px;padding:4px 0;">⚠️ Enter a batch name.</div>';return;}
   const subject=document.getElementById('mn-subject').value;
   const year=document.getElementById('mn-year').value.trim();
   const sta=document.getElementById('mn-status');
@@ -6502,7 +6578,7 @@ async function saveManualBatch(){
     document.getElementById('mn-name').value='';
     updateManualPreview();
     await loadKB();refreshAdminKB();renderPastBarList();
-  }catch(e){sta.innerHTML=`<div style="color:#e07080;font-size:12px;padding:4px 0;">⚠️ ${h(e.message)}</div>`;}
+  }catch(e){sta.innerHTML=`<div style="color:var(--danger);font-size:12px;padding:4px 0;">⚠️ ${h(e.message)}</div>`;}
 }
 
 function renderPastBarList(){
@@ -6741,20 +6817,20 @@ async function sendEmailResults(){
   const subject=document.getElementById('email-subject').value.trim();
   const sta=document.getElementById('email-status');
   const btn=document.getElementById('emailSendBtn');
-  if(!to){sta.style.display='block';sta.style.background='rgba(155,35,53,.15)';sta.style.color='#e07080';sta.textContent='⚠️ Enter an email address.';return;}
+  if(!to){sta.style.display='block';sta.style.background='rgba(155,35,53,.15)';sta.style.color='var(--danger)';sta.textContent='⚠️ Enter an email address.';return;}
   btn.disabled=true;btn.textContent='⏳ Sending…';
   sta.style.display='block';sta.style.background='rgba(201,168,76,.1)';sta.style.color='var(--gold-l)';sta.textContent='Sending…';
   try{
     const r=await fetch('/api/email-results',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({to,subject,htmlBody:buildResultsHtml()})});
     const d=await r.json();
     if(d.error){
-      sta.style.background='rgba(155,35,53,.15)';sta.style.color='#e07080';
+      sta.style.background='rgba(155,35,53,.15)';sta.style.color='var(--danger)';
       sta.innerHTML=`⚠️ ${h(d.error)}${d.error.includes('not configured')?'<br><small style="display:block;margin-top:5px;opacity:.8;">Go to Railway → Variables → add EMAIL_USER and EMAIL_PASS (Gmail app password).</small>':''}`;
     }else{
       sta.style.background='rgba(20,180,160,.1)';sta.style.color='var(--teal)';
       sta.textContent=`✅ Results sent to ${to}`;
     }
-  }catch(err){sta.style.background='rgba(155,35,53,.15)';sta.style.color='#e07080';sta.textContent='⚠️ '+err.message;}
+  }catch(err){sta.style.background='rgba(155,35,53,.15)';sta.style.color='var(--danger)';sta.textContent='⚠️ '+err.message;}
   btn.disabled=false;btn.textContent='📧 Send Results';
 }
 
@@ -7142,7 +7218,7 @@ async function readFile(input,targetId){
       document.getElementById(targetId).value=d.text;
       if(sta)sta.innerHTML=`<div style="color:var(--teal);font-size:12px;padding:4px 8px;">✓ Extracted ${d.text.length.toLocaleString()} characters from ${h(f.name)}</div>`;
     }catch(e){
-      if(sta)sta.innerHTML=`<div style="color:#e07080;font-size:13px;padding:8px;">⚠️ ${h(e.message)}</div>`;
+      if(sta)sta.innerHTML=`<div style="color:var(--danger);font-size:13px;padding:8px;">⚠️ ${h(e.message)}</div>`;
     }
   }else{
     const r=new FileReader();r.onload=e=>document.getElementById(targetId).value=e.target.result;r.readAsText(f);
@@ -7181,7 +7257,7 @@ async function uploadSyllabus(){
       const staEl=document.getElementById('syl-status');
       let msg=h(r.error);
       if(r.raw){msg+=`<br><br><span style="color:rgba(248,246,241,.4);font-size:11px;">Claude returned: &ldquo;${h(r.raw)}&hellip;&rdquo;</span><br><span style="color:rgba(248,246,241,.4);font-size:11px;">Tip: Try uploading again. If this keeps happening, try breaking the syllabus into smaller sections by subject.</span>`;}
-      staEl.innerHTML=`<div style="color:#e07080;font-size:13px;line-height:1.7;padding:12px;background:rgba(155,35,53,.1);border:1px solid rgba(155,35,53,.3);border-radius:10px;">⚠️ ${msg}</div>`;
+      staEl.innerHTML=`<div style="color:var(--danger);font-size:13px;line-height:1.7;padding:12px;background:rgba(155,35,53,.1);border:1px solid rgba(155,35,53,.3);border-radius:10px;">⚠️ ${msg}</div>`;
       return;
     }
     // Reset dropdown for next upload
@@ -7191,7 +7267,7 @@ async function uploadSyllabus(){
     const bdEl=document.getElementById('syl-breakdown');
     if(r.parseMethod==='subject-override'){
       // Single-subject confirmation card
-      document.getElementById('syl-status').innerHTML=`<div style="background:rgba(20,180,160,.1);border:1px solid rgba(20,180,160,.3);border-radius:12px;padding:16px;"><div style="font-family:var(--fd);font-size:16px;font-weight:700;color:#14b4a0;margin-bottom:8px;">✅ ${h(r.breakdown[0].name)} syllabus saved</div><div style="font-size:13px;color:rgba(248,246,241,.7);">${r.totalTopics} topics loaded · Pre-generation queued</div></div>`;
+      document.getElementById('syl-status').innerHTML=`<div style="background:rgba(20,180,160,.1);border:1px solid rgba(20,180,160,.3);border-radius:12px;padding:16px;"><div style="font-family:var(--fd);font-size:16px;font-weight:700;color:var(--teal-d);margin-bottom:8px;">✅ ${h(r.breakdown[0].name)} syllabus saved</div><div style="font-size:13px;color:rgba(248,246,241,.7);">${r.totalTopics} topics loaded · Pre-generation queued</div></div>`;
       if(bdEl) bdEl.style.display='none';
     } else {
       // Multi-subject success
@@ -7199,9 +7275,9 @@ async function uploadSyllabus(){
       const _methodLabel=_methodBadge[r.parseMethod]?` &nbsp;·&nbsp; <span style="font-size:11px;opacity:.65;">${_methodBadge[r.parseMethod]}</span>`:'';
       document.getElementById('syl-status').innerHTML=`<div style="color:var(--teal);font-size:13px;padding:8px;">✅ Saved! ${r.subjects} subjects, ${r.totalTopics} topics. Pre-generating content now…${_methodLabel}</div>`;
       if(bdEl && r.breakdown?.length){
-        const clr={civil:'#4a9eff',criminal:'#e07080',political:'#50d090',labor:'#f0a040',commercial:'#a070e0',taxation:'#40c0b0',remedial:'#e0c050',ethics:'#c0a080',custom:'#8899aa'};
+        const clr={civil:'#4a9eff',criminal:'var(--danger)',political:'#50d090',labor:'#f0a040',commercial:'#a070e0',taxation:'#40c0b0',remedial:'#e0c050',ethics:'#c0a080',custom:'#8899aa'};
         const rows=r.breakdown.map(s=>`<div style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12px;"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${clr[s.key]||'#888'};flex-shrink:0;"></span><span style="flex:1;color:rgba(248,246,241,.8);">${h(s.name)}</span><span style="color:var(--muted);font-family:var(--fm);">${s.topicCount} topics</span></div>`).join('');
-        const unknownHtml=r.unknownTopics?.length?`<div style="margin-top:8px;padding:8px;background:rgba(155,35,53,.1);border-radius:6px;font-size:11px;color:#e07080;">⚠️ ${r.unknownTopics.length} unrecognized subject(s) skipped: ${r.unknownTopics.map(h).join(', ')}</div>`:'';
+        const unknownHtml=r.unknownTopics?.length?`<div style="margin-top:8px;padding:8px;background:rgba(155,35,53,.1);border-radius:6px;font-size:11px;color:var(--danger);">⚠️ ${r.unknownTopics.length} unrecognized subject(s) skipped: ${r.unknownTopics.map(h).join(', ')}</div>`:'';
         let warningsHtml='';
         if(r.warnings?.length){
           const items=r.warnings.map(w=>`<div class="sw-item">⚠ <strong>${h(w.topic)}</strong> is under <em>${h(w.assignedTo)}</em> but keywords suggest <em>${h(w.possiblyBelongsTo)}</em> (matched: ${w.matchedKeywords.map(h).join(', ')})</div>`).join('');
@@ -7214,7 +7290,7 @@ async function uploadSyllabus(){
     document.getElementById('adminGenPanel').style.display='block';
     document.getElementById('adminGenDone').style.display='none';
     await loadKB();updateSyllabusStatus();renderSyllabusTree();refreshSidebarDots();
-  }catch(e){document.getElementById('syl-status').innerHTML=`<div style="color:#e07080;font-size:13px;padding:8px;">⚠️ ${h(e.message)}</div>`;}
+  }catch(e){document.getElementById('syl-status').innerHTML=`<div style="color:var(--danger);font-size:13px;padding:8px;">⚠️ ${h(e.message)}</div>`;}
 }
 function showRefGeneralWarning(val) {
   const el = document.getElementById('refGeneralWarning');
@@ -7239,12 +7315,12 @@ async function uploadReference(){
     sta.innerHTML=`<div style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--gold-l);padding:10px;">${spin}⏳ Saved "${h(r.name)}" — summarising in background…</div>`;
     pollJob(r.jobId,sta,(err)=>{
       if(err){
-        sta.innerHTML=`<div style="color:#ff8c42;font-size:13px;padding:8px;">⚠️ Saved "${h(r.name)}" but summarisation failed: ${h(err)}</div>`;
+        sta.innerHTML=`<div style="color:var(--warn);font-size:13px;padding:8px;">⚠️ Saved "${h(r.name)}" but summarisation failed: ${h(err)}</div>`;
       }else{
         sta.innerHTML=`<div style="color:var(--teal);font-size:13px;padding:8px;">✅ "${h(r.name)}" saved and summarised. Re-generating ${h(subject)} content…</div>`;
       }
     });
-  }catch(e){sta.innerHTML=`<div style="color:#e07080;font-size:13px;padding:8px;">⚠️ ${h(e.message)}</div>`;}
+  }catch(e){sta.innerHTML=`<div style="color:var(--danger);font-size:13px;padding:8px;">⚠️ ${h(e.message)}</div>`;}
 }
 async function uploadPastBar(){
   const name=document.getElementById('pb-name').value.trim();
@@ -7253,7 +7329,7 @@ async function uploadPastBar(){
   const year=document.getElementById('pb-year').value.trim();
   const sta=document.getElementById('pb-status');
   if(!name||!content){
-    sta.innerHTML=`<div style="color:#e07080;font-size:13px;padding:8px;">⚠️ Enter a name and paste or upload content first.</div>`;
+    sta.innerHTML=`<div style="color:var(--danger);font-size:13px;padding:8px;">⚠️ Enter a name and paste or upload content first.</div>`;
     return;
   }
   const spin=`<div class="spin" style="width:14px;height:14px;border-width:2px;flex-shrink:0;"></div>`;
@@ -7268,15 +7344,15 @@ async function uploadPastBar(){
     sta.innerHTML=`<div style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--gold-l);padding:10px;">${spin}⏳ Saved "${h(d.name)}" — extracting questions…</div>`;
     pollJob(d.jobId,sta,(err,result)=>{
       if(err){
-        sta.innerHTML=`<div style="color:#ff8c42;font-size:13px;padding:8px;">⚠️ Saved "${h(d.name)}" but extraction failed: ${h(err)}</div>`;
+        sta.innerHTML=`<div style="color:var(--warn);font-size:13px;padding:8px;">⚠️ Saved "${h(d.name)}" but extraction failed: ${h(err)}</div>`;
       }else if(!result?.questionsExtracted){
-        sta.innerHTML=`<div style="color:#ff8c42;font-size:13px;padding:8px;">⚠️ Saved "${h(d.name)}" but 0 questions were extracted. Try pasting as plain text.</div>`;
+        sta.innerHTML=`<div style="color:var(--warn);font-size:13px;padding:8px;">⚠️ Saved "${h(d.name)}" but 0 questions were extracted. Try pasting as plain text.</div>`;
       }else{
         sta.innerHTML=`<div style="color:var(--teal);font-size:13px;padding:8px;">✅ "${h(d.name)}" — ${result.questionsExtracted} questions extracted.</div>`;
       }
       loadKB();refreshAdminKB();renderPastBarList();refreshSidebarDots();
     });
-  }catch(e){sta.innerHTML=`<div style="color:#e07080;font-size:13px;padding:8px;">⚠️ ${h(e.message)}</div>`;}
+  }catch(e){sta.innerHTML=`<div style="color:var(--danger);font-size:13px;padding:8px;">⚠️ ${h(e.message)}</div>`;}
 }
 // Generic job poller — polls /api/job/:jobId every 8s
 // onDone(errorMsg|null, result|null)
@@ -7372,7 +7448,7 @@ async function loadStorageInfo(){
     const d=await r.json();
     const kb=d.files['kb.json'],ct=d.files['content.json'];
     const fmt=b=>b>=1024*1024?(b/1024/1024).toFixed(1)+'MB':b>=1024?(b/1024).toFixed(1)+'KB':b+'B';
-    const persistColor=d.persistent?'#14b4a0':'#e09050';
+    const persistColor=d.persistent?'var(--teal-d)':'#e09050';
     const persistLabel=d.persistent?'✅ Persistent (Railway Volume)':'⚠️ Ephemeral — data lost on redeploy';
     el.innerHTML=`<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
       <span style="color:${persistColor};font-weight:600;">${persistLabel}</span>
@@ -8033,14 +8109,14 @@ async function loadAdminUsers({ search = '' } = {}) {
     if (pending.length) {
       resetHtml = `
         <div style="background:rgba(155,35,53,.08);border:1px solid rgba(155,35,53,.3);border-radius:12px;padding:14px 16px;margin-bottom:16px;">
-          <div style="font-weight:700;font-size:14px;color:#e07080;margin-bottom:10px;">🔑 Password Reset Requests <span style="background:rgba(155,35,53,.25);color:#e07080;border-radius:5px;padding:1px 7px;font-size:11px;">${pending.length}</span></div>
+          <div style="font-weight:700;font-size:14px;color:var(--danger);margin-bottom:10px;">🔑 Password Reset Requests <span style="background:rgba(155,35,53,.25);color:var(--danger);border-radius:5px;padding:1px 7px;font-size:11px;">${pending.length}</span></div>
           ${pending.map(req => `<div class="kb-list-item" style="flex-wrap:wrap;gap:8px;align-items:center;">
             <div style="flex:1;min-width:140px;">
               <div class="kl-name">${h(req.name)}</div>
               <div class="kl-sub">${h(req.email)} &nbsp;·&nbsp; ${timeAgo(req.requestedAt)}</div>
             </div>
             <input type="password" id="newpw_${req.id}" class="form-input" placeholder="New password" style="width:160px;padding:7px 10px;font-size:12px;margin:0;">
-            <button onclick="adminResetPassword('${req.userId}','${req.id}','newpw_${req.id}')" class="kl-del" style="color:#14b4a0;background:rgba(20,180,160,.1);white-space:nowrap;">✓ Set Password</button>
+            <button onclick="adminResetPassword('${req.userId}','${req.id}','newpw_${req.id}')" class="kl-del" style="color:var(--teal-d);background:rgba(20,180,160,.1);white-space:nowrap;">✓ Set Password</button>
             <button onclick="dismissResetRequest('${req.id}')" class="kl-del" style="white-space:nowrap;">✕ Dismiss</button>
           </div>`).join('')}
         </div>`;
@@ -8064,7 +8140,7 @@ async function loadAdminUsers({ search = '' } = {}) {
         <button class="ur-act view" onclick="event.stopPropagation();openUserManagePanel('${u.id}')" style="white-space:nowrap;">Manage →</button>
       </div>`;
     }).join('') + (search ? '' : `<div style="font-size:11px;color:var(--muted);text-align:center;margin-top:10px;">Showing ${users.length} most recent user${users.length===1?'':'s'} · Search to find specific users</div>`);
-  } catch(e) { el.innerHTML = '<div style="font-size:12px;color:#e07080;">Failed to load users.</div>'; }
+  } catch(e) { el.innerHTML = '<div style="font-size:12px;color:var(--danger);">Failed to load users.</div>'; }
 }
 
 function openUserManagePanel(userId) {
@@ -8250,7 +8326,7 @@ async function loadAdminResults(reset = true) {
       }
     }
   } catch(e) {
-    el.innerHTML = '<div style="font-size:12px;color:#e07080;">Failed to load results.</div>';
+    el.innerHTML = '<div style="font-size:12px;color:var(--danger);">Failed to load results.</div>';
     if (footer) footer.innerHTML = '';
   }
 }
@@ -8277,7 +8353,7 @@ async function loadAdminSources() {
         </button>
       </div>`;
     }).join('');
-  } catch(e) { el.innerHTML = `<div style="font-size:12px;color:#e07080;">Failed to load sources: ${e.message}</div>`; }
+  } catch(e) { el.innerHTML = `<div style="font-size:12px;color:var(--danger);">Failed to load sources: ${e.message}</div>`; }
 }
 
 async function toggleBatchSource(id, enable) {
@@ -8368,7 +8444,7 @@ async function loadAdminQuestions(reset = true) {
       }
     }
   } catch(e) {
-    el.innerHTML = `<div style="font-size:12px;color:#e07080;">Failed to load questions: ${h(e.message)}</div>`;
+    el.innerHTML = `<div style="font-size:12px;color:var(--danger);">Failed to load questions: ${h(e.message)}</div>`;
   }
 }
 
@@ -8486,7 +8562,7 @@ async function loadSyllabusBuilder() {
     renderSyllabusBuilder();
   } catch(e) {
     const c = document.getElementById('syllabus-builder-container');
-    if (c) c.innerHTML = `<div style="color:#e07080;font-size:12px;padding:16px;">Failed to load syllabus.</div>`;
+    if (c) c.innerHTML = `<div style="color:var(--danger);font-size:12px;padding:16px;">Failed to load syllabus.</div>`;
   }
 }
 
@@ -8694,7 +8770,7 @@ async function uploadPDF(nodeId, input) {
       setTimeout(async () => { document.querySelector('.sb-modal-overlay')?.remove(); await loadSyllabusBuilder(); }, 900);
     } else { throw new Error(d.error || 'Upload failed'); }
   } catch(e) {
-    if (statusEl) { statusEl.textContent = '❌ ' + e.message; statusEl.style.color = '#e07080'; }
+    if (statusEl) { statusEl.textContent = '❌ ' + e.message; statusEl.style.color = 'var(--danger)'; }
   }
 }
 
@@ -8768,7 +8844,7 @@ function getUserAccessSummary(u) {
   });
   if (s.overview === false) restrictions++;
   if (!restrictions) return '';
-  return `<span style="font-size:10px;background:rgba(155,35,53,.18);color:#e07080;border-radius:4px;padding:1px 7px;margin-left:7px;font-weight:600;">${restrictions} restricted</span>`;
+  return `<span style="font-size:10px;background:rgba(155,35,53,.18);color:var(--danger);border-radius:4px;padding:1px 7px;margin-left:7px;font-weight:600;">${restrictions} restricted</span>`;
 }
 
 async function openUserAccessModal(userId, userName) {
@@ -8786,7 +8862,7 @@ async function openUserAccessModal(userId, userName) {
     pendingUserTabSettings = d.tabSettings || getDefaultUserTabSettings();
     renderUserAccessGrid();
   } catch(e) {
-    document.getElementById('userAccessGrid').innerHTML = '<div style="color:#e07080;font-size:12px;">Failed to load settings.</div>';
+    document.getElementById('userAccessGrid').innerHTML = '<div style="color:var(--danger);font-size:12px;">Failed to load settings.</div>';
   }
 }
 
@@ -8948,7 +9024,7 @@ async function loadImproveItems(reset = true) {
       }
     }
   } catch(e) {
-    if (tbody) tbody.innerHTML = `<tr><td colspan="5" style="padding:16px;color:#e07080;">Failed to load: ${h(e.message)}</td></tr>`;
+    if (tbody) tbody.innerHTML = `<tr><td colspan="5" style="padding:16px;color:var(--danger);">Failed to load: ${h(e.message)}</td></tr>`;
     if (footer) footer.innerHTML = '';
   }
 }
@@ -9313,13 +9389,13 @@ function showSubmitConfirmModal(onConfirm) {
   <div style="position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:10001;display:flex;align-items:center;justify-content:center;padding:20px;">
     <div style="background:#0f1923;border:1px solid rgba(201,168,76,0.3);border-radius:16px;padding:32px;max-width:400px;width:90%;text-align:center;">
       <div style="font-size:32px;margin-bottom:16px;">⚖️</div>
-      <h3 style="color:#f0c040;margin:0 0 12px;font-size:18px;">${title}</h3>
+      <h3 style="color:var(--amber);margin:0 0 12px;font-size:18px;">${title}</h3>
       <p style="color:#e0dcd4;margin:0 0 8px;font-size:14px;">✅ Answered: ${answered}/${total} question${total!==1?'s':''}</p>
       ${unanswered > 0 ? `<p style="color:#ff9800;font-size:13px;margin:0 0 16px;">⚠️ ${unanswered} unanswered — will be scored 0</p>` : '<div style="margin-bottom:16px;"></div>'}
       <p style="color:#888;font-size:12px;margin:0 0 24px;">This action cannot be undone.</p>
       <div style="display:flex;gap:12px;justify-content:center;">
         <button onclick="document.getElementById('submit-confirm-modal')?.remove();" style="flex:1;padding:12px 20px;border-radius:10px;border:1px solid rgba(255,255,255,0.2);background:transparent;color:#ccd;cursor:pointer;font-size:14px;">Cancel</button>
-        <button id="confirmSubmitYes" style="flex:1;padding:12px 20px;border-radius:10px;border:none;background:linear-gradient(135deg,#f0c040,#d4a017);color:#1a1200;cursor:pointer;font-size:14px;font-weight:bold;">Yes, Submit</button>
+        <button id="confirmSubmitYes" style="flex:1;padding:12px 20px;border-radius:10px;border:none;background:linear-gradient(135deg,var(--amber),#d4a017);color:#1a1200;cursor:pointer;font-size:14px;font-weight:bold;">Yes, Submit</button>
       </div>
     </div>
   </div>`;
@@ -9336,7 +9412,7 @@ function checkFlaggedBeforeSubmit() {
   modal.innerHTML = `
   <div style="position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:10000;display:flex;align-items:center;justify-content:center;padding:20px;">
     <div style="background:#0f1923;border:1px solid #2a3347;border-radius:16px;padding:28px;max-width:480px;width:100%;max-height:80vh;overflow-y:auto;">
-      <h3 style="color:#f0c040;font-size:1.2rem;margin:0 0 6px;">🚩 Flagged Questions</h3>
+      <h3 style="color:var(--amber);font-size:1.2rem;margin:0 0 6px;">🚩 Flagged Questions</h3>
       <p style="color:#888;font-size:0.85rem;margin:0 0 20px;">You flagged ${flagged.size} question${flagged.size>1?'s':''} for review. Jump to any before submitting.</p>
       <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:24px;">
         ${flaggedList.map(idx => {
@@ -9354,7 +9430,7 @@ function checkFlaggedBeforeSubmit() {
         }).join('')}
       </div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;">
-        <button onclick="document.getElementById('flagged-review-modal')?.remove();showSubmitConfirmModal(()=>endMockSession());" style="flex:1;padding:12px;background:linear-gradient(135deg,#f0c040,#d4a017);color:#1a1200;border:none;border-radius:10px;font-weight:700;cursor:pointer;font-size:0.9rem;">Submit Anyway</button>
+        <button onclick="document.getElementById('flagged-review-modal')?.remove();showSubmitConfirmModal(()=>endMockSession());" style="flex:1;padding:12px;background:linear-gradient(135deg,var(--amber),#d4a017);color:#1a1200;border:none;border-radius:10px;font-weight:700;cursor:pointer;font-size:0.9rem;">Submit Anyway</button>
         <button onclick="document.getElementById('flagged-review-modal')?.remove();" style="flex:1;padding:12px;background:#1a2235;color:#ccd;border:1px solid #2a3347;border-radius:10px;font-weight:600;cursor:pointer;font-size:0.9rem;">Continue Reviewing</button>
       </div>
     </div>
