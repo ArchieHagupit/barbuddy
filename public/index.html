@@ -49,14 +49,12 @@ new PerformanceObserver((list) => {
     if (collapsed) document.documentElement.classList.add('sb-collapsed');
   }catch(e){}
   /* Theme, same reasoning: set data-theme before <body> is parsed so the page
-     paints in the right palette instead of flashing dark then repainting.
-     Falls back to the OS preference when the user hasn't chosen. */
+     paints in the right palette instead of repainting after first paint.
+     Night mode is the product default — light is opt-in, and the OS
+     preference is deliberately NOT consulted. */
   try{
     var t = localStorage.getItem('bb_theme');
-    if (t !== 'light' && t !== 'dark') {
-      t = (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) ? 'light' : 'dark';
-    }
-    document.documentElement.setAttribute('data-theme', t);
+    document.documentElement.setAttribute('data-theme', t === 'light' ? 'light' : 'dark');
   }catch(e){ document.documentElement.setAttribute('data-theme','dark'); }
 })();
 </script>
@@ -76,13 +74,13 @@ new PerformanceObserver((list) => {
   <div style="
     width: 72px;
     height: 72px;
-    background: linear-gradient(135deg, #C9A84C, #f0c96e);
+    background: linear-gradient(135deg, var(--gold), #f0c96e);
     border-radius: 16px;
     display: flex;
     align-items: center;
     justify-content: center;
     margin-bottom: 20px;
-    box-shadow: 0 8px 32px rgba(201,168,76,0.3);
+    box-shadow: 0 8px 32px rgba(var(--gold-rgb),0.3);
     animation: bbPulse 1.8s ease-in-out infinite;
   ">
     <span style="font-size: 36px;">⚖️</span>
@@ -90,7 +88,7 @@ new PerformanceObserver((list) => {
   <div style="
     font-size: 28px;
     font-weight: bold;
-    color: #C9A84C;
+    color: var(--gold);
     letter-spacing: 0.05em;
     margin-bottom: 6px;
     font-family: Georgia, serif;
@@ -99,7 +97,7 @@ new PerformanceObserver((list) => {
   </div>
   <div style="
     font-size: 13px;
-    color: rgba(255,255,255,0.45);
+    color: rgba(var(--txt-rgb),.62);
     margin-bottom: 40px;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -109,7 +107,7 @@ new PerformanceObserver((list) => {
   <div style="
     width: 200px;
     height: 3px;
-    background: rgba(255,255,255,0.08);
+    background: rgba(var(--ovl),.12);
     border-radius: 2px;
     overflow: hidden;
     margin-bottom: 16px;
@@ -117,7 +115,7 @@ new PerformanceObserver((list) => {
     <div id="bb-loading-bar" style="
       height: 100%;
       width: 0%;
-      background: linear-gradient(90deg, #C9A84C, #f0c96e);
+      background: linear-gradient(90deg, var(--gold), #f0c96e);
       border-radius: 2px;
       transition: width 0.3s ease;
       animation: bbLoadBar 2s ease-in-out infinite;
@@ -125,7 +123,7 @@ new PerformanceObserver((list) => {
   </div>
   <div id="bb-loading-msg" style="
     font-size: 13px;
-    color: rgba(255,255,255,0.4);
+    color: rgba(var(--txt-rgb),.62);
     letter-spacing: 0.03em;
     transition: opacity 0.2s ease;
   ">
@@ -169,15 +167,15 @@ new PerformanceObserver((list) => {
       <div class="auth-field" style="margin-bottom:14px;">
         <label>Name</label>
         <div style="display:flex;gap:10px;">
-          <input type="text" id="regFirstName" placeholder="First name" autocomplete="given-name" style="flex:1;min-width:0;box-sizing:border-box;background:rgba(255,255,255,.05);border:1px solid var(--bdr2);border-radius:9px;padding:11px 14px;color:var(--white);font-family:var(--fb);font-size:14px;outline:none;transition:border-color .2s;" onfocus="this.style.borderColor='rgba(201,168,76,.5)'" onblur="this.style.borderColor='var(--bdr2)'">
-          <input type="text" id="regLastName"  placeholder="Last name"  autocomplete="family-name" style="flex:1;min-width:0;box-sizing:border-box;background:rgba(255,255,255,.05);border:1px solid var(--bdr2);border-radius:9px;padding:11px 14px;color:var(--white);font-family:var(--fb);font-size:14px;outline:none;transition:border-color .2s;" onfocus="this.style.borderColor='rgba(201,168,76,.5)'" onblur="this.style.borderColor='var(--bdr2)'">
+          <input type="text" id="regFirstName" placeholder="First name" autocomplete="given-name" style="flex:1;min-width:0;box-sizing:border-box;background:rgba(var(--ovl),.05);border:1px solid var(--bdr2);border-radius:9px;padding:11px 14px;color:var(--white);font-family:var(--fb);font-size:14px;outline:none;transition:border-color .2s;" onfocus="this.style.borderColor='rgba(var(--gold-rgb),.5)'" onblur="this.style.borderColor='var(--bdr2)'">
+          <input type="text" id="regLastName"  placeholder="Last name"  autocomplete="family-name" style="flex:1;min-width:0;box-sizing:border-box;background:rgba(var(--ovl),.05);border:1px solid var(--bdr2);border-radius:9px;padding:11px 14px;color:var(--white);font-family:var(--fb);font-size:14px;outline:none;transition:border-color .2s;" onfocus="this.style.borderColor='rgba(var(--gold-rgb),.5)'" onblur="this.style.borderColor='var(--bdr2)'">
         </div>
       </div>
       <div class="auth-field"><label>School / University</label><input type="text" id="regSchool" placeholder="University of the Philippines" autocomplete="organization"></div>
       <div class="auth-field"><label>Email</label><input type="email" id="regEmail" placeholder="you@email.com" autocomplete="email"></div>
       <div class="auth-field"><label>Password</label><input type="password" id="regPassword" placeholder="••••••••" autocomplete="new-password"></div>
       <div class="auth-err" id="regErr"></div>
-      <p style="font-size:0.72rem;color:#667;text-align:center;margin:0 0 14px 0;line-height:1.55;font-style:italic;">By clicking <strong style="color:#aab;">Create Account</strong>, you consent to the collection, processing, and storage of your personal data in accordance with the <strong style="color:#aab;">Data Privacy Act of 2012</strong>.</p>
+      <p style="font-size:0.72rem;color:var(--muted);text-align:center;margin:0 0 14px 0;line-height:1.55;font-style:italic;">By clicking <strong style="color:var(--text-muted);">Create Account</strong>, you consent to the collection, processing, and storage of your personal data in accordance with the <strong style="color:var(--text-muted);">Data Privacy Act of 2012</strong>.</p>
       <button class="auth-btn" id="regBtn" onclick="doRegister()">Create Account</button>
     </div>
     <!-- Forgot password form -->
@@ -188,8 +186,8 @@ new PerformanceObserver((list) => {
         <div style="font-size:13px;color:var(--muted);line-height:1.55;">Enter your email address. Your reset request will be sent to the administrator who will provide you with a new temporary password.</div>
       </div>
       <div class="auth-field"><label>Email Address</label><input type="email" id="forgotEmail" placeholder="your@email.com" onkeydown="if(event.key==='Enter')doForgotPassword()"></div>
-      <div id="forgotError" style="color:#e07080;font-size:12px;margin-bottom:10px;display:none;"></div>
-      <div id="forgotSuccess" style="display:none;background:rgba(20,180,160,.1);border:1px solid rgba(20,180,160,.3);border-radius:10px;padding:14px;margin-bottom:14px;font-size:13px;color:#14b4a0;line-height:1.6;">✅ Reset request submitted. The administrator has been notified and will contact you with a temporary password. Check back later or contact your instructor directly.</div>
+      <div id="forgotError" style="color:var(--danger);font-size:12px;margin-bottom:10px;display:none;"></div>
+      <div id="forgotSuccess" style="display:none;background:rgba(var(--teal-d-rgb),.1);border:1px solid rgba(var(--teal-d-rgb),.3);border-radius:10px;padding:14px;margin-bottom:14px;font-size:13px;color:var(--teal-d);line-height:1.6;">✅ Reset request submitted. The administrator has been notified and will contact you with a temporary password. Check back later or contact your instructor directly.</div>
       <button class="auth-btn" id="forgotBtn" onclick="doForgotPassword()" style="margin-bottom:10px;">📨 Submit Reset Request</button>
       <button onclick="showForgotPassword(false)" style="width:100%;background:none;border:none;color:var(--muted);font-size:13px;cursor:pointer;padding:8px;font-family:var(--fb);">← Back to Login</button>
     </div>
@@ -227,7 +225,7 @@ new PerformanceObserver((list) => {
     <span class="sb-ic">⚙️</span><span class="sb-lbl">Admin</span>
   </button>
 
-  <div id="accessControlBadge" class="sb-lbl" style="display:none;margin:8px 12px;padding:8px 12px;background:rgba(155,35,53,0.15);border:1px solid rgba(155,35,53,0.3);border-radius:10px;font-size:11px;color:#e07080;cursor:pointer;" onclick="scrollToTabControl()">
+  <div id="accessControlBadge" class="sb-lbl" style="display:none;margin:8px 12px;padding:8px 12px;background:rgba(var(--crim-rgb),0.15);border:1px solid rgba(var(--crim-rgb),0.3);border-radius:10px;font-size:11px;color:var(--danger);cursor:pointer;" onclick="scrollToTabControl()">
     🔒 Some sections disabled — <u>Manage access</u>
   </div>
 
@@ -348,7 +346,7 @@ new PerformanceObserver((list) => {
         <button class="mb-preset-btn" data-count="0" onclick="setMbCount(0,this)">Custom</button>
       </div>
       <input type="number" id="mbCustomCount" min="1" max="50" placeholder="Enter count…" oninput="updateMockBarPreview()"
-        style="display:none;margin-top:10px;background:rgba(255,255,255,.05);border:1px solid var(--bdr2);border-radius:9px;padding:8px 12px;color:var(--white);font-family:var(--fm);font-size:14px;outline:none;width:140px;">
+        style="display:none;margin-top:10px;background:rgba(var(--ovl),.05);border:1px solid var(--bdr2);border-radius:9px;padding:8px 12px;color:var(--white);font-family:var(--fm);font-size:14px;outline:none;width:140px;">
     </div>
 
     <!-- TIME LIMIT -->
@@ -371,7 +369,7 @@ new PerformanceObserver((list) => {
     <div class="mb-setup-card" id="mbSubjectFilterCard">
       <div class="mb-section-label">Subject Filter</div>
       <div class="mb-btn-row" id="mbSubjectTags" style="flex-wrap:wrap;gap:6px;">
-        <button class="mb-subj-tag on" data-key="all" onclick="toggleMbSubj(this)" style="background:rgba(201,168,76,.15);border-color:var(--gold);color:var(--gold-l);">✓ All</button>
+        <button class="mb-subj-tag on" data-key="all" onclick="toggleMbSubj(this)" style="background:rgba(var(--gold-rgb),.15);border-color:var(--gold);color:var(--gold-l);">✓ All</button>
         <button class="mb-subj-tag" data-key="civil"      onclick="toggleMbSubj(this)" style="--sc:var(--c-civil);">Civil</button>
         <button class="mb-subj-tag" data-key="criminal"   onclick="toggleMbSubj(this)" style="--sc:var(--c-criminal);">Criminal</button>
         <button class="mb-subj-tag" data-key="political"  onclick="toggleMbSubj(this)" style="--sc:var(--c-political);">Political</button>
@@ -404,12 +402,12 @@ new PerformanceObserver((list) => {
     </div>
 
     <!-- PREVIEW + START -->
-    <div class="mb-setup-card" style="border-color:rgba(255,140,66,.2);">
+    <div class="mb-setup-card" style="border-color:rgba(var(--warn-rgb),.2);">
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
         <button class="btn-mock" onclick="startMockBar()" id="startMockBtn">🚀 Begin Mock Bar</button>
         <div id="mockSourceStats" class="source-stats" style="display:none;"></div>
       </div>
-      <div id="mockStartError" style="display:none;margin-top:10px;padding:10px 14px;background:rgba(224,112,128,.12);border:1px solid rgba(224,112,128,.35);border-radius:10px;color:#e07080;font-size:13px;"></div>
+      <div id="mockStartError" style="display:none;margin-top:10px;padding:10px 14px;background:rgba(var(--danger-rgb),.12);border:1px solid rgba(var(--danger-rgb),.35);border-radius:10px;color:var(--danger);font-size:13px;"></div>
     </div>
 
     <!-- Past bar status card (hidden when subject-specific, since sources card shows the files) -->
@@ -423,15 +421,15 @@ new PerformanceObserver((list) => {
     <div class="ms-header">
       <div><div class="ms-q-num" id="ms-qnum">Q1</div><div class="ms-of" id="ms-of">of 20</div></div>
       <div style="flex:1;max-width:220px;padding:0 18px;">
-        <div class="pb-track" style="height:4px;"><div class="pb-fill" id="ms-prog" style="width:0%;background:linear-gradient(90deg,#d4621a,#ff8c42);"></div></div>
+        <div class="pb-track" style="height:4px;"><div class="pb-fill" id="ms-prog" style="width:0%;background:linear-gradient(90deg,#d4621a,var(--warn));"></div></div>
       </div>
       <div id="ms-src"></div>
       <div class="ms-timer" id="ms-timer" style="display:none;">⏱ <span id="timer-val"></span></div>
       <div style="display:flex;align-items:center;gap:8px;">
         <span id="exam-save-indicator" style="font-size:11px;font-family:var(--fm);color:var(--muted);opacity:0;transition:opacity .3s;">✓ Saved</span>
-        <button id="flag-btn" onclick="toggleFlagQuestion()" style="padding:5px 10px;font-size:11px;border:1px solid #2a3347;background:transparent;color:#888;border-radius:7px;cursor:pointer;display:flex;align-items:center;gap:4px;" title="Flag for review">🚩 Flag</button>
+        <button id="flag-btn" onclick="toggleFlagQuestion()" style="padding:5px 10px;font-size:11px;border:1px solid var(--bdr2);background:transparent;color:var(--muted);border-radius:7px;cursor:pointer;display:flex;align-items:center;gap:4px;" title="Flag for review">🚩 Flag</button>
         <button onclick="confirmAbandonExam()" style="padding:5px 10px;font-size:11px;border:1px solid var(--bdr);background:transparent;color:var(--muted);border-radius:7px;cursor:pointer;">Exit</button>
-        <button class="btn-og" onclick="checkFlaggedBeforeSubmit()" style="font-size:11px;border-color:rgba(255,140,66,.4);color:#ff8c42;">End &amp; Score</button>
+        <button class="btn-og" onclick="checkFlaggedBeforeSubmit()" style="font-size:11px;border-color:rgba(var(--warn-rgb),.4);color:var(--warn);">End &amp; Score</button>
       </div>
     </div>
     <div class="q-markers" id="qMarkers"></div>
@@ -471,7 +469,7 @@ new PerformanceObserver((list) => {
     <p style="font-size:13px;color:var(--muted);line-height:1.6;">Upload materials once — stored server-side, cached in your browser for speed. Uploading the syllabus automatically pre-generates all lessons and quizzes in the background.</p>
   </div>
   <div style="display:flex;gap:8px;margin-bottom:18px;align-items:center;">
-    <input type="password" id="adminKeyInput" placeholder="Admin key" style="flex:1;background:rgba(255,255,255,.05);border:1px solid var(--bdr2);border-radius:9px;padding:9px 12px;color:var(--white);font-family:var(--fm);font-size:13px;outline:none;max-width:320px;">
+    <input type="password" id="adminKeyInput" placeholder="Admin key" style="flex:1;background:rgba(var(--ovl),.05);border:1px solid var(--bdr2);border-radius:9px;padding:9px 12px;color:var(--white);font-family:var(--fm);font-size:13px;outline:none;max-width:320px;">
     <button class="btn-gold" onclick="unlockAdmin()">Unlock</button>
     <span id="adminStatus" style="font-size:12px;color:var(--muted);"></span>
   </div>
@@ -495,12 +493,12 @@ new PerformanceObserver((list) => {
     <div id="adminOverviewPanel">
     <!-- Pre-gen status -->
     <div id="adminGenPanel" style="display:none;" class="gen-prog-panel">
-      <div class="gpp-head"><div class="spin" style="width:20px;height:20px;border-width:2px;border-top-color:#ff8c42;border-color:rgba(255,140,66,.2);"></div><div class="gpp-title">Pre-generating all lessons &amp; quizzes…</div></div>
+      <div class="gpp-head"><div class="spin" style="width:20px;height:20px;border-width:2px;border-top-color:var(--warn);border-color:rgba(var(--warn-rgb),.2);"></div><div class="gpp-title">Pre-generating all lessons &amp; quizzes…</div></div>
       <div class="gpp-track"><div class="gpp-fill" id="gppFill" style="width:0%"></div></div>
       <div class="gpp-meta"><span id="gppDone">0</span>/<span id="gppTotal">0</span> topics complete</div>
       <div class="gpp-cur" id="gppCur"></div>
     </div>
-    <div id="adminGenDone" class="gen-prog-panel" style="display:none;border-color:rgba(20,180,160,.25);background:linear-gradient(135deg,#040e08,#081410);">
+    <div id="adminGenDone" class="gen-prog-panel" style="display:none;border-color:rgba(var(--teal-d-rgb),.25);background:linear-gradient(135deg,#040e08,#081410);">
       <div class="gpp-head">✅ <div class="gpp-title" style="color:var(--teal);">All content pre-generated!</div></div>
       <div class="gpp-meta" id="adminGenDoneMeta">All topics ready. Lessons and quizzes load instantly.</div>
       <div style="display:flex;gap:8px;margin-top:10px;">
@@ -732,8 +730,8 @@ new PerformanceObserver((list) => {
         <div id="adminKbList"><div style="font-size:12px;color:var(--muted);">Loading…</div></div>
         <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;">
           <button class="btn-og" onclick="retriggerGen()" style="font-size:11px;">↺ Re-generate All</button>
-          <button class="btn-og" onclick="clearContent()" style="font-size:11px;border-color:rgba(155,35,53,.4);color:#e07080;">🗑 Clear Content Cache</button>
-          <button class="btn-og" onclick="downloadAllQuestions()" style="font-size:11px;border-color:rgba(201,168,76,.4);color:var(--gold);">⬇ Download All Questions (TXT)</button>
+          <button class="btn-og" onclick="clearContent()" style="font-size:11px;border-color:rgba(var(--crim-rgb),.4);color:var(--danger);">🗑 Clear Content Cache</button>
+          <button class="btn-og" onclick="downloadAllQuestions()" style="font-size:11px;border-color:rgba(var(--gold-rgb),.4);color:var(--gold);">⬇ Download All Questions (TXT)</button>
         </div>
         <div id="storageIndicator" style="margin-top:14px;padding:10px 13px;border-radius:10px;background:rgba(255,255,255,.04);border:1px solid var(--bdr2);font-size:12px;color:var(--muted);">
           Checking storage…
@@ -944,10 +942,10 @@ new PerformanceObserver((list) => {
         <button class="modal-x" onclick="closeFcImportModal()">✕</button>
         <h3 style="margin-top:0;">📥 Import Preview</h3>
         <div id="fc-import-summary" style="font-size:13px;color:var(--muted);margin-bottom:14px;line-height:1.6;"></div>
-        <div id="fc-import-errors" style="display:none;margin-bottom:14px;max-height:200px;overflow-y:auto;padding:10px 12px;background:rgba(224,112,128,.06);border:1px solid rgba(224,112,128,.25);border-radius:10px;font-size:12px;font-family:var(--fm);"></div>
+        <div id="fc-import-errors" style="display:none;margin-bottom:14px;max-height:200px;overflow-y:auto;padding:10px 12px;background:rgba(var(--danger-rgb),.06);border:1px solid rgba(var(--danger-rgb),.25);border-radius:10px;font-size:12px;font-family:var(--fm);"></div>
         <div id="fc-import-cards" style="margin-bottom:16px;max-height:280px;overflow-y:auto;padding:10px 12px;background:rgba(255,255,255,.02);border:1px solid var(--bdr2);border-radius:10px;"></div>
 
-        <div style="margin-bottom:14px;padding:12px 14px;background:rgba(201,168,76,.04);border:1px solid rgba(201,168,76,.2);border-radius:10px;">
+        <div style="margin-bottom:14px;padding:12px 14px;background:rgba(var(--gold-rgb),.04);border:1px solid rgba(var(--gold-rgb),.2);border-radius:10px;">
           <div style="font-size:12px;font-weight:700;color:var(--gold-l);margin-bottom:8px;text-transform:uppercase;letter-spacing:.06em;">Import mode</div>
           <label style="display:block;margin-bottom:6px;cursor:pointer;">
             <input type="radio" name="fc-import-mode" value="append" checked> <strong>Append</strong> — add imported cards alongside any existing cards. (Recommended for building up the bank.)
@@ -1058,7 +1056,7 @@ new PerformanceObserver((list) => {
   <p class="modal-s">Send your mock bar results to an email address.</p>
   <label class="form-label" style="margin-top:4px;">Email Address</label>
   <input class="form-input" id="email-to" type="email" value="barbuddyphilippines@gmail.com" readonly style="margin-bottom:4px;opacity:.75;cursor:default;">
-  <p style="font-size:12px;color:var(--text-muted,#888);margin:0 0 10px;">Results will be sent to the BarBuddy admin email</p>
+  <p style="font-size:12px;color:var(--text-muted,var(--muted));margin:0 0 10px;">Results will be sent to the BarBuddy admin email</p>
   <label class="form-label">Subject Line</label>
   <input class="form-input" id="email-subject" type="text" style="margin-bottom:10px;">
   <div id="email-status" style="display:none;font-size:13px;padding:8px 12px;border-radius:8px;margin-bottom:10px;"></div>
@@ -1073,7 +1071,7 @@ new PerformanceObserver((list) => {
 
 <!-- PER-USER TAB ACCESS MODAL -->
 <div id="userAccessModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:9999;align-items:center;justify-content:center;">
-  <div style="background:var(--card2);border:1px solid var(--bdr-gold,rgba(201,168,76,.25));border-radius:18px;width:min(680px,95vw);max-height:88vh;overflow-y:auto;padding:28px 32px;position:relative;box-shadow:0 24px 80px rgba(0,0,0,.6);">
+  <div style="background:var(--card2);border:1px solid var(--bdr-gold,rgba(var(--gold-rgb),.25));border-radius:18px;width:min(680px,95vw);max-height:88vh;overflow-y:auto;padding:28px 32px;position:relative;box-shadow:0 24px 80px rgba(0,0,0,.6);">
     <button onclick="closeUserAccessModal()" style="position:absolute;top:14px;right:16px;background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;line-height:1;">✕</button>
     <div style="font-family:var(--fd);font-size:22px;font-weight:700;color:var(--gold-l);margin-bottom:3px;">⚙️ Tab Access Control</div>
     <div id="userAccessModalTitle" style="font-size:13px;color:var(--muted);margin-bottom:10px;"></div>
@@ -1092,7 +1090,7 @@ new PerformanceObserver((list) => {
     </div>
     <div id="userAccessGrid" style="margin-bottom:18px;"></div>
     <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding-top:16px;border-top:1px solid var(--bdr2);flex-wrap:wrap;">
-      <button class="tab-global-btn" style="color:var(--crim-l,#e07080);" onclick="resetUserAccess()">↺ Reset to Global Defaults</button>
+      <button class="tab-global-btn" style="color:var(--crim-l,var(--danger));" onclick="resetUserAccess()">↺ Reset to Global Defaults</button>
       <div style="display:flex;gap:10px;">
         <button class="btn-ghost" onclick="closeUserAccessModal()">Cancel</button>
         <button class="btn-gold" id="saveUserAccessBtn" onclick="saveUserAccess()">💾 Save Access</button>
@@ -1102,8 +1100,8 @@ new PerformanceObserver((list) => {
 </div>
 
 <!-- Highlight color picker toolbar — shown on text selection inside exam-content -->
-<div id="highlight-toolbar" style="display:none;position:fixed;z-index:9999;background:#1a2235;border:1px solid #2a3347;border-radius:8px;padding:6px 10px;box-shadow:0 4px 20px rgba(0,0,0,0.4);align-items:center;gap:6px;">
-  <span style="font-size:11px;color:#888;margin-right:2px;">Highlight:</span>
+<div id="highlight-toolbar" style="display:none;position:fixed;z-index:9999;background:#1a2235;border:1px solid var(--bdr2);border-radius:8px;padding:6px 10px;box-shadow:0 4px 20px rgba(0,0,0,0.4);align-items:center;gap:6px;">
+  <span style="font-size:11px;color:var(--muted);margin-right:2px;">Highlight:</span>
   <button class="hl-color-btn" data-color="#ffd700" style="width:18px;height:18px;border-radius:50%;background:#ffd700;border:2px solid transparent;cursor:pointer;" title="Yellow"></button>
   <button class="hl-color-btn" data-color="#90ee90" style="width:18px;height:18px;border-radius:50%;background:#90ee90;border:2px solid transparent;cursor:pointer;" title="Green"></button>
   <button class="hl-color-btn" data-color="#ffb6c1" style="width:18px;height:18px;border-radius:50%;background:#ffb6c1;border:2px solid transparent;cursor:pointer;" title="Pink"></button>
