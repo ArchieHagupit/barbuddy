@@ -8332,10 +8332,38 @@ let _resultsOffset = 0;
 let _resultsTotal  = 0;
 let _adminResultsCache = {};
 
+// Populates the student dropdown from the students who actually have results.
+// Runs once per admin visit; the filter itself re-queries the server.
+async function loadAdminResultsUsers() {
+  const sel = document.getElementById('adminResultsUser');
+  if (!sel || sel.dataset.loaded === '1') return;
+  try {
+    const r = await fetch('/api/admin/results-users', { headers:{'x-admin-key': window._adminKey||''} });
+    const d = await r.json();
+    const keep = sel.value;
+    sel.innerHTML = '<option value="">All students</option>' +
+      (d.users || []).map(u =>
+        `<option value="${h(u.id)}">${h(u.name)}${u.email ? ' — ' + h(u.email) : ''}</option>`).join('');
+    sel.value = keep;                 // survive a refresh while a filter is set
+    sel.dataset.loaded = '1';
+  } catch(e) { /* non-critical: the dashboard still works unfiltered */ }
+}
+
+function clearResultsUserFilter() {
+  const sel = document.getElementById('adminResultsUser');
+  if (sel) sel.value = '';
+  loadAdminResults();
+}
+
 async function loadAdminResults(reset = true) {
   const el     = document.getElementById('adminResultsList');
   const footer = document.getElementById('adminResultsFooter');
   if (!el) return;
+  loadAdminResultsUsers();
+  const sel    = document.getElementById('adminResultsUser');
+  const userId = sel ? sel.value : '';
+  const clearBtn = document.getElementById('adminResultsClearFilter');
+  if (clearBtn) clearBtn.style.display = userId ? '' : 'none';
   if (reset) {
     _resultsOffset = 0;
     _adminResultsCache = {};
@@ -8344,13 +8372,19 @@ async function loadAdminResults(reset = true) {
   if (footer) footer.innerHTML = '<span style="font-size:12px;color:var(--muted);">Loading…</span>';
   try {
     const params = new URLSearchParams({ limit: 20, offset: _resultsOffset });
+    if (userId) params.set('userId', userId);
     const r    = await fetch('/api/admin/results?' + params, { headers:{'x-admin-key': window._adminKey||''} });
     const data = await r.json();
     const rows = data.results || [];
     rows.forEach(row => { _adminResultsCache[row.id] = row; });
     _resultsTotal = data.total || 0;
+    const note = document.getElementById('adminResultsFilterNote');
+    if (note) note.textContent = userId
+      ? `${_resultsTotal} result${_resultsTotal!==1?'s':''} for this student`
+      : '';
     if (reset && !rows.length) {
-      el.innerHTML = '<div style="font-size:12px;color:var(--muted);">No results saved yet.</div>';
+      el.innerHTML = `<div style="font-size:12px;color:var(--muted);">${
+        userId ? 'No results for this student yet.' : 'No results saved yet.'}</div>`;
       if (footer) footer.innerHTML = '';
       return;
     }
@@ -9018,7 +9052,13 @@ async function resetUserAccess() {
 }
 
 async function exportResultsCSV() {
-  const r    = await fetch('/api/admin/results?limit=9999&offset=0', { headers:{'x-admin-key': window._adminKey||''} });
+  // Export follows the on-screen filter: exporting every student while the
+  // dashboard shows one would quietly hand back the wrong file.
+  const sel    = document.getElementById('adminResultsUser');
+  const userId = sel ? sel.value : '';
+  const params = new URLSearchParams({ limit: 9999, offset: 0 });
+  if (userId) params.set('userId', userId);
+  const r    = await fetch('/api/admin/results?' + params, { headers:{'x-admin-key': window._adminKey||''} });
   const data = await r.json();
   const rows = data.results || (Array.isArray(data) ? data : []);
   const lines = ['Name,Date,Subject,Score,Total,Pct,Passed'];
@@ -9026,8 +9066,12 @@ async function exportResultsCSV() {
     const { userName, finishedAt, subject, score, total, pct, passed } = _normalizeResult(row);
     lines.push(`"${userName}","${finishedAt?finishedAt.slice(0,10):''}","${subject}","${score}","${total}","${pct}%","${passed?'Yes':'No'}"`);
   });
+  const who  = userId && sel.selectedOptions[0]
+    ? '_' + sel.selectedOptions[0].textContent.split('—')[0].trim().replace(/[^a-z0-9]+/gi,'-') : '';
   const blob = new Blob([lines.join('\n')], { type:'text/csv' });
-  const a    = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'barbuddy_results.csv'; a.click();
+  const a    = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = `barbuddy_results${who}.csv`; a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 1000);
 }
 
 // ══════════════════════════════════
