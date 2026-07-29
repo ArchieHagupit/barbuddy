@@ -60,16 +60,47 @@ module.exports = function createResultsRoutes({ requireAuth, adminOnly, awardXP 
     } catch(e) { res.status(500).json({ error: e.message }); }
   });
 
+  // ?userId=<uuid> narrows the dashboard to one student. Applied in the query
+  // rather than client-side so `total` and the Load More paging stay correct —
+  // filtering only the fetched page would report the unfiltered count and
+  // silently hide that student's older results.
   router.get('/api/admin/results', adminOnly, async (req, res) => {
     try {
       const limit  = Math.min(parseInt(req.query.limit)  || 20, 500);
       const offset = parseInt(req.query.offset) || 0;
-      const { data, count, error } = await supabase.from('results')
+      const userId = (req.query.userId || '').trim();
+      let q = supabase.from('results')
         .select('*, users(id, name, email)', { count: 'exact' })
-        .order('finished_at', { ascending: false })
-        .range(offset, offset + limit - 1);
+        .order('finished_at', { ascending: false });
+      if (userId) q = q.eq('user_id', userId);
+      const { data, count, error } = await q.range(offset, offset + limit - 1);
       if (error) throw error;
       res.json({ results: (data || []).map(_mapResult), total: count || 0, offset, limit });
+    } catch(e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // Distinct students who actually have results, for the dashboard's filter.
+  // Built from the results table so the dropdown never offers a student with
+  // nothing to show.
+  router.get('/api/admin/results-users', adminOnly, async (req, res) => {
+    try {
+      const { data, error } = await supabase.from('results')
+        .select('user_id, users(id, name, email)')
+        .order('finished_at', { ascending: false })
+        .limit(2000);
+      if (error) throw error;
+      const seen = new Map();
+      for (const row of data || []) {
+        const id = row.user_id;
+        if (!id || seen.has(id)) continue;
+        seen.set(id, {
+          id,
+          name:  row.users?.name  || row.users?.email || id,
+          email: row.users?.email || '',
+        });
+      }
+      const users = [...seen.values()].sort((a, b) => a.name.localeCompare(b.name));
+      res.json({ users });
     } catch(e) { res.status(500).json({ error: e.message }); }
   });
 
