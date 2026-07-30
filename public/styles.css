@@ -982,6 +982,16 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .ai-fb-content{font-family:var(--fr);font-size:var(--fs-read-sm);line-height:var(--lh-read);color:rgba(var(--txt2-rgb),.92);max-width:var(--measure);}
 .ai-fb-content p{margin-bottom:.8em;}
 .ai-fb-content p:last-child{margin-bottom:0;}
+/* Feedback groups — Strengths / Improve / Missed, each a label above its list.
+   The lists inherited padding:0 from the global reset, so with markers drawn
+   outside the box the bullets hung to the LEFT of the label they belonged to
+   and the item text sat flush with it. Indent the list instead, and move the
+   breathing room above each label rather than below it, so a group reads as
+   one block instead of a heading floating between two lists. */
+.ai-fb-content ul{margin:0 0 4px;padding-left:20px;}
+.ai-fb-content li{margin:3px 0;}
+.ai-fb-content .fb-label{margin:14px 0 4px;}
+.ai-fb-content .fb-label:first-child{margin-top:0;}
 /* SCORECARD — type-aware evaluation display */
 .scorecard{background:var(--card);border:1px solid var(--bdr2);border-radius:16px;overflow:hidden;margin-top:16px;}
 .scorecard-header{padding:18px 20px 14px;border-bottom:1px solid var(--bdr);}

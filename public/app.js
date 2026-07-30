@@ -5510,7 +5510,7 @@ function renderDefCard(ev,expand){
   return `${sc.head}
   <div class="ai-fb-content">
     ${sc.table}
-    ${keyMissedArr.length?`<p style="margin-top:10px;"><strong>📚 Missed:</strong></p><ul>${keyMissedArr.map(s=>`<li>${h(s)}</li>`).join('')}</ul>`:''}
+    ${keyMissedArr.length?`<p class="fb-label"><strong>📚 Missed:</strong></p><ul>${keyMissedArr.map(s=>`<li>${h(s)}</li>`).join('')}</ul>`:''}
     ${renderWritingFeedback(ev)}
     <details${expand?' open':''} style="margin-top:12px;"><summary style="cursor:pointer;color:var(--gold);font-weight:600;font-size:13px;">📖 Model Answer</summary>
     <div style="margin-top:8px;padding:12px;background:rgba(var(--ovl),.03);border-radius:9px;">${renderModelAnswer(ev)}</div></details>
@@ -5650,9 +5650,9 @@ function renderAlacCard(ev,expand){
   return `${sc.head}
   <div class="ai-fb-content">
     ${sc.table}
-    ${ev.strengths?.length?`<p style="margin-top:10px;"><strong>✅ Strengths:</strong></p><ul>${ev.strengths.map(s=>`<li>${h(s)}</li>`).join('')}</ul>`:''}
-    ${ev.improvements?.length?`<p><strong>⚠️ Improve:</strong></p><ul>${ev.improvements.map(s=>`<li>${h(s)}</li>`).join('')}</ul>`:''}
-    ${ev.keyMissed?.length?`<p><strong>📚 Missed:</strong></p><ul>${ev.keyMissed.map(s=>`<li>${h(s)}</li>`).join('')}</ul>`:''}
+    ${ev.strengths?.length?`<p class="fb-label"><strong>✅ Strengths:</strong></p><ul>${ev.strengths.map(s=>`<li>${h(s)}</li>`).join('')}</ul>`:''}
+    ${ev.improvements?.length?`<p class="fb-label"><strong>⚠️ Improve:</strong></p><ul>${ev.improvements.map(s=>`<li>${h(s)}</li>`).join('')}</ul>`:''}
+    ${ev.keyMissed?.length?`<p class="fb-label"><strong>📚 Missed:</strong></p><ul>${ev.keyMissed.map(s=>`<li>${h(s)}</li>`).join('')}</ul>`:''}
     ${renderWritingFeedback(ev)}
     <details${expand?' open':''} style="margin-top:12px;"><summary style="cursor:pointer;color:var(--gold);font-weight:600;font-size:13px;">📖 Model Answer (ALAC Format)</summary>
     <div style="margin-top:8px;padding:12px;background:rgba(var(--ovl),.03);border-radius:9px;">${renderModelAnswer(ev)}</div></details>
@@ -6790,6 +6790,10 @@ function _resultsRules(){
   .ai-fb-head{font-size:12px;font-weight:700;color:var(--gold);text-transform:uppercase;letter-spacing:.06em;margin-bottom:9px;display:flex;align-items:center;gap:7px;flex-wrap:wrap;}
   .ai-fb-score{background:rgba(var(--gold-rgb),.15);border-radius:5px;padding:2px 7px;font-variant-numeric:tabular-nums;}
   .ai-fb-content{font-size:var(--fs-read-sm);line-height:var(--lh-read);color:rgba(var(--txt2-rgb),.92);max-width:var(--measure);}
+  .ai-fb-content ul{margin:0 0 4px;padding-left:20px;}
+  .ai-fb-content li{margin:3px 0;}
+  .ai-fb-content .fb-label{margin:14px 0 4px;}
+  .ai-fb-content .fb-label:first-child{margin-top:0;}
   .alac-table{width:100%;border-collapse:collapse;font-size:13px;margin:10px 0;}
   .alac-table th{text-align:left;padding:6px 10px;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--bdr2);}
   .alac-table td{padding:7px 10px;vertical-align:top;border-bottom:1px solid rgba(var(--ovl),.04);}
