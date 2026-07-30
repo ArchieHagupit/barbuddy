@@ -20,6 +20,8 @@ const express = require('express');
 const { supabase } = require('../config/supabase');
 const { evalLimiter } = require('../middleware/rate-limiters');
 const { XP_VALUES } = require('../lib/xp');
+// Canonical scoring — the same file public/index.html loads into the browser.
+const BBScore = require('../public/score.js');
 const {
   detectQuestionType, isCopyPastedFacts, getAlternatives, GRADE_SCALE,
 } = require('../lib/eval-helpers');
@@ -626,19 +628,9 @@ Respond ONLY with valid JSON (no markdown):
           const totalQuestions = scores.length;
           const successfulEvals = scores.filter(s => !s._evalError && s.grade !== 'Error').length;
 
-          // Compute final total score from actual evaluated components
-          const computedTotal = scores.reduce((sum, s) => {
-            if (s._evalError || s.grade === 'Error') return sum;
-            if (s.alac) {
-              return sum + (s.alac.answer?.score || 0) + (s.alac.legalBasis?.score || 0)
-                         + (s.alac.application?.score || 0) + (s.alac.conclusion?.score || 0);
-            }
-            if (s.breakdown) {
-              return sum + (s.breakdown.accuracy?.score || 0) + (s.breakdown.completeness?.score || 0)
-                         + (s.breakdown.clarity?.score || 0);
-            }
-            return sum + (s.numericScore || 0);
-          }, 0);
+          // Canonical rule — the same module the browser loads, so the score
+          // written here is the score the student was shown.
+          const computedTotal = BBScore.totalScore(scores);
 
           // Update result record with final evaluated scores
           const { error: updateErr } = await supabase.from('results').update({
@@ -659,17 +651,7 @@ Respond ONLY with valid JSON (no markdown):
           const VALID_SUBJ_KEYS = ['civil','criminal','political','labor','commercial','taxation','remedial','ethics','custom'];
           const subjectKey = VALID_SUBJ_KEYS.includes(subject) ? subject : (subject || 'mixed');
 
-          const highScoreCount = scores.filter(s => {
-            if (s._evalError || s.grade === 'Error') return false;
-            const qScore = s.alac
-              ? (s.alac.answer?.score || 0) + (s.alac.legalBasis?.score || 0)
-                + (s.alac.application?.score || 0) + (s.alac.conclusion?.score || 0)
-              : s.breakdown
-                ? (s.breakdown.accuracy?.score || 0) + (s.breakdown.completeness?.score || 0)
-                  + (s.breakdown.clarity?.score || 0)
-                : (s.numericScore || 0);
-            return qScore >= 8.0;
-          }).length;
+          const highScoreCount = scores.filter(s => BBScore.questionScore(s) >= 8.0).length;
           const bonusXP = highScoreCount * XP_VALUES.HIGH_SCORE_BONUS;
 
           let xpData = null;

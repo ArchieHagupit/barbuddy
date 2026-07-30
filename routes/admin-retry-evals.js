@@ -18,6 +18,8 @@
 
 const express = require('express');
 const { supabase } = require('../config/supabase');
+// Canonical scoring — the same file public/index.html loads into the browser.
+const BBScore = require('../public/score.js');
 
 // Detect whether a single evaluation entry is a system failure (vs. a
 // real 0/10 from a non-answer). Matches the runEvalJob error returns:
@@ -30,24 +32,9 @@ function isFailedEval(ev) {
   return false;
 }
 
-// Recompute the result-level total score from the canonical components
-// (ALAC sum, breakdown sum, or numericScore as final fallback). Mirrors
-// the logic in routes/evaluate.js post-eval handler. Failed evaluations
-// contribute 0 here — same convention as the original write path.
-function computeTotalFromScores(scores) {
-  return scores.reduce((sum, s) => {
-    if (!s || s._evalError || s.grade === 'Error') return sum;
-    if (s.alac) {
-      return sum + (s.alac.answer?.score || 0) + (s.alac.legalBasis?.score || 0)
-                 + (s.alac.application?.score || 0) + (s.alac.conclusion?.score || 0);
-    }
-    if (s.breakdown) {
-      return sum + (s.breakdown.accuracy?.score || 0) + (s.breakdown.completeness?.score || 0)
-                 + (s.breakdown.clarity?.score || 0);
-    }
-    return sum + (s.numericScore || 0);
-  }, 0);
-}
+// Recompute the result-level total from the canonical components. Failed
+// evaluations contribute 0 — the convention BBScore.totalScore applies.
+const computeTotalFromScores = scores => BBScore.totalScore(scores);
 
 module.exports = function createAdminRetryEvalsRoutes({ adminOnly, enqueueEval }) {
   const router = express.Router();
