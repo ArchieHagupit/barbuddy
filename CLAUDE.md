@@ -14,8 +14,14 @@ Deployed at: https://thebarbuddy.xyz
 - Repo: github.com/ArchieHagupit/barbuddy (branches: uat → main)
 
 ## Key Files
-- server.js — all API routes, evaluation logic, XP system
-- public/index.html — entire frontend (CSS + JS + HTML)
+- server.js — boot, shared helpers, AI call wrappers
+- routes/ — API routes (evaluate.js holds the eval endpoints)
+- lib/ — eval queue, eval helpers, XP
+- public/score.js — CANONICAL SCORING. Loaded by the browser and
+  require()d by the server. See "Canonical Scoring" below.
+- public/index.html — page shell; loads score.js then app.js
+- public/app.js — frontend logic
+- public/styles.css — all styles (theme tokens at the top)
 - public/barbuddyemblem.webp — background watermark
 
 ## Database Tables (Supabase)
@@ -49,6 +55,8 @@ Deployed at: https://thebarbuddy.xyz
 ## Architecture Notes
 - Evaluation uses fire-and-forget batch pattern with polling
 - EvalQueue has aiSemaphore (20 slots), perUserMax (5)
+- Scoring is one shared module (public/score.js) loaded by
+  both the browser and the server — never recomputed inline
 - ALAC answers cached in questions.model_answer_alac
 - Alternative answers cached in questions.alternative_answers
 - XP awarded AFTER evaluation completes (not before)
@@ -65,6 +73,7 @@ civil, criminal, political, labor, commercial, taxation, remedial, ethics
 - Passing score: 70%
 - ALAC scoring: Answer(1.5) + LegalBasis(3) + Application(4) + Conclusion(1.5) = 10
 - Always recompute total from components, never use AI-returned total
+- Never hand-roll that recomputation — call public/score.js
 - Situational questions use ALAC scoring
 - Conceptual questions use breakdown scoring (accuracy/completeness/clarity)
 
@@ -76,12 +85,79 @@ civil, criminal, political, labor, commercial, taxation, remedial, ethics
 - Only valid deduction: -0.5 for wrong legal position
 - All other deductions belong in L or A components
 
+## Canonical Scoring — public/score.js
+
+### The rule lives in exactly one file
+public/score.js is a UMD module holding the ONLY
+implementation of the scoring rule. The browser loads it
+with a plain <script> tag; the server require()s the same
+file. It lives in public/ so one file can serve both —
+that is the whole point, do not "tidy" it into lib/.
+
+### API
+  BBScore.questionScore(ev)   → 0–10 for one evaluation
+  BBScore.totalScore(scores)  → sum across a session
+  BBScore.componentRows(ev)   → [{key,label,score,max,rawScore,clamped,feedback}]
+  BBScore.gradeFor(ev)        → grade from the RECOMPUTED score
+  BBScore.gradeForScore(n)    → grade for a bare number
+  BBScore.rubricFor(ev)       → 'alac' | 'conceptual' | null
+  BBScore.isErrored(ev)       → true for _evalError / grade 'Error'
+  BBScore.ALAC_COMPONENTS     → the rubric: keys, labels, maxes
+  BBScore.CONCEPTUAL_COMPONENTS
+
+### Score order
+  1. ALAC rubric present     → answer + legalBasis + application + conclusion
+  2. Conceptual rubric       → accuracy + completeness + clarity
+  3. Neither                 → numericScore (clamped 0–10)
+Errored evaluations contribute 0.
+Rubric is chosen by the CONTAINER (ev.alac / ev.breakdown),
+not by any one component inside it.
+
+### Components are capped
+Each component is bounded to its rubric maximum, so a
+question can never exceed 10/10. A capped row is flagged
+`clamped:true` and rendered with a ▲ marker plus a tooltip
+naming the raw value.
+
+### Grades come from the recomputed score
+gradeFor() ignores the model's `grade` string. Thresholds
+match GRADE_SCALE in lib/eval-helpers.js (8.5 / 7.0 / 5.5 /
+4.0) but apply to the recomputed total. 'Not Answered' and
+'Error' survive as states.
+
+### Call sites (all of them)
+  routes/evaluate.js          — results.score + passed, HIGH_SCORE_BONUS count
+  routes/admin-retry-evals.js — computeTotalFromScores
+  lib/eval-queue.js           — spaced-repetition mastery
+  public/app.js               — effectiveScore / gradeFromScore aliases,
+                                renderScorecard rows + totals
+
+### Why this exists
+The rule had been copied into five places and the copies
+drifted. The SR copy branched on `alac.answer.score != null`
+while the total-score copy branched on `alac` being truthy,
+so an evaluation missing its Answer component scored one way
+for the stored record and another for mastery. The client
+never summed conceptual components at all — it used the
+model's numericScore, so an inflated total drove the badge,
+the session score and pass/fail. Nothing capped a component
+to its maximum.
+
+### Rule
+Never write `alac.answer.score + alac.legalBasis.score + …`
+again anywhere. Render scorecard rows from componentRows()
+so the column always adds up to the total beneath it.
+
 ## Recent Changes
 - jsonrepair added as Strategy 5 in extractJSON
 - XP awarded after evaluation completes (not before)
 - Resend API used for email (onboarding@resend.dev)
 - Bot blocker middleware added for WordPress probes
 - RLS enabled with policies on all 8 tables
+- Scoring unified into public/score.js (July 2026) — five
+  drifting copies replaced by one shared module; components
+  now capped at their rubric max; grades derived from the
+  recomputed score rather than the model's grade string
 
 # Refresh Fixes
 - Login Form Flash Prevention
@@ -188,21 +264,22 @@ _improveData accumulates across loads.
 renderImproveTable() does client-side text search 
 on all accumulated data.
 
-## Spaced Repetition — Score Computation Fix
+## Spaced Repetition — Score Computation
 
 ### Critical Rule (same as results display)
 ALWAYS recompute scores from components — never 
 trust AI-returned numericScore directly.
 
-### Score Computation Order (server.js ~3324-3329)
-  1. ALAC questions: answer + legalBasis + application + conclusion
-  2. Conceptual questions: accuracy + completeness + clarity
-  3. Fallback: numericScore (only if neither alac nor breakdown present)
+### Where the computation lives
+BBScore.questionScore() in public/score.js — see
+"Canonical Scoring" above for the order and the capping.
+Called from lib/eval-queue.js in the SR upsert block.
 
-This applies in THREE places:
-  1. SR mastery check (~3324) — determines if question is mastered
-  2. Post-eval total score (~3461) — updates result record + pass/fail
-  3. High score count for XP (~3490) — awards HIGH_SCORE_BONUS
+The three sites this section used to list (SR mastery,
+post-eval total, high-score count) were three separate
+copies with drifting branch conditions. They are now one
+call each into the shared module, so SR mastery and the
+stored result can no longer disagree.
 
 ### Mastery Threshold
 Score >= 8.0 → mastered = true, next_review_at = null
