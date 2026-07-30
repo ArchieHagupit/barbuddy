@@ -5422,15 +5422,25 @@ function renderQuizQ(){
 function evalFormatBadge(format){
   const isSit=format==='essay'||format==='situational'||format==='alac';
   const [label,color,bg]=isSit
-    ?['📝 ALAC Scoring','var(--warn)','rgba(255,140,66,.12)']
-    :['💡 Conceptual Scoring','#c9a84c','rgba(201,168,76,.12)'];
+    ?['📝 ALAC Scoring','var(--warn)','rgba(var(--warn-rgb),.12)']
+    :['💡 Conceptual Scoring','var(--gold)','rgba(var(--gold-rgb),.12)'];
   return `<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;background:${bg};color:${color};letter-spacing:.04em;margin-right:6px;">${label}</span>`;
+}
+// Grade colour for the eval card header and total row. The literals this
+// replaces (#50d090, #c9a84c, #e09050) were tuned for navy and measured
+// 1.4–2.0:1 on the light card — and carried straight into the saved HTML.
+function gradeColor(grade){
+  return grade==='Excellent'?'var(--teal-d)'
+       :grade==='Good'?'var(--teal)'
+       :grade==='Satisfactory'?'var(--gold)'
+       :grade==='Needs Improvement'?'var(--warn)'
+       :'var(--danger)';
 }
 // ── Error card ─────────────────────────────────────────────
 function renderErrorCard(ev){
   const idx=ev._qIdx!=null?ev._qIdx:-1;
   const retryBtn=idx>=0
-    ?`<button onclick="retryEvaluation(${idx})" style="background:rgba(201,168,76,.2);border:1px solid rgba(201,168,76,.4);color:#c9a84c;border-radius:6px;padding:3px 11px;font-size:12px;font-weight:700;cursor:pointer;margin-left:8px;">↺ Retry</button>`
+    ?`<button onclick="retryEvaluation(${idx})" style="background:rgba(var(--gold-rgb),.2);border:1px solid rgba(var(--gold-rgb),.4);color:var(--gold);border-radius:6px;padding:3px 11px;font-size:12px;font-weight:700;cursor:pointer;margin-left:8px;">↺ Retry</button>`
     :'';
   return `<div class="ai-fb-head" style="color:var(--danger);flex-wrap:wrap;gap:8px;">⚠️ Evaluation unavailable.${retryBtn}<div style="font-size:11px;color:var(--muted);width:100%;margin-top:2px;">${h(ev.overallFeedback||'Click Retry to re-evaluate.')}</div></div>`;
 }
@@ -5450,52 +5460,69 @@ function renderWritingFeedback(ev){
   return html;
 }
 // ── Dispatcher ─────────────────────────────────────────────
-function renderEvalCard(ev){
+// `expand` opens the collapsed Model Answer section. The saved / emailed copy
+// passes it: a <details> that nobody can click is just missing content.
+function renderEvalCard(ev,expand){
   if(!ev) return '';
   if(ev.grade==='Error'||ev._evalError) return renderErrorCard(ev);
   const fmt=ev.format||ev.questionType||'essay';
   const isSit=fmt==='situational'||fmt==='essay'||fmt==='alac';
-  return isSit?renderAlacCard(ev):renderDefCard(ev);
+  return isSit?renderAlacCard(ev,expand):renderDefCard(ev,expand);
+}
+// ── Scorecard ──────────────────────────────────────────────
+// One table for both rubrics. The rows, the total beneath them, the header
+// figure and the grade all come from a single BBScore call on the same
+// evaluation, so the column cannot fail to add up to the number printed under
+// it — previously the ALAC card recomputed its total from components while the
+// conceptual card printed the model's self-reported `score` string, and the
+// question badge beside them used a third rule.
+function renderScorecard(ev){
+  const rows=BBScore.componentRows(ev);
+  const score=BBScore.questionScore(ev);
+  const grade=BBScore.gradeFor(ev);
+  const gc=gradeColor(grade);
+  const isAlac=BBScore.rubricFor(ev)==='alac';
+  const bd=ev.breakdown||{};
+  // The model sometimes nests these inside breakdown instead of at top level.
+  const overallFeedback=ev.overallFeedback||(typeof bd.overallFeedback==='string'?bd.overallFeedback:'')||'';
+  const totalDisplay=`${score}/10`;
+  const cellCls=r=>isAlac
+    ? alacScoreCls(r.score??0,r.key)
+    : (r.score>=r.max*.8?'hi':r.score>=r.max*.5?'mid':'lo');
+  const tableRows=rows.map(r=>`<tr>
+    <td style="color:var(--white);font-weight:600;">${r.label}</td>
+    <td><span class="alac-score ${cellCls(r)}">${r.score!=null?r.score:'—'}</span>${r.clamped?`<span class="score-capped" title="Model returned ${r.rawScore} against a ${r.max}-point maximum — capped">▲</span>`:''}</td>
+    <td style="color:var(--muted);font-size:12px;white-space:nowrap;">/${r.max}</td>
+    <td style="color:rgba(var(--txt2-rgb),.8);">${h(r.feedback)}</td>
+  </tr>`).join('');
+  const table=`<table class="alac-table">
+      <thead><tr><th>Component</th><th>Score</th><th>Max</th><th>Feedback</th></tr></thead>
+      <tbody>${tableRows}<tr class="alac-total-row"><td style="color:${gc};">Total</td><td style="color:${gc};">${h(totalDisplay)}</td><td style="color:var(--muted);font-size:12px;">/10</td><td style="color:rgba(var(--txt2-rgb),.6);font-size:12px;">${h(overallFeedback)}</td></tr></tbody>
+    </table>`;
+  const head=`<div class="ai-fb-head">${evalFormatBadge(ev.format||ev.questionType||'essay')}<span class="ai-fb-score">${h(totalDisplay)}</span><span style="background:rgba(var(--ovl),.08);border-radius:5px;padding:2px 7px;font-family:var(--fm);color:${gc};">${h(grade)}</span></div>`;
+  return {head,table,grade,gc,score,totalDisplay};
 }
 // ── Conceptual card ────────────────────────────────────────
-function renderDefCard(ev){
-  const gc=ev.grade==='Excellent'?'var(--teal-d)':ev.grade==='Good'?'#50d090':ev.grade==='Satisfactory'?'#c9a84c':ev.grade==='Needs Improvement'?'#e09050':'var(--danger)';
+function renderDefCard(ev,expand){
+  const sc=renderScorecard(ev);
   const bd=ev.breakdown||{};
-  // Normalise fields the AI sometimes nests inside breakdown instead of top-level
-  const overallFeedback=ev.overallFeedback||(typeof bd.overallFeedback==='string'?bd.overallFeedback:'')||'';
   const keyMissedArr=ev.keyMissed?.length?ev.keyMissed:(Array.isArray(bd.keyMissed)?bd.keyMissed:[]);
-  const cls=(s,max)=>s>=max*.8?'hi':s>=max*.5?'mid':'lo';
-  const defRows=[['Accuracy',bd.accuracy,4],['Completeness',bd.completeness,3],['Clarity',bd.clarity,3]].filter(([,c])=>c);
-  const tableRows=defRows.map(([label,c,max])=>`<tr>
-    <td style="color:var(--white);font-weight:600;">${label}</td>
-    <td><span class="alac-score ${cls(c.score??0,max)}">${c.score!=null?c.score:'—'}</span></td>
-    <td style="color:var(--muted);font-size:12px;white-space:nowrap;">/${max}</td>
-    <td style="color:rgba(var(--txt2-rgb),.8);">${h(c.feedback||'')}</td>
-  </tr>`).join('');
-  return `<div class="ai-fb-head">${evalFormatBadge(ev.format)}<span class="ai-fb-score">${h(ev.score||'?/10')}</span><span style="background:rgba(var(--ovl),.08);border-radius:5px;padding:2px 7px;font-family:var(--fm);color:${gc};">${h(ev.grade||'')}</span></div>
+  return `${sc.head}
   <div class="ai-fb-content">
-    <table class="alac-table">
-      <thead><tr><th>Component</th><th>Score</th><th>Max</th><th>Feedback</th></tr></thead>
-      <tbody>${tableRows}<tr class="alac-total-row"><td style="color:${gc};">Total</td><td style="color:${gc};">${h(ev.score||'?/10')}</td><td style="color:var(--muted);font-size:12px;">/10</td><td style="color:rgba(var(--txt2-rgb),.6);font-size:12px;">${h(overallFeedback)}</td></tr></tbody>
-    </table>
+    ${sc.table}
     ${keyMissedArr.length?`<p style="margin-top:10px;"><strong>📚 Missed:</strong></p><ul>${keyMissedArr.map(s=>`<li>${h(s)}</li>`).join('')}</ul>`:''}
     ${renderWritingFeedback(ev)}
-    <details style="margin-top:12px;"><summary style="cursor:pointer;color:var(--gold);font-weight:600;font-size:13px;">📖 Model Answer</summary>
+    <details${expand?' open':''} style="margin-top:12px;"><summary style="cursor:pointer;color:var(--gold);font-weight:600;font-size:13px;">📖 Model Answer</summary>
     <div style="margin-top:8px;padding:12px;background:rgba(var(--ovl),.03);border-radius:9px;">${renderModelAnswer(ev)}</div></details>
   </div>`;
 }
 // Returns the authoritative numeric score for one question:
 // if ALAC components are present, use their sum; otherwise fall back to the AI-returned numericScore.
-function effectiveScore(s){
-  const al=s.alac||{};
-  if(al.answer||al.legalBasis||al.application||al.conclusion){
-    return (al.answer?.score??0)+(al.legalBasis?.score??0)+(al.application?.score??0)+(al.conclusion?.score??0);
-  }
-  return s.numericScore||0;
-}
-function gradeFromScore(n){
-  return n>=8.5?'Excellent':n>=7.0?'Good':n>=5.5?'Satisfactory':n>=4.0?'Needs Improvement':'Poor';
-}
+// Every displayed score routes through public/score.js, the same module the
+// server require()s. Kept as thin aliases so the ~40 existing call sites read
+// unchanged.
+const effectiveScore = ev => BBScore.questionScore(ev);
+const gradeFromScore = n  => BBScore.gradeForScore(n);
 // ALAC color thresholds per component
 function alacScoreCls(score, key){
   if(key==='answer')      return score>=1.2?'hi':score>=0.7?'mid':'lo';
@@ -5528,11 +5555,13 @@ function parseALACString(text){
 // Render an ALAC components object as colored section cards
 function renderALACSections(components, headerLabel){
   if(!components) return '';
+  // Tokens, not fixed hex: the old #4a9eff / #4caf50 / #ff9800 labels each
+  // measured under 3:1 on the light card and carried into the saved HTML.
   const DEFS=[
-    {field:'answer',      label:'A — Answer',      color:'#4a9eff', icon:'⚖️'},
+    {field:'answer',      label:'A — Answer',      color:'var(--fg-blue)', icon:'⚖️'},
     {field:'legalBasis',  label:'L — Legal Basis',  color:'var(--amber)', icon:'📜'},
-    {field:'application', label:'A — Application',  color:'#4caf50', icon:'🔍'},
-    {field:'conclusion',  label:'C — Conclusion',   color:'#ff9800', icon:'✅'},
+    {field:'application', label:'A — Application',  color:'var(--fg-done)', icon:'🔍'},
+    {field:'conclusion',  label:'C — Conclusion',   color:'var(--warn)', icon:'✅'},
   ];
   const parts=DEFS.filter(d=>components[d.field]);
   if(!parts.length) return '';
@@ -5549,15 +5578,15 @@ function renderALACSections(components, headerLabel){
 function renderConceptualSections(cm){
   if(!cm) return '';
   const DEFS=[
-    {field:'accuracy',      label:'Accuracy',      color:'#4a9eff', icon:'✅'},
-    {field:'completeness',  label:'Completeness',  color:'#4caf50', icon:'📋'},
-    {field:'clarity',       label:'Clarity',        color:'#ff9800', icon:'💡'},
+    {field:'accuracy',      label:'Accuracy',      color:'var(--fg-blue)', icon:'✅'},
+    {field:'completeness',  label:'Completeness',  color:'var(--fg-done)', icon:'📋'},
+    {field:'clarity',       label:'Clarity',        color:'var(--warn)', icon:'💡'},
   ];
   const parts=DEFS.filter(d=>cm[d.field]&&cm[d.field].content);
   if(!parts.length) return '';
   let html=`<div class="alac-model-answer">
     <div class="alac-model-header">📋 Model Answer (Conceptual Breakdown)</div>`;
-  if(cm.overview) html+=`<div class="alac-section"><div class="alac-section-label" style="color:#5a3e1b;">Overview</div><div class="alac-section-content">${h(cm.overview)}</div></div>`;
+  if(cm.overview) html+=`<div class="alac-section"><div class="alac-section-label" style="color:var(--gold-l);">Overview</div><div class="alac-section-content">${h(cm.overview)}</div></div>`;
   parts.forEach(d=>{
     const sec=cm[d.field];
     html+=`<div class="alac-section">
@@ -5566,8 +5595,8 @@ function renderConceptualSections(cm){
     if(sec.keyPoints&&sec.keyPoints.length) html+=`<ul style="margin:6px 0 2px 0;padding-left:18px;font-size:13px;">${sec.keyPoints.map(p=>`<li style="margin:2px 0;color:var(--text);">${h(p)}</li>`).join('')}</ul>`;
     html+=`</div>`;
   });
-  if(cm.conclusion) html+=`<div class="alac-section"><div class="alac-section-label" style="color:#5a3e1b;">Conclusion</div><div class="alac-section-content">${h(cm.conclusion)}</div></div>`;
-  if(cm.keyProvisions&&cm.keyProvisions.length) html+=`<div class="alac-section"><div class="alac-section-label" style="color:#5a3e1b;">Key Provisions</div><ul style="margin:4px 0 2px 0;padding-left:18px;font-size:13px;">${cm.keyProvisions.map(p=>`<li style="margin:2px 0;color:var(--text);">${h(p)}</li>`).join('')}</ul></div>`;
+  if(cm.conclusion) html+=`<div class="alac-section"><div class="alac-section-label" style="color:var(--gold-l);">Conclusion</div><div class="alac-section-content">${h(cm.conclusion)}</div></div>`;
+  if(cm.keyProvisions&&cm.keyProvisions.length) html+=`<div class="alac-section"><div class="alac-section-label" style="color:var(--gold-l);">Key Provisions</div><ul style="margin:4px 0 2px 0;padding-left:18px;font-size:13px;">${cm.keyProvisions.map(p=>`<li style="margin:2px 0;color:var(--text);">${h(p)}</li>`).join('')}</ul></div>`;
   html+=`</div>`;
   return html;
 }
@@ -5616,38 +5645,96 @@ function renderModelAnswer(evaluation, questionType){
   }
   return altBanner + `<div class="plain-model-answer">${h(text)}</div>`;
 }
-function renderAlacCard(ev){
-  const gc=ev.grade==='Excellent'?'var(--teal-d)':ev.grade==='Good'?'#50d090':ev.grade==='Satisfactory'?'#c9a84c':ev.grade==='Needs Improvement'?'#e09050':'var(--danger)';
-  const al=ev.alac||{};
-  const rows=[
-    ['A — Answer',      'answer',      al.answer,      1.5],
-    ['L — Legal Basis', 'legalBasis',  al.legalBasis,  3.0],
-    ['A — Application', 'application', al.application, 4.0],
-    ['C — Conclusion',  'conclusion',  al.conclusion,  1.5],
-  ];
-  const tableRows=rows.map(([label,key,c,maxPts])=>c?`<tr>
-    <td style="color:var(--white);font-weight:600;">${label}</td>
-    <td><span class="alac-score ${alacScoreCls(c.score??0,key)}">${c.score!=null?c.score:'—'}</span></td>
-    <td style="color:var(--muted);font-size:12px;white-space:nowrap;">/${maxPts}</td>
-    <td style="color:rgba(var(--txt2-rgb),.8);">${h(c.feedback||'')}</td>
-  </tr>`:''
-  ).join('');
-  const computedTotal=(al.answer?.score??0)+(al.legalBasis?.score??0)+(al.application?.score??0)+(al.conclusion?.score??0);
-  const totalDisplay=computedTotal>0?`${+computedTotal.toFixed(1)}/10`:(ev.score||'?/10');
-  return `<div class="ai-fb-head">${evalFormatBadge(ev.format||ev.questionType||'essay')}<span class="ai-fb-score">${h(totalDisplay)}</span><span style="background:rgba(var(--ovl),.08);border-radius:5px;padding:2px 7px;font-family:var(--fm);color:${gc};">${h(ev.grade||'')}</span></div>
+function renderAlacCard(ev,expand){
+  const sc=renderScorecard(ev);
+  return `${sc.head}
   <div class="ai-fb-content">
-    <table class="alac-table">
-      <thead><tr><th>Component</th><th>Score</th><th>Max</th><th>Feedback</th></tr></thead>
-      <tbody>${tableRows}<tr class="alac-total-row"><td style="color:${gc};">Total</td><td style="color:${gc};">${h(totalDisplay)}</td><td style="color:var(--muted);font-size:12px;">/10</td><td style="color:rgba(var(--txt2-rgb),.6);font-size:12px;">${h(ev.overallFeedback||'')}</td></tr></tbody>
-    </table>
+    ${sc.table}
     ${ev.strengths?.length?`<p style="margin-top:10px;"><strong>✅ Strengths:</strong></p><ul>${ev.strengths.map(s=>`<li>${h(s)}</li>`).join('')}</ul>`:''}
     ${ev.improvements?.length?`<p><strong>⚠️ Improve:</strong></p><ul>${ev.improvements.map(s=>`<li>${h(s)}</li>`).join('')}</ul>`:''}
     ${ev.keyMissed?.length?`<p><strong>📚 Missed:</strong></p><ul>${ev.keyMissed.map(s=>`<li>${h(s)}</li>`).join('')}</ul>`:''}
     ${renderWritingFeedback(ev)}
-    <details style="margin-top:12px;"><summary style="cursor:pointer;color:var(--gold);font-weight:600;font-size:13px;">📖 Model Answer (ALAC Format)</summary>
+    <details${expand?' open':''} style="margin-top:12px;"><summary style="cursor:pointer;color:var(--gold);font-weight:600;font-size:13px;">📖 Model Answer (ALAC Format)</summary>
     <div style="margin-top:8px;padding:12px;background:rgba(var(--ovl),.03);border-radius:9px;">${renderModelAnswer(ev)}</div></details>
   </div>`;
 }
+// ── Results header helpers ──────────────────────────────────
+// The saved file outlives the session that produced it, so the heading has to
+// say which kind of session it was rather than always claiming "Mock Bar".
+function resultsTitle(){
+  return window.isSpeedDrill?'Speed Drill Results'
+       :window.isReviewSession?'Spaced Repetition Review Results'
+       :'Mock Bar Results';
+}
+function verdictCls(pct){return pct>=70?'pass':pct>=55?'mid':'fail';}
+function verdictText(pct){return pct>=70?'✅ PASSED':pct>=55?'📖 Keep Studying':'❌ Needs More Review';}
+// Folds the question's own cached fields into the evaluation before rendering.
+// The screen used to fold in modelAnswer/keyPoints and the export folded in
+// modelAnswer/alacModelAnswer, so each dropped something the other kept.
+function resultScore(q,s,i){
+  const out={...(s||{}),_qIdx:i};
+  if(!out.modelAnswer&&q.modelAnswer) out.modelAnswer=q.modelAnswer;
+  if(!out.alacModelAnswer&&q.alacModelAnswer) out.alacModelAnswer=q.alacModelAnswer;
+  if(!out.conceptualModelAnswer&&q.conceptualModelAnswer) out.conceptualModelAnswer=q.conceptualModelAnswer;
+  if(!out.keyPoints?.length&&q.keyPoints?.length) out.keyPoints=q.keyPoints;
+  return out;
+}
+
+// ── Shared question-review card ─────────────────────────────
+// One question as it appears under "Question Review". The live results screen
+// and the saved / emailed HTML both render through here, so the two can no
+// longer drift — the print path used to quietly lose the scoring-format badge,
+// the past-bar name, the Max column and any breakdown component the model
+// returned without a `max` field.
+//
+// forExport changes three things and nothing else:
+//   · collapsed sections are opened (a printed <details> hides its content)
+//   · the retry control is dropped (a file has nothing to retry against)
+//   · live-update ids are omitted (nothing on the page owns them)
+function renderQuestionReview(q,s,i,opts){
+  const forExport=!!(opts&&opts.forExport);
+  const sub=SUBJS.find(x=>x.key===q.subject)||{name:q.subject||'Unknown',cls:'sg-gen'};
+  const ns=effectiveScore(s);
+  const qText=q.prompt||q.q||'';
+  const isSit=(q.type==='situational')&&q.context;
+  const answer=mockAnswers[i]||'';
+  const notAnswered=s.grade==='Not Answered'||!answer.trim();
+  const badgeCls=notAnswered?'qsb-low':ns>=7?'qsb-high':ns>=5?'qsb-mid':'qsb-low';
+  const ev=forExport?{...s,_qIdx:-1}:s;
+  const srLine=(()=>{
+    const prev=window._srReviewData?.[q.id];
+    if(prev==null) return '';
+    if(ns>=8) return '<div class="sr-motivation sr-mastered">🎉 Mastered! This question won\'t resurface</div>';
+    if(ns>prev) return `<div class="sr-motivation sr-improved">📈 Great improvement! Up from ${(+prev).toFixed(1)} to ${ns.toFixed(1)}</div>`;
+    return `<div class="sr-motivation sr-retry">Keep practicing — rescheduled for 3 days (${(+prev).toFixed(1)} → ${ns.toFixed(1)})</div>`;
+  })();
+  const src=q.isReal
+    ? `<span class="qr-src">📜 ${h(q.pastBarName||q.source||'Past Bar')}</span>`
+    : q.source==='Pre-generated'
+      ? '<span class="qr-src pre">📚 Pre-gen</span>'
+      : '<span class="qr-src">🤖 AI</span>';
+  return `<div class="q-review-item">
+    <div class="qr-meta">
+      Q${i+1} · <span class="sbg ${sub.cls}">${h(sub.name)}</span>
+      ${src}
+      <span${forExport?'':` id="mock-qsb-${i}"`} class="q-score-badge ${badgeCls}" style="margin-left:auto;">${notAnswered?'Not Answered':fmt(ns)+'/10'}</span>
+    </div>
+    ${isSit
+      ? `<div class="facts-box" style="margin-bottom:16px;">
+           <div class="facts-label">📋 Facts</div>
+           <div class="facts-text" style="font-size:15px;">${h(q.context)}</div>
+         </div>
+         <div class="question-label">❓ Question</div>
+         <div class="question-text" style="font-size:var(--fs-read-sm);margin-bottom:10px;">${h(qText)}</div>`
+      : `<div class="question-text" style="font-size:var(--fs-read-sm);margin-bottom:10px;">${h(qText)}</div>`}
+    ${notAnswered?'':`<div${forExport?'':` id="eval-card-${i}"`} class="ai-fb show" style="margin-top:8px;">${renderEvalCard(ev,forExport)}</div>`}
+    ${srLine}
+    <details${forExport?' open':''} style="margin-top:8px;"><summary class="qr-sum">Your answer</summary>
+      <div class="qr-answer">${h(answer||'(no answer)')}</div>
+    </details>
+  </div>`;
+}
+
 async function submitEssay(){
   const ans=document.getElementById('essayBox')?.value.trim();if(!ans){document.getElementById('essayBox')?.focus();return;}
   const btn=document.getElementById('essFB');btn.disabled=true;btn.textContent='⏳ Evaluating…';
@@ -5679,7 +5766,7 @@ async function submitEssay(){
   }
   if(lastErr){
     console.error('[submitEssay] all 3 retries failed:',lastErr.message);
-    fb.innerHTML=`<div class="ai-fb-head" style="color:var(--danger);flex-wrap:wrap;gap:8px;">⚠️ Evaluation unavailable. <button onclick="submitEssay()" style="background:rgba(201,168,76,.2);border:1px solid rgba(201,168,76,.4);color:#c9a84c;border-radius:6px;padding:3px 11px;font-size:12px;font-weight:700;cursor:pointer;">↺ Click to retry</button><div style="font-size:11px;color:var(--muted);width:100%;margin-top:2px;">${h(lastErr.message)}</div></div>`;
+    fb.innerHTML=`<div class="ai-fb-head" style="color:var(--danger);flex-wrap:wrap;gap:8px;">⚠️ Evaluation unavailable. <button onclick="submitEssay()" style="background:rgba(var(--gold-rgb),.2);border:1px solid rgba(var(--gold-rgb),.4);color:var(--gold);border-radius:6px;padding:3px 11px;font-size:12px;font-weight:700;cursor:pointer;">↺ Click to retry</button><div style="font-size:11px;color:var(--muted);width:100%;margin-top:2px;">${h(lastErr.message)}</div></div>`;
   }
   btn.disabled=false;btn.textContent='🤖 Get AI Feedback';
 }
@@ -5729,8 +5816,8 @@ function recomputeResultsDisplay(idx,ev){
   // Update percentage/verdict line
   const pctEl=document.getElementById('mock-pct-display');
   if(pctEl){
-    pctEl.style.color=pct>=70?'var(--teal-d)':pct>=55?'#c9a84c':'var(--danger)';
-    pctEl.textContent=pct+'% — '+(pct>=70?'✅ PASSED':pct>=55?'📖 Keep Studying':'❌ Needs More Review');
+    pctEl.className='mr-verdict '+verdictCls(pct);
+    pctEl.textContent=pct+'% — '+verdictText(pct);
   }
   // Update percentage stat card
   const pctStat=document.getElementById('mock-pct-stat');
@@ -6187,7 +6274,7 @@ async function pollForResults(submissionId, authHdr, expectedCount) {
 
     if (msgEl) {
       if (!allDone && stalledChecks >= 10) {
-        msgEl.innerHTML = 'Evaluation seems stalled \u2014 <button onclick="window._evalForceCheck&&window._evalForceCheck()" style="background:rgba(201,168,76,.2);border:1px solid rgba(201,168,76,.4);color:#c9a84c;border-radius:6px;padding:3px 11px;font-size:12px;font-weight:700;cursor:pointer;">\u21ba Check Again</button>';
+        msgEl.innerHTML = 'Evaluation seems stalled \u2014 <button onclick="window._evalForceCheck&&window._evalForceCheck()" style="background:rgba(var(--gold-rgb),.2);border:1px solid rgba(var(--gold-rgb),.4);color:var(--gold);border-radius:6px;padding:3px 11px;font-size:12px;font-weight:700;cursor:pointer;">\u21ba Check Again</button>';
       } else if (!allDone && stalledChecks >= 3) {
         msgEl.textContent = 'Evaluation seems slow \u2014 still processing...';
       } else if (pct < 30) { msgEl.textContent = 'BarBuddy is reviewing your answers...';
@@ -6448,12 +6535,12 @@ async function endMockSession(){
     // rather than the pre-session count.
     checkDueReviews().catch(() => {});
     res.innerHTML=`<div class="mock-results">
-    ${currentUser?`<div style="background:rgba(201,168,76,.07);border:1px solid rgba(201,168,76,.18);border-radius:9px;padding:8px 14px;margin-bottom:14px;text-align:left;"><div class="result-user">👤 ${h(currentUser.name)}</div><div style="font-size:11px;color:var(--muted);">${new Date().toLocaleDateString('en-PH',{timeZone:'Asia/Manila'})}</div></div>`:''}
+    ${currentUser?`<div class="mr-id"><div class="result-user">👤 ${h(currentUser.name)}</div><div class="mr-id-meta">${new Date().toLocaleDateString('en-PH',{timeZone:'Asia/Manila'})}</div></div>`:''}
     <div style="font-size:32px;margin-bottom:8px;">🏛</div>
-    <div style="font-family:var(--fd);font-size:20px;font-weight:700;color:var(--warn);margin-bottom:4px;">Mock Bar Results</div>
+    <div class="mr-title">${h(resultsTitle())}</div>
     <div class="mr-grade"><span class="score-fraction">${fmt(rawScore)}/${maxScore}</span></div>
-    <div id="mock-pct-display" style="font-size:16px;font-weight:700;color:${pct>=70?'var(--teal-d)':pct>=55?'#c9a84c':'var(--danger)'};margin-bottom:4px;">${pct}% — ${pct>=70?'✅ PASSED':pct>=55?'📖 Keep Studying':'❌ Needs More Review'}</div>
-    <div style="font-size:12px;color:var(--muted);font-family:var(--fm);margin-bottom:18px;">Passing score: 70% (${Math.ceil(maxScore*0.7)} / ${maxScore} points)</div>
+    <div id="mock-pct-display" class="mr-verdict ${verdictCls(pct)}">${pct}% — ${verdictText(pct)}</div>
+    <div class="mr-pass">Passing score: 70% (${Math.ceil(maxScore*0.7)} / ${maxScore} points)</div>
     <div class="mr-stats">
       <div class="mr-stat"><div class="n"><span class="score-fraction">${fmt(rawScore)}/${maxScore}</span></div><div class="l">Score</div></div>
       <div class="mr-stat"><div id="mock-pct-stat" class="n">${pct}%</div><div class="l">Percentage</div></div>
@@ -6472,38 +6559,8 @@ async function endMockSession(){
       <button class="btn-ghost" onclick="downloadMockResults()">⬇️ Save</button>
       <button class="btn-ghost" onclick="openModal('emailOverlay')">📧 Email</button>
     </div>
-    <h3 style="font-family:var(--fd);font-size:20px;font-weight:700;color:var(--gold-l);margin-bottom:14px;text-align:left;">📋 Question Review</h3>
-    ${mockQs.map((q,i)=>{
-      const s={...scores[i],_qIdx:i};
-      if(!s.modelAnswer&&q.modelAnswer)s.modelAnswer=q.modelAnswer;
-      if(!s.keyPoints?.length&&q.keyPoints?.length)s.keyPoints=q.keyPoints;
-      const sub=SUBJS.find(x=>x.key===q.subject)||{name:q.subject,cls:'sg-gen'},ns=effectiveScore(s);
-      const qText=q.prompt||q.q||'';
-      const isSit=(q.type==='situational')&&q.context;
-      const qBadgeCls=ns>=7?'qsb-high':ns>=5?'qsb-mid':'qsb-low';
-      return `<div class="q-review-item">
-        <div style="font-size:11px;color:#a08060;margin-bottom:5px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-          Q${i+1} · <span class="sbg ${sub.cls}">${sub.name}</span>
-          ${q.isReal?`<span style="font-size:9px;">📜 ${h(q.pastBarName||'Past Bar')}</span>`:q.source==='Pre-generated'?'<span style="font-size:9px;color:var(--teal);">📚 Pre-gen</span>':'<span style="font-size:9px;">🤖 AI</span>'}
-          <span id="mock-qsb-${i}" class="q-score-badge ${s.grade==='Not Answered'?'qsb-low':qBadgeCls}" style="margin-left:auto;">${s.grade==='Not Answered'?'Not Answered':fmt(ns)+'/10'}</span>
-        </div>
-        ${isSit
-          ? `<div class="facts-box" style="margin-bottom:16px;">
-               <div class="facts-label">📋 Facts</div>
-               <div class="facts-text" style="font-size:15px;">${h(q.context)}</div>
-             </div>
-             <div class="question-label">❓ Question</div>
-             <div class="question-text" style="font-size:var(--fs-read-sm);margin-bottom:10px;">${h(qText)}</div>`
-          : `<div class="question-text" style="font-size:var(--fs-read-sm);margin-bottom:10px;">${h(qText)}</div>`
-        }
-        ${s.grade==='Not Answered'?'':`
-        <div id="eval-card-${i}" class="ai-fb show" style="margin-top:8px;">${renderEvalCard(s)}</div>`}
-        ${(()=>{const srPrev=window._srReviewData?.[q.id];if(srPrev==null)return'';const ns=effectiveScore(s);if(ns>=8)return'<div class="sr-motivation sr-mastered">🎉 Mastered! This question won\'t resurface</div>';if(ns>srPrev)return`<div class="sr-motivation sr-improved">📈 Great improvement! Up from ${(+srPrev).toFixed(1)} to ${ns.toFixed(1)}</div>`;return`<div class="sr-motivation sr-retry">Keep practicing — rescheduled for 3 days (${(+srPrev).toFixed(1)} → ${ns.toFixed(1)})</div>`;})()}
-        <details style="margin-top:8px;"><summary style="cursor:pointer;color:var(--muted);font-size:12px;font-weight:600;">Your answer</summary>
-          <div style="margin-top:6px;padding:10px;background:rgba(var(--ovl),.03);border-radius:8px;font-size:12px;line-height:1.7;color:rgba(var(--txt2-rgb),.8);">${h(mockAnswers[i]||'(no answer)')}</div>
-        </details>
-      </div>`;
-    }).join('')}
+    <h3 class="mr-section">📋 Question Review</h3>
+    ${mockQs.map((q,i)=>renderQuestionReview(q,resultScore(q,scores[i],i),i)).join('')}
   </div>`;
   }
 
@@ -6604,220 +6661,246 @@ function renderPastBarList(){
 }
 
 // ══════════════════════════════════
-// PRINT / EMAIL RESULTS
+// SAVE / PRINT / EMAIL RESULTS
 // ══════════════════════════════════
-function buildResultsHtml(){
-  const e=s=>String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+// The exported document renders through the same functions and the same class
+// names as the live results screen (renderQuestionReview → renderEvalCard →
+// renderModelAnswer). It used to be a second, hand-maintained design — Georgia
+// on cream, its own tables, its own palette — which is why it had drifted: no
+// scoring-format badge, no Max column, past-bar questions labelled by year
+// instead of name, and any breakdown component the model returned without a
+// `max` field silently dropped from the table.
+//
+// The token values and component rules below are the one duplication that
+// remains. They mirror styles.css because the file has to survive being opened
+// from disk months later with no network, and an email body cannot reference an
+// external sheet. Keep them in step when the results rules there change.
+
+// Both themes travel with a saved file; the email gets light only, flattened.
+const _EXPORT_TOKENS={
+  dark:{
+    '--ovl':'255,255,255','--txt-rgb':'240,236,227','--txt2-rgb':'248,246,241',
+    '--gold-rgb':'212,168,67','--teal-rgb':'46,196,160','--teal-d-rgb':'20,180,160',
+    '--crim-rgb':'155,35,53','--warn-rgb':'255,140,66','--danger-rgb':'224,112,128',
+    '--ink':'#0f1520','--ink2':'#1a2235','--card2':'#1e2840',
+    '--gold':'#d4a843','--gold-l':'#e8c06a',
+    '--teal':'#2ec4a0','--teal-d':'#14b4a0','--teal-l':'#4dd4b0',
+    '--danger':'#e07080','--warn':'#ff8c42','--amber':'#f0c040','--og':'#e8904a',
+    '--fg-blue':'#7dc0ff','--fg-slate':'#a0a0c0','--fg-done':'#7fe3c8','--fg-violet':'#c080f0',
+    '--text':'#f0ece3','--white':'#f0ece3',
+    '--text-muted':'rgba(var(--txt-rgb),.55)','--muted':'rgba(var(--txt-rgb),.4)',
+    '--bdr':'rgba(var(--txt-rgb),.08)','--bdr2':'rgba(var(--txt-rgb),.12)',
+  },
+  light:{
+    '--ovl':'15,19,27','--txt-rgb':'15,19,27','--txt2-rgb':'15,19,27',
+    '--gold-rgb':'122,88,10','--teal-rgb':'11,94,76','--teal-d-rgb':'9,84,68',
+    '--crim-rgb':'139,26,44','--warn-rgb':'146,64,5','--danger-rgb':'167,42,30',
+    '--ink':'#f4f1ea','--ink2':'#ffffff','--card2':'#fbf9f5',
+    '--gold':'#6a4d0a','--gold-l':'#553d07',
+    '--teal':'#0b5e4c','--teal-d':'#095444','--teal-l':'#0d6a55',
+    '--danger':'#a72a1e','--warn':'#924005','--amber':'#6d5106','--og':'#9c5013',
+    '--fg-blue':'#12509e','--fg-slate':'#43485c','--fg-done':'#075845','--fg-violet':'#5a2896',
+    '--text':'#0b0e14','--white':'#0b0e14',
+    '--text-muted':'rgba(var(--txt-rgb),.92)','--muted':'rgba(var(--txt-rgb),.78)',
+    '--bdr':'rgba(var(--txt-rgb),.16)','--bdr2':'rgba(var(--txt-rgb),.26)',
+  },
+};
+// Type scale and family — identical in both themes, so they sit outside the map.
+const _EXPORT_TYPE={
+  // DM Sans when the network is there, Arial when it isn't, so a file opened
+  // offline in five years still reads as BarBuddy rather than Times New Roman.
+  '--fsans':"'DM Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif",
+  '--fd':'var(--fsans)','--fb':'var(--fsans)','--fm':'var(--fsans)','--fr':'var(--fsans)',
+  '--fs-read':'16.5px','--fs-read-sm':'15px','--lh-read':'1.72','--measure':'68ch',
+};
+function _tokenBlock(sel,theme){
+  const decl=Object.entries({..._EXPORT_TOKENS[theme],..._EXPORT_TYPE})
+    .map(([k,v])=>`${k}:${v}`).join(';');
+  return `${sel}{${decl};color-scheme:${theme};}`;
+}
+// Gmail strips CSS custom properties, so the emailed copy ships resolved
+// values instead. Four passes is enough for the deepest chain we have
+// (--muted → --txt-rgb).
+function _flattenCss(css,theme){
+  const map={..._EXPORT_TOKENS[theme],..._EXPORT_TYPE};
+  let out=css;
+  for(let pass=0;pass<4;pass++){
+    out=out.replace(/var\((--[a-z0-9-]+)\)/gi,(m,k)=>map[k]!==undefined?map[k]:m);
+  }
+  return out;
+}
+
+// Component rules, mirroring the results section of styles.css.
+function _resultsRules(){
+  return `
+  .bb-export{font-family:var(--fb);color:var(--text);background:var(--ink);
+    -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;
+    line-height:1.5;padding:24px 16px;min-height:100vh;}
+  .bb-page{max-width:900px;margin:0 auto;}
+  .bb-export *{box-sizing:border-box;}
+  .bb-export p{margin:0 0 .8em;}
+  .bb-export ul{margin:4px 0 8px;padding-left:20px;}
+  .bb-export li{margin:2px 0;line-height:1.6;}
+  .bb-export details{margin-top:8px;}
+  .bb-export summary{cursor:pointer;}
+  .mock-results{background:var(--ink2);border:1px solid rgba(var(--gold-rgb),.2);border-radius:20px;padding:32px;text-align:center;}
+  .mr-id{background:rgba(var(--gold-rgb),.07);border:1px solid rgba(var(--gold-rgb),.18);border-radius:9px;padding:8px 14px;margin-bottom:14px;text-align:left;}
+  .mr-id-meta{font-size:11px;color:var(--muted);}
+  .result-user{font-size:1.1rem;color:var(--amber);font-weight:600;margin-bottom:4px;}
+  .mr-title{font-family:var(--fd);font-size:20px;font-weight:700;color:var(--warn);margin-bottom:4px;}
+  .mr-grade{font-family:var(--fd);font-size:clamp(2rem,8vw,4rem);font-weight:700;color:var(--gold-l);line-height:1.1;margin:10px 0;word-break:break-word;}
+  .score-fraction{display:inline-block;max-width:100%;overflow-wrap:break-word;}
+  .mr-verdict{font-size:16px;font-weight:700;margin-bottom:4px;}
+  .mr-verdict.pass{color:var(--teal-d);}
+  .mr-verdict.mid{color:var(--gold);}
+  .mr-verdict.fail{color:var(--danger);}
+  .mr-pass{font-size:12px;color:var(--muted);margin-bottom:18px;}
+  .mr-stats{display:flex;gap:10px;margin:22px 0;justify-content:center;flex-wrap:wrap;}
+  .mr-stat{background:rgba(var(--ovl),.04);border:1px solid rgba(var(--gold-rgb),.15);border-radius:11px;padding:12px;text-align:center;min-width:100px;}
+  .mr-stat .n{font-family:var(--fd);font-size:22px;font-weight:700;color:var(--gold-l);word-break:break-all;}
+  .mr-stat .l{font-size:11px;color:var(--text-muted);margin-top:2px;}
+  .mr-section{font-family:var(--fd);font-size:20px;font-weight:700;color:var(--gold-l);margin:0 0 14px;text-align:left;}
+  .mr-foot{margin-top:28px;padding-top:12px;border-top:1px solid var(--bdr);font-size:11px;color:var(--muted);text-align:center;}
+  .q-review-item{background:rgba(var(--ovl),.03);border:1px solid var(--bdr2);border-radius:12px;padding:13px;margin-bottom:9px;text-align:left;break-inside:avoid;}
+  .qr-meta{font-size:11px;color:var(--muted);margin-bottom:5px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+  .qr-src{font-size:9px;color:var(--muted);}
+  .qr-src.pre{color:var(--teal-d);}
+  .qr-sum{color:var(--muted);font-size:12px;font-weight:600;}
+  .qr-answer{margin-top:6px;padding:10px;background:rgba(var(--ovl),.03);border-radius:8px;font-size:12px;line-height:1.7;color:rgba(var(--txt2-rgb),.8);white-space:pre-wrap;}
+  .q-score-badge{display:inline-block;font-size:11px;font-weight:700;padding:3px 9px;border-radius:6px;font-variant-numeric:tabular-nums;}
+  .qsb-high{background:rgba(var(--teal-d-rgb),.15);color:var(--teal);}
+  .qsb-mid{background:rgba(var(--gold-rgb),.15);color:var(--gold);}
+  .qsb-low{background:rgba(var(--crim-rgb),.15);color:var(--danger);}
+  .sbg{font-size:10px;font-weight:700;padding:2px 8px;border-radius:5px;letter-spacing:.03em;white-space:nowrap;}
+  .sg-civ{background:rgba(var(--gold-rgb),.15);color:var(--gold);}
+  .sg-cri{background:rgba(var(--crim-rgb),.2);color:var(--danger);}
+  .sg-pol{background:rgba(0,56,168,.2);color:var(--fg-blue);}
+  .sg-lab{background:rgba(var(--teal-d-rgb),.15);color:var(--teal-d);}
+  .sg-com{background:rgba(160,100,200,.15);color:var(--fg-violet);}
+  .sg-tax{background:rgba(200,120,40,.15);color:var(--warn);}
+  .sg-rem{background:rgba(40,160,100,.15);color:var(--teal-l);}
+  .sg-eth{background:rgba(120,120,180,.15);color:var(--fg-slate);}
+  .sg-gen{background:rgba(100,100,120,.15);color:var(--fg-slate);}
+  .facts-box{background:rgba(var(--txt2-rgb),.07);border-left:4px solid var(--gold);border-radius:0 12px 12px 0;padding:20px 22px;margin-bottom:22px;}
+  .facts-label{font-family:var(--fd);font-size:11px;font-weight:800;letter-spacing:.12em;color:var(--gold);text-transform:uppercase;margin-bottom:12px;}
+  .facts-text{font-size:var(--fs-read);line-height:var(--lh-read);color:rgba(var(--txt2-rgb),.95);white-space:pre-wrap;max-width:var(--measure);}
+  .question-label{font-family:var(--fd);font-size:11px;font-weight:800;letter-spacing:.12em;color:var(--og);text-transform:uppercase;margin:20px 0 10px;}
+  .question-text{font-size:var(--fs-read);font-weight:600;line-height:var(--lh-read);color:var(--text);white-space:pre-wrap;max-width:var(--measure);}
+  .ai-fb{background:rgba(var(--gold-rgb),.06);border:1px solid rgba(var(--gold-rgb),.2);border-radius:13px;padding:16px;margin-top:14px;}
+  .ai-fb-head{font-size:12px;font-weight:700;color:var(--gold);text-transform:uppercase;letter-spacing:.06em;margin-bottom:9px;display:flex;align-items:center;gap:7px;flex-wrap:wrap;}
+  .ai-fb-score{background:rgba(var(--gold-rgb),.15);border-radius:5px;padding:2px 7px;font-variant-numeric:tabular-nums;}
+  .ai-fb-content{font-size:var(--fs-read-sm);line-height:var(--lh-read);color:rgba(var(--txt2-rgb),.92);max-width:var(--measure);}
+  .alac-table{width:100%;border-collapse:collapse;font-size:13px;margin:10px 0;}
+  .alac-table th{text-align:left;padding:6px 10px;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--bdr2);}
+  .alac-table td{padding:7px 10px;vertical-align:top;border-bottom:1px solid rgba(var(--ovl),.04);}
+  .alac-score{font-weight:700;font-size:13px;white-space:nowrap;padding:2px 8px;border-radius:5px;display:inline-block;font-variant-numeric:tabular-nums;}
+  .alac-score.hi{color:var(--teal-d);background:rgba(var(--teal-d-rgb),.15);}
+  .alac-score.mid{color:var(--gold);background:rgba(var(--gold-rgb),.15);}
+  .alac-score.lo{color:var(--danger);background:rgba(var(--crim-rgb),.15);}
+  .alac-total-row td{border-top:1px solid var(--bdr2);font-weight:700;padding:8px 10px;}
+  .alac-model-answer{border-radius:10px;overflow:hidden;border:1px solid var(--bdr2);break-inside:avoid;}
+  .alac-model-header{background:var(--card2);padding:10px 14px;font-size:.82rem;font-weight:700;color:var(--gold);letter-spacing:.5px;border-bottom:1px solid var(--bdr2);}
+  .alac-section{padding:12px 14px;border-bottom:1px solid var(--bdr);break-inside:avoid;}
+  .alac-section:last-child{border-bottom:none;}
+  .alac-section-label{font-size:.72rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;}
+  .alac-section-content,.plain-model-answer{font-size:.88rem;color:rgba(var(--txt2-rgb),.85);line-height:1.65;white-space:pre-line;}
+  .writing-feedback-card{border:1px solid rgba(var(--gold-rgb),.45);border-radius:10px;background:rgba(var(--gold-rgb),.08);padding:12px 16px;margin:10px 0;break-inside:avoid;}
+  .writing-feedback-header{font-size:.78rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--gold-l);margin-bottom:8px;}
+  .writing-feedback-subtitle{font-weight:400;text-transform:none;letter-spacing:0;color:var(--muted);font-size:.72rem;}
+  .writing-feedback-section{margin-bottom:8px;font-size:.88rem;color:var(--text);}
+  .writing-feedback-section strong{font-size:.8rem;color:var(--gold-l);display:block;margin-bottom:4px;}
+  .writing-feedback-overall{font-size:.88rem;color:var(--text);font-style:italic;line-height:1.65;}
+  .sr-motivation{margin-top:8px;padding:8px 12px;border-radius:8px;font-size:12px;font-weight:600;line-height:1.4;}
+  .sr-mastered{background:rgba(var(--teal-rgb),.1);border:1px solid rgba(var(--teal-rgb),.25);color:var(--teal-l);}
+  .sr-improved{background:rgba(91,168,255,.1);border:1px solid rgba(91,168,255,.25);color:var(--fg-blue);}
+  .sr-retry{background:rgba(var(--danger-rgb),.08);border:1px solid rgba(var(--danger-rgb),.2);color:var(--danger);}
+  @media(max-width:600px){
+    .bb-export{padding:12px 8px;}
+    .mock-results{padding:18px 14px;}
+    .alac-table,.alac-table tbody,.alac-table tr,.alac-table td{display:block;width:100%;}
+    .alac-table thead{display:none;}
+    .alac-table td{border-bottom:none;padding:2px 0;}
+    .alac-table tr{border-bottom:1px solid var(--bdr);padding:8px 0;}
+  }`;
+}
+
+// mode 'file' ships both palettes and switches on the wrapper's data-theme;
+// mode 'email' ships one flattened palette, because Gmail drops var().
+function _resultsCss(mode,theme){
+  if(mode==='email') return _flattenCss(_resultsRules(),theme);
+  return `${_tokenBlock('.bb-export',theme==='light'?'light':'dark')}
+  ${_resultsRules()}`;
+}
+
+function buildResultsHtml(opts){
+  const mode=(opts&&opts.mode)||'file';
+  const theme=mode==='email'
+    ? 'light'  // an emailed report lands in a white client; force paper.
+    : (document.documentElement.getAttribute('data-theme')==='light'?'light':'dark');
   const dateStr=mockSessionDate?formatDate(mockSessionDate instanceof Date?mockSessionDate.toISOString():mockSessionDate):formatDate(new Date().toISOString());
   const subjStr=(!mockSubjectsUsed.length||mockSubjectsUsed.includes('all'))?'All Subjects':mockSubjectsUsed.map(s=>SUBJS.find(x=>x.key===s)?.name||s).join(', ');
-  const userName=window.currentUser?.name||window.loggedInUser?.name||window.user?.name||document.querySelector('.user-name,.topbar-name,#user-display-name,.sidebar-user-name')?.textContent?.trim()||localStorage.getItem('bb_user_name')||(()=>{try{return JSON.parse(localStorage.getItem('bb_user')||'{}').name||'';}catch(e){return'';}})()||'Bar Examinee';
+  const userName=window.currentUser?.name||window.loggedInUser?.name||window.user?.name||localStorage.getItem('bb_user_name')||(()=>{try{return JSON.parse(localStorage.getItem('bb_user')||'{}').name||'';}catch(e){return'';}})()||'Bar Examinee';
   const answered=mockAnswers.filter(a=>a?.trim()).length;
   const rawSc=mockScores.reduce((a,s)=>a+effectiveScore(s),0);
   const numQ=mockQs.length||mockScores.length||1;
   const maxSc=numQ*10;
   const pct=maxSc>0?Math.round(rawSc/maxSc*100):0;
-  const passColor=pct>=70?'#1a7a5e':pct>=55?'#8b6914':'#b32d2d';
 
-  const alacTr=(label,c,max)=>c?`<tr><td style="padding:6px 8px;border:1px solid #d0b870;font-weight:600;">${label}</td><td style="padding:6px 8px;border:1px solid #d0b870;text-align:center;font-weight:bold;">${c.score!=null?fmt(c.score)+'/'+max:'—'}</td><td style="padding:6px 8px;border:1px solid #d0b870;">${e(c.feedback||'')}</td></tr>`:'';
+  const qHtml=mockQs.map((q,i)=>renderQuestionReview(q,resultScore(q,mockScores[i],i),i,{forExport:true})).join('');
 
-  const qHtml=mockQs.map((q,i)=>{
-    const s={...mockScores[i]||{}};
-    if(!s.modelAnswer&&q.modelAnswer) s.modelAnswer=q.modelAnswer; // fallback to stored model answer
-    if(!s.alacModelAnswer&&q.alacModelAnswer) s.alacModelAnswer=q.alacModelAnswer;
-    const sub=SUBJS.find(x=>x.key===q.subject)||{name:q.subject||'Unknown'};
-    const qText=q.prompt||q.q||'';
-    const ans=mockAnswers[i]||'';
-    const al=s.alac||{};
-    const hasAlac=!!(al.answer||al.legalBasis||al.application||al.conclusion);
-    const isSit=(q.type==='situational')&&q.context;
-    const pageBreak=i<mockQs.length-1?'page-break-after:always;':'';
-    const qEffScore=effectiveScore(s);
-    const qScoreStr=`${+qEffScore.toFixed(1)}/10`;
-    const qGrade=gradeFromScore(qEffScore);
-    const scoreColor=qEffScore>=7?'#1a7a5e':qEffScore>=5?'#8b6914':'#b32d2d';
-
-    // Normalise fields that the AI sometimes nests inside breakdown
-    const _bd=s.breakdown||{};
-    const _overallFeedback=s.overallFeedback||(typeof _bd.overallFeedback==='string'?_bd.overallFeedback:'')||'';
-    const _keyMissed=s.keyMissed?.length?s.keyMissed:(Array.isArray(_bd.keyMissed)?_bd.keyMissed:[]);
-
-    let card='';
-    if(ans.trim()){
-      // Score + overall feedback
-      card+=`<div style="margin-bottom:8px;"><span style="font-size:15px;font-weight:bold;color:${scoreColor};">${e(qScoreStr)} — ${e(qGrade)}</span></div>`;
-      if(_overallFeedback) card+=`<div style="border:1px solid #d0b870;border-radius:6px;padding:12px 16px;margin:8px 0 12px;background:#fffbf0;page-break-inside:avoid;"><div style="font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:.08em;color:#7a6128;margin-bottom:6px;">Overall Feedback</div><div style="font-size:13px;line-height:1.7;color:#333;">${e(_overallFeedback)}</div></div>`;
-
-      // Writing & Mechanics card (non-scoring — below overall feedback)
-      const _wf = s.writingFeedback || null;
-      if(_wf && (_wf.spelling?.length || _wf.grammar?.length || _wf.overall)){
-        card+=`<div style="border:1px solid #c9a84c;border-radius:6px;padding:12px 16px;margin:8px 0 12px;background:#fdf8e8;page-break-inside:avoid;"><div style="font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:.08em;color:#7a6128;margin-bottom:6px;">✍️ Writing &amp; Mechanics <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#8b6914;">(non-scoring)</span></div>`;
-        if(_wf.spelling?.length) card+=`<div style="margin-bottom:6px;"><strong style="font-size:12px;color:#5a3e1b;">Spelling:</strong><ul style="margin:2px 0 0 0;padding-left:18px;font-size:13px;line-height:1.7;color:#333;">${_wf.spelling.map(x=>`<li>${e(x)}</li>`).join('')}</ul></div>`;
-        if(_wf.grammar?.length) card+=`<div style="margin-bottom:6px;"><strong style="font-size:12px;color:#5a3e1b;">Grammar:</strong><ul style="margin:2px 0 0 0;padding-left:18px;font-size:13px;line-height:1.7;color:#333;">${_wf.grammar.map(x=>`<li>${e(x)}</li>`).join('')}</ul></div>`;
-        if(_wf.overall) card+=`<div style="font-size:13px;line-height:1.7;color:#333;font-style:italic;">${e(_wf.overall)}</div>`;
-        card+=`</div>`;
-      }
-
-      // ALAC breakdown table
-      if(hasAlac){
-        card+=`<div style="font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:.08em;color:#7a6128;margin:10px 0 5px;">ALAC SCORECARD</div>`;
-        card+=`<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:12px;">
-          <tr style="background:#f5efe0;"><th style="text-align:left;padding:6px 8px;border:1px solid #d0b870;font-size:11px;">Component</th><th style="padding:6px 8px;border:1px solid #d0b870;font-size:11px;">Score</th><th style="text-align:left;padding:6px 8px;border:1px solid #d0b870;font-size:11px;">Feedback</th></tr>
-          ${alacTr('A — Answer',al.answer,1.5)}
-          ${alacTr('L — Legal Basis',al.legalBasis,3.0)}
-          ${alacTr('A — Application',al.application,4.0)}
-          ${alacTr('C — Conclusion',al.conclusion,1.5)}
-        </table>`;
-      }
-
-      // Generic breakdown table (definition, enumeration)
-      if(s.breakdown&&!hasAlac){
-        // Only include actual scoring components (must have numeric score+max); skip misplaced top-level fields
-        const bParts=Object.entries(s.breakdown).filter(([,v])=>v&&typeof v==='object'&&v.score!=null&&v.max!=null);
-        if(bParts.length){
-          card+=`<div style="font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:.08em;color:#7a6128;margin:10px 0 5px;">COMPONENT BREAKDOWN</div>`;
-          card+=`<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:12px;">
-            <tr style="background:#f5efe0;"><th style="text-align:left;padding:6px 8px;border:1px solid #d0b870;font-size:11px;">Component</th><th style="padding:6px 8px;border:1px solid #d0b870;font-size:11px;">Score</th><th style="text-align:left;padding:6px 8px;border:1px solid #d0b870;font-size:11px;">Feedback</th></tr>
-            ${bParts.map(([key,val])=>`<tr><td style="padding:6px 8px;border:1px solid #d0b870;font-weight:600;text-transform:capitalize;">${e(key)}</td><td style="padding:6px 8px;border:1px solid #d0b870;text-align:center;">${val.score!=null?fmt(val.score)+'/'+(val.max||'?'):'—'}</td><td style="padding:6px 8px;border:1px solid #d0b870;">${e(val.feedback||'')}</td></tr>`).join('')}
-          </table>`;
-        }
-      }
-
-      // Strengths
-      if(s.strengths?.length) card+=`<div style="background:#f0faf0;border-left:3px solid #4caf50;padding:8px 12px;margin:8px 0;border-radius:4px;"><strong style="color:#2e7d32;font-size:12px;">✅ STRENGTHS</strong><ul style="margin:4px 0 0 0;padding-left:18px;font-size:13px;">${s.strengths.map(x=>`<li style="margin:2px 0;">${e(x)}</li>`).join('')}</ul></div>`;
-
-      // Improvements
-      if(s.improvements?.length) card+=`<div style="background:#fffbf0;border-left:3px solid #ff9800;padding:8px 12px;margin:8px 0;border-radius:4px;"><strong style="color:#e65100;font-size:12px;">⚠️ AREAS FOR IMPROVEMENT</strong><ul style="margin:4px 0 0 0;padding-left:18px;font-size:13px;">${s.improvements.map(x=>`<li style="margin:2px 0;">${e(x)}</li>`).join('')}</ul></div>`;
-
-      // Key points missed
-      if(_keyMissed.length) card+=`<div style="background:#fff5f5;border-left:3px solid #f44336;padding:8px 12px;margin:8px 0;border-radius:4px;"><strong style="color:#c62828;font-size:12px;">❌ KEY POINTS MISSED</strong><ul style="margin:4px 0 0 0;padding-left:18px;font-size:13px;">${_keyMissed.map(k=>`<li style="margin:2px 0;">${e(k)}</li>`).join('')}</ul></div>`;
-
-      // Model answer — render with ALAC sections if structured
-      card+=`<div style="font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:.08em;color:#7a6128;margin:12px 0 5px;">MODEL ANSWER</div>`;
-      const _showBadge=s.showMatchedBadge&&s.matchedAlternativeNumber>0;
-      if(_showBadge) card+=`<div style="background:#e8f5e9;border:1px solid #81c784;border-radius:4px;padding:6px 10px;margin-bottom:8px;font-size:12px;color:#2e7d32;">✅ Matched to Alternative Answer ${s.matchedAlternativeNumber} — scored against this version</div>`;
-      const _printAlacHeader=_showBadge?`Alternative Answer ${s.matchedAlternativeNumber} (ALAC Format)`:'Model Answer (ALAC Format)';
-      (()=>{
-        // 0. Prefer matchedAlternativeAlac if present
-        const altAc=s.matchedAlternativeAlac;
-        if(altAc&&(altAc.answer||altAc.legalBasis||altAc.application||altAc.conclusion)){
-          const DEFS=[['A — Answer',altAc.answer],['L — Legal Basis',altAc.legalBasis],['A — Application',altAc.application],['C — Conclusion',altAc.conclusion]];
-          let sec=`<div class="alac-model-answer"><div class="alac-model-header">${_printAlacHeader}</div>`;
-          DEFS.forEach(([label,content])=>{
-            if(content) sec+=`<div class="alac-section"><div class="alac-section-label">${label}</div><div class="alac-section-content">${e(content)}</div></div>`;
-          });
-          sec+='</div>';
-          card+=sec;
-          return;
-        }
-        // 1. Prefer structured alacModelAnswer components
-        const ac=s.alacModelAnswer;
-        if(ac&&(ac.answer||ac.legalBasis||ac.application||ac.conclusion)){
-          const DEFS=[['A — Answer',ac.answer],['L — Legal Basis',ac.legalBasis],['A — Application',ac.application],['C — Conclusion',ac.conclusion]];
-          let sec=`<div class="alac-model-answer"><div class="alac-model-header">${_printAlacHeader}</div>`;
-          DEFS.forEach(([label,content])=>{
-            if(content) sec+=`<div class="alac-section"><div class="alac-section-label">${label}</div><div class="alac-section-content">${e(content)}</div></div>`;
-          });
-          sec+='</div>';
-          card+=sec;
-          return;
-        }
-        // 2. Structured conceptual model answer
-        const cm=s.conceptualModelAnswer;
-        if(cm&&(cm.accuracy||cm.completeness||cm.clarity)){
-          const CDEFS=[['Accuracy',cm.accuracy,'✅'],['Completeness',cm.completeness,'📋'],['Clarity',cm.clarity,'💡']];
-          let sec='<div class="alac-model-answer"><div class="alac-model-header">Model Answer (Conceptual Breakdown)</div>';
-          if(cm.overview) sec+=`<div class="alac-section"><div class="alac-section-label">Overview</div><div class="alac-section-content">${e(cm.overview)}</div></div>`;
-          CDEFS.forEach(([label,comp,icon])=>{
-            if(comp&&comp.content){
-              sec+=`<div class="alac-section"><div class="alac-section-label">${icon} ${label}</div><div class="alac-section-content">${e(comp.content)}</div>`;
-              if(comp.keyPoints&&comp.keyPoints.length) sec+=`<ul style="margin:4px 0 0 0;padding-left:18px;font-size:12px;">${comp.keyPoints.map(p=>`<li style="margin:2px 0;">${e(p)}</li>`).join('')}</ul>`;
-              sec+=`</div>`;
-            }
-          });
-          if(cm.conclusion) sec+=`<div class="alac-section"><div class="alac-section-label">Conclusion</div><div class="alac-section-content">${e(cm.conclusion)}</div></div>`;
-          if(cm.keyProvisions&&cm.keyProvisions.length) sec+=`<div class="alac-section"><div class="alac-section-label">Key Provisions</div><ul style="margin:4px 0 0 0;padding-left:18px;font-size:12px;">${cm.keyProvisions.map(p=>`<li style="margin:2px 0;">${e(p)}</li>`).join('')}</ul></div>`;
-          sec+='</div>';
-          card+=sec;
-          return;
-        }
-        // 3. Fall back to plain text with ALAC string parsing
-        const ma=s.modelAnswerFormatted||s.modelAnswer||'';
-        if(!ma){card+=`<div style="background:#f0f8f0;border:1px solid #b0d8b0;border-radius:4px;padding:10px 14px;font-size:13px;line-height:1.7;margin-bottom:10px;">—</div>`;return;}
-        const PSEC=[{k:'ANSWER',l:'A — Answer'},{k:'LEGAL BASIS',l:'L — Legal Basis'},{k:'APPLICATION',l:'A — Application'},{k:'CONCLUSION',l:'C — Conclusion'}];
-        const up=ma.toUpperCase();
-        const found=PSEC.map(ps=>({...ps,idx:up.indexOf(ps.k+':')})).filter(ps=>ps.idx!==-1).sort((a,b)=>a.idx-b.idx);
-        if(found.length<2){card+=`<div style="background:#f0f8f0;border:1px solid #b0d8b0;border-radius:4px;padding:10px 14px;font-size:13px;line-height:1.7;margin-bottom:10px;">${e(ma)}</div>`;return;}
-        let sec=`<div class="alac-model-answer"><div class="alac-model-header">${_printAlacHeader}</div>`;
-        found.forEach((f,i)=>{
-          const end=f.idx+f.k.length+1;
-          const next=found[i+1]?found[i+1].idx:ma.length;
-          const content=ma.slice(end,next).trim();
-          if(content) sec+=`<div class="alac-section"><div class="alac-section-label">${f.l}</div><div class="alac-section-content">${e(content)}</div></div>`;
-        });
-        sec+='</div>';
-        card+=sec;
-      })();
-
-      // Student answer
-      card+=`<div style="font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:.08em;color:#7a6128;margin:12px 0 5px;">STUDENT ANSWER</div>`;
-      card+=`<div style="background:#f9f9f9;border:1px solid #ddd;border-radius:4px;padding:10px 14px;font-size:13px;line-height:1.7;">${e(ans)}</div>`;
-    } else {
-      card='<div style="color:#999;font-style:italic;font-size:13px;margin:8px 0;">— Not Answered —</div>';
-    }
-
-    return `<div style="padding:22px 0;${pageBreak}${i>0?'border-top:1px solid #e0d0a0;':''}">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
-        <span style="font-size:17px;font-weight:bold;color:#7a6128;">Q${i+1}</span>
-        <span style="background:#eee;border-radius:4px;padding:2px 8px;font-size:12px;color:#333;">${e(sub.name)}</span>
-        <span style="color:#666;font-size:12px;">${q.isReal?'📜 Past Bar '+(q.year||q.source||''):q.source==='Pre-generated'?'📚 Pre-generated':'🤖 AI Generated'}</span>
-        ${ans.trim()?`<span style="margin-left:auto;font-weight:bold;color:${scoreColor};font-size:14px;">${e(qScoreStr)}</span>`:''}
-      </div>
-      ${isSit?`<div style="background:#f0f4ff;border-left:3px solid #3a5abf;padding:10px 14px;margin-bottom:12px;border-radius:4px;"><div style="font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:.08em;color:#3a5abf;margin-bottom:5px;">FACTS</div><div style="font-size:13px;line-height:1.7;">${e(q.context)}</div></div>`:''}
-      <div style="font-size:14px;font-weight:bold;line-height:1.7;margin-bottom:14px;">${e(qText)}</div>
-      ${card}
-    </div>`;
-  }).join('');
-
-  return `<div style="font-family:Georgia,serif;color:#111;max-width:800px;margin:0 auto;padding:20px;">
-    <h1 style="font-size:22px;color:#7a6128;border-bottom:2px solid #7a6128;padding-bottom:8px;margin-bottom:4px;">BarBuddy — Mock Bar Examination Results</h1>
-    <p style="font-size:1rem;color:#5a3e1b;margin:4px 0 16px 0;"><strong>Examinee:</strong> ${e(userName)}</p>
-    <div style="font-size:13px;color:#333;margin-bottom:14px;line-height:2;">
-      <div><strong>Date:</strong> ${e(dateStr)}</div>
-      <div><strong>Subject:</strong> ${e(subjStr)}</div>
-      <div><strong>Questions:</strong> ${answered} answered / ${numQ} total</div>
+  const html=`<style>${_resultsCss(mode,theme)}</style>
+  <div class="bb-export" data-theme="${theme}"><div class="bb-page"><div class="mock-results">
+    <div class="mr-id">
+      <div class="result-user">👤 ${h(userName)}</div>
+      <div class="mr-id-meta">${h(dateStr)} · ${h(subjStr)} · ${answered} of ${numQ} answered</div>
     </div>
-    <div style="font-size:2.5rem;font-weight:bold;color:${passColor};margin:10px 0 2px;word-break:break-word;">${fmt(rawSc)}/${maxSc}</div>
-    <div style="font-size:16px;font-weight:bold;color:${passColor};margin:0 0 5px;">${pct}% — ${pct>=70?'✅ PASSED':pct>=55?'📖 KEEP STUDYING':'❌ NEEDS MORE REVIEW'}</div>
-    <div style="font-size:12px;color:#888;margin-bottom:20px;">Passing score: 70% (${Math.ceil(maxSc*0.7)} / ${maxSc} points)</div>
+    <div style="font-size:32px;margin-bottom:8px;">🏛</div>
+    <div class="mr-title">${h(resultsTitle())}</div>
+    <div class="mr-grade"><span class="score-fraction">${fmt(rawSc)}/${maxSc}</span></div>
+    <div class="mr-verdict ${verdictCls(pct)}">${pct}% — ${verdictText(pct)}</div>
+    <div class="mr-pass">Passing score: 70% (${Math.ceil(maxSc*0.7)} / ${maxSc} points)</div>
+    <div class="mr-stats">
+      <div class="mr-stat"><div class="n"><span class="score-fraction">${fmt(rawSc)}/${maxSc}</span></div><div class="l">Score</div></div>
+      <div class="mr-stat"><div class="n">${pct}%</div><div class="l">Percentage</div></div>
+      <div class="mr-stat"><div class="n">${numQ}</div><div class="l">Questions</div></div>
+    </div>
+    <h3 class="mr-section">📋 Question Review</h3>
     ${qHtml}
-    <div style="margin-top:30px;padding-top:12px;border-top:1px solid #ccc;font-size:11px;color:#666;text-align:center;">Generated by BarBuddy — Philippine Bar Exam Companion</div>
-  </div>`;
+    <div class="mr-foot">Generated by BarBuddy — Philippine Bar Exam Companion</div>
+  </div></div></div>`;
+  // The shared renderers emit inline style="…var(--x)…" alongside their class
+  // names, so the email copy has to be resolved as a whole, not just its
+  // stylesheet — Gmail drops the declaration and the value alike.
+  return mode==='email'?_flattenCss(html,theme):html;
 }
 
 // Standalone HTML document wrapping the results body. Shared by the download
 // and by printMockResults, so a saved file and a printed page look identical.
-// Deliberately self-contained with inline styles and no app CSS: the file has
-// to survive being opened from disk months later with no network.
 function _buildResultsDocument(){
-  const body=buildResultsHtml();
+  const body=buildResultsHtml({mode:'file'});
   return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>BarBuddy Results</title><style>
-    body{font-family:Georgia,serif;color:#111;}
-    @media print{@page{margin:1.5cm;} .alac-model-answer,.alac-section{page-break-inside:avoid;break-inside:avoid;max-height:none;overflow:visible;height:auto;}}
-    ul{margin:4px 0 8px 0;padding-left:20px;}
-    li{margin:2px 0;line-height:1.5;}
-    table{width:100%;border-collapse:collapse;margin-bottom:12px;font-size:12px;}
-    th{background:#f5efe0;color:#5a3e1b;padding:6px 8px;text-align:left;font-weight:600;border:1px solid #d0b870;}
-    td{padding:5px 8px;border:1px solid #e8e0d0;vertical-align:top;}
-    tr:nth-child(even) td{background:#faf7f2;}
-    .alac-model-answer{border:1px solid #d4c5a0;border-radius:6px;margin:8px 0;background:#fffdf5;page-break-inside:avoid;break-inside:avoid;overflow:visible;}
-    .alac-model-header{background:#f5f0e8;padding:8px 12px;font-size:.85rem;font-weight:700;color:#5a3e1b;border-bottom:1px solid #d4c5a0;border-radius:6px 6px 0 0;}
-    .alac-section{padding:10px 12px;border-bottom:1px solid #e8e0d0;page-break-inside:avoid;break-inside:avoid;}
-    .alac-section:last-child{border-bottom:none;}
-    .alac-section-label{font-size:.78rem;font-weight:700;color:#5a3e1b;text-transform:uppercase;margin-bottom:4px;}
-    .alac-section-content{font-size:.88rem;color:#333;line-height:1.6;white-space:pre-line;padding-left:10px;border-left:2px solid #d4c5a0;}
-    .plain-model-answer{font-size:.88rem;color:#333;line-height:1.6;white-space:pre-line;}
+  <title>${h('BarBuddy — '+resultsTitle())}</title>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    html,body{margin:0;padding:0;}
+    @media print{
+      @page{margin:1.5cm;}
+      /* Paper always gets the light palette — a navy page is unreadable
+         printed and empties a cartridge producing it. */
+      ${_tokenBlock('.bb-export,.bb-export[data-theme="dark"]','light')}
+      .bb-export,.mock-results{background:#fff!important;}
+      .bb-export{padding:0;min-height:0;}
+      .mock-results{border:none;padding:0;}
+      .q-review-item,.alac-model-answer,.alac-section,.writing-feedback-card,.ai-fb{
+        page-break-inside:avoid;break-inside:avoid;max-height:none;overflow:visible;height:auto;
+      }
+      .mr-grade{font-size:2.5rem!important;}
+      /* <details> prints only what is open on screen; force everything out. */
+      details>summary{display:none;}
+      details>*{display:block!important;}
+    }
   </style></head><body>${body}</body></html>`;
 }
 
@@ -6871,7 +6954,7 @@ async function sendEmailResults(){
   btn.disabled=true;btn.textContent='⏳ Sending…';
   sta.style.display='block';sta.style.background='rgba(201,168,76,.1)';sta.style.color='var(--gold-l)';sta.textContent='Sending…';
   try{
-    const r=await fetch('/api/email-results',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({to,subject,htmlBody:buildResultsHtml()})});
+    const r=await fetch('/api/email-results',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({to,subject,htmlBody:buildResultsHtml({mode:'email'})})});
     const d=await r.json();
     if(d.error){
       sta.style.background='rgba(155,35,53,.15)';sta.style.color='var(--danger)';
@@ -9458,15 +9541,17 @@ function updateFlagButton(idx) {
   const btn = document.getElementById('flag-btn');
   if (!btn) return;
   const isFlagged = window.flaggedQuestions?.has(idx);
+  // --warn / --muted rather than fixed orange and grey: the unflagged #888 sat
+  // at ~2.5:1 on the light exam header, and the flagged orange was worse.
   if (isFlagged) {
-    btn.style.background   = 'rgba(249,115,22,0.15)';
-    btn.style.color        = '#fb923c';
-    btn.style.borderColor  = 'rgba(249,115,22,0.4)';
+    btn.style.background   = 'rgba(var(--warn-rgb),.15)';
+    btn.style.color        = 'var(--warn)';
+    btn.style.borderColor  = 'rgba(var(--warn-rgb),.45)';
     btn.innerHTML = '🚩 Flagged';
   } else {
     btn.style.background   = 'transparent';
-    btn.style.color        = '#888';
-    btn.style.borderColor  = '#2a3347';
+    btn.style.color        = 'var(--exam-head-muted)';
+    btn.style.borderColor  = 'var(--bdr2)';
     btn.innerHTML = '🚩 Flag';
   }
 }
@@ -9480,16 +9565,16 @@ function showSubmitConfirmModal(onConfirm) {
   const overlay = document.createElement('div');
   overlay.id = 'submit-confirm-modal';
   overlay.innerHTML = `
-  <div style="position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:10001;display:flex;align-items:center;justify-content:center;padding:20px;">
-    <div style="background:#0f1923;border:1px solid rgba(201,168,76,0.3);border-radius:16px;padding:32px;max-width:400px;width:90%;text-align:center;">
-      <div style="font-size:32px;margin-bottom:16px;">⚖️</div>
-      <h3 style="color:var(--amber);margin:0 0 12px;font-size:18px;">${title}</h3>
-      <p style="color:#e0dcd4;margin:0 0 8px;font-size:14px;">✅ Answered: ${answered}/${total} question${total!==1?'s':''}</p>
-      ${unanswered > 0 ? `<p style="color:#ff9800;font-size:13px;margin:0 0 16px;">⚠️ ${unanswered} unanswered — will be scored 0</p>` : '<div style="margin-bottom:16px;"></div>'}
-      <p style="color:#888;font-size:12px;margin:0 0 24px;">This action cannot be undone.</p>
-      <div style="display:flex;gap:12px;justify-content:center;">
-        <button onclick="document.getElementById('submit-confirm-modal')?.remove();" style="flex:1;padding:12px 20px;border-radius:10px;border:1px solid rgba(var(--ovl),0.2);background:transparent;color:#ccd;cursor:pointer;font-size:14px;">Cancel</button>
-        <button id="confirmSubmitYes" style="flex:1;padding:12px 20px;border-radius:10px;border:none;background:linear-gradient(135deg,var(--amber),#d4a017);color:#1a1200;cursor:pointer;font-size:14px;font-weight:bold;">Yes, Submit</button>
+  <div class="cf-scrim" style="z-index:10001;">
+    <div class="cf-card">
+      <div class="cf-icon">⚖️</div>
+      <h3 class="cf-title">${title}</h3>
+      <p class="cf-line">✅ Answered: ${answered}/${total} question${total!==1?'s':''}</p>
+      ${unanswered > 0 ? `<p class="cf-warn">⚠️ ${unanswered} unanswered — will be scored 0</p>` : '<div style="margin-bottom:16px;"></div>'}
+      <p class="cf-note">This action cannot be undone.</p>
+      <div class="cf-actions">
+        <button class="btn-ghost" onclick="document.getElementById('submit-confirm-modal')?.remove();">Cancel</button>
+        <button class="btn-gold" id="confirmSubmitYes">Yes, Submit</button>
       </div>
     </div>
   </div>`;
@@ -9504,28 +9589,28 @@ function checkFlaggedBeforeSubmit() {
   const modal = document.createElement('div');
   modal.id = 'flagged-review-modal';
   modal.innerHTML = `
-  <div style="position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:10000;display:flex;align-items:center;justify-content:center;padding:20px;">
-    <div style="background:#0f1923;border:1px solid #2a3347;border-radius:16px;padding:28px;max-width:480px;width:100%;max-height:80vh;overflow-y:auto;">
-      <h3 style="color:var(--amber);font-size:1.2rem;margin:0 0 6px;">🚩 Flagged Questions</h3>
-      <p style="color:#888;font-size:0.85rem;margin:0 0 20px;">You flagged ${flagged.size} question${flagged.size>1?'s':''} for review. Jump to any before submitting.</p>
-      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:24px;">
+  <div class="cf-scrim" style="z-index:10000;">
+    <div class="cf-card wide">
+      <h3 class="cf-title" style="font-size:1.2rem;margin-bottom:6px;">🚩 Flagged Questions</h3>
+      <p class="cf-sub">You flagged ${flagged.size} question${flagged.size>1?'s':''} for review. Jump to any before submitting.</p>
+      <div class="cf-flags">
         ${flaggedList.map(idx => {
           const q = mockQs[idx];
           const answered = mockAnswers[idx]?.trim()?.length > 0;
           const qText = (q?.prompt || q?.q || 'Question '+(idx+1)).slice(0,80);
-          return `<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:#1a2235;border-radius:10px;border:1px solid #2a3347;cursor:pointer;" onclick="goToFlaggedQuestion(${idx})">
-            <div style="width:32px;height:32px;border-radius:8px;background:rgba(249,115,22,0.15);border:1px solid #fb923c;color:#fb923c;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:0.85rem;flex-shrink:0;">${idx+1}</div>
+          return `<div class="cf-flag" onclick="goToFlaggedQuestion(${idx})">
+            <div class="cf-flag-n">${idx+1}</div>
             <div style="flex:1;min-width:0;">
-              <div style="font-size:0.85rem;color:#ccd;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${h(qText)}…</div>
-              <div style="font-size:0.75rem;margin-top:2px;color:${answered?'#4caf50':'#f87171'};">${answered?'✅ Answered':'⚠️ Not answered'}</div>
+              <div class="cf-flag-q">${h(qText)}…</div>
+              <div class="cf-flag-st ${answered?'ok':'no'}">${answered?'✅ Answered':'⚠️ Not answered'}</div>
             </div>
-            <span style="color:#888;font-size:1.2rem;">→</span>
+            <span class="cf-flag-go">→</span>
           </div>`;
         }).join('')}
       </div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;">
-        <button onclick="document.getElementById('flagged-review-modal')?.remove();showSubmitConfirmModal(()=>endMockSession());" style="flex:1;padding:12px;background:linear-gradient(135deg,var(--amber),#d4a017);color:#1a1200;border:none;border-radius:10px;font-weight:700;cursor:pointer;font-size:0.9rem;">Submit Anyway</button>
-        <button onclick="document.getElementById('flagged-review-modal')?.remove();" style="flex:1;padding:12px;background:#1a2235;color:#ccd;border:1px solid #2a3347;border-radius:10px;font-weight:600;cursor:pointer;font-size:0.9rem;">Continue Reviewing</button>
+      <div class="cf-actions">
+        <button class="btn-gold" onclick="document.getElementById('flagged-review-modal')?.remove();showSubmitConfirmModal(()=>endMockSession());">Submit Anyway</button>
+        <button class="btn-ghost" onclick="document.getElementById('flagged-review-modal')?.remove();">Continue Reviewing</button>
       </div>
     </div>
   </div>`;
