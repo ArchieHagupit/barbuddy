@@ -35,6 +35,12 @@
   --fg-done:#7fe3c8;--fg-done-hi:#9dedd8;
   /* warm surface behind the exam header and generation banners */
   --exam-head:linear-gradient(135deg,#1a0a00,#2a1400);--exam-head-muted:#a08060;
+  /* Flashcard highlighter. Its own pair rather than a reuse of --gold-rgb:
+     that token is a dark brown on paper because it is tuned as a foreground,
+     and tinting with it produced taupe instead of a highlight. On navy the
+     wash has to stay dark enough for near-white card text — 5.8:1 here. */
+  --hl:rgba(255,196,60,.32);--hl-edge:rgba(255,196,60,.55);
+  --hl-off:rgba(224,112,128,.30);--hl-off-edge:rgba(224,112,128,.6);
   /* text */
   --white:#f0ece3;--text:#f0ece3;--text-muted:rgba(var(--txt-rgb),.55);
   --muted:rgba(var(--txt-rgb),.4);
@@ -105,6 +111,11 @@
   /* Exam header: a warm amber tint instead of the dark slab, so the Exit and
      Flag controls (which use --muted) stay legible on it. */
   --exam-head:linear-gradient(135deg,#fdf3e6,#fbe9d6);--exam-head-muted:#7a4a1c;
+  /* Highlighter on paper: an actual marker yellow rather than the dark-brown
+     gold, which washed out to taupe. Near-black card text sits at 15.7:1 on
+     it, so it can be this saturated without costing legibility. */
+  --hl:rgba(255,214,0,.55);--hl-edge:rgba(214,158,0,.6);
+  --hl-off:rgba(255,120,105,.45);--hl-off-edge:rgba(167,42,30,.5);
   /* text — near-black on warm paper. Solid rather than washed: body copy sits
      around 18:1 on card surfaces and the muted tiers stay high because low
      alpha is what makes light themes feel faded. */
@@ -1841,6 +1852,27 @@ button[onclick*="switchSubjectTab(currentSubject,'learn')"] { display: none !imp
   max-height: 48vh;
 }
 .fc-card-content strong,.fc-card-content b{font-weight:700;color:var(--text);}
+/* Student highlights. A tinted band rather than a solid fill, so the card's
+   own text colour shows through and stays legible in both themes. The wash
+   itself is themed (--hl / --hl-edge), because a single wash cannot work on
+   both navy and paper: on dark it must stay dark enough for near-white text,
+   on light it wants to be a saturated marker yellow. Hover previews removal. */
+.fc-card-content mark.fc-hl{
+  background:var(--hl);
+  color:inherit;
+  border-radius:3px;
+  padding:.05em 0;
+  box-shadow:0 0 0 1px var(--hl-edge);
+  cursor:pointer;
+  transition:background .15s,box-shadow .15s;
+}
+.fc-card-content mark.fc-hl:hover{
+  background:var(--hl-off);
+  box-shadow:0 0 0 1px var(--hl-off-edge);
+}
+/* The faces are selectable even though the card flips on tap — the tap
+   handler bows out when a selection exists. */
+.fc-card-content{user-select:text;-webkit-user-select:text;}
 .fc-card-content p{margin-bottom:.85em;}
 .fc-card-content p:last-child{margin-bottom:0;}
 .fc-card-content ul,.fc-card-content ol{margin:.5em 0 .85em 1.25em;}
