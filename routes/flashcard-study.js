@@ -72,7 +72,30 @@ async function fetchDoneSet(userId, cardIds) {
 // first time Postgres reports the column missing, so a deploy that lands
 // before scripts/add-flashcard-highlights-column.sql is run degrades to
 // "no highlights" instead of failing every session fetch.
+//
+// The "missing" verdict expires. Without that it was a one-way latch: any
+// request served between the deploy and the migration would pin the flag for
+// the life of the process, so running the SQL appeared to do nothing until
+// someone redeployed — and on more than one instance, until all of them did.
+// Re-probing costs one failed query every few minutes at worst.
+const HIGHLIGHTS_RECHECK_MS = 5 * 60 * 1000;
 let _highlightsColumn = null;
+let _highlightsMissingAt = 0;
+
+function _highlightsMaybeAvailable() {
+  if (_highlightsColumn === false && Date.now() - _highlightsMissingAt > HIGHLIGHTS_RECHECK_MS) {
+    _highlightsColumn = null; // due for another look
+  }
+  return _highlightsColumn !== false;
+}
+
+function _markHighlightsMissing() {
+  if (_highlightsColumn !== false) {
+    console.warn('[fc-highlights] column missing — run scripts/add-flashcard-highlights-column.sql');
+  }
+  _highlightsColumn = false;
+  _highlightsMissingAt = Date.now();
+}
 
 // done + highlights for `cardIds` in one pass. Used by the two session
 // endpoints only — deliberately NOT by the boot bundle, which covers every
@@ -80,7 +103,7 @@ let _highlightsColumn = null;
 async function fetchReviewState(userId, cardIds) {
   const doneSet = new Set();
   const highlightsByCard = {};
-  const wantHighlights = _highlightsColumn !== false;
+  const wantHighlights = _highlightsMaybeAvailable();
   const cols = wantHighlights ? 'flashcard_id, done, highlights' : 'flashcard_id, done';
 
   for (let i = 0; i < cardIds.length; i += 500) {
@@ -94,8 +117,7 @@ async function fetchReviewState(userId, cardIds) {
     if (error) {
       // 42703 = undefined_column. Remember it and retry this chunk bare.
       if (wantHighlights && (error.code === '42703' || /highlights/i.test(error.message || ''))) {
-        console.warn('[fc-highlights] column missing — run scripts/add-flashcard-highlights-column.sql');
-        _highlightsColumn = false;
+        _markHighlightsMissing();
         return fetchReviewState(userId, cardIds);
       }
       throw error;
@@ -371,7 +393,7 @@ module.exports = function createFlashcardStudyRoutes({ requireAuth }) {
   // no partial-update ordering to get wrong.
   router.post('/api/flashcards/highlights', requireAuth, async (req, res) => {
     try {
-      if (_highlightsColumn === false) {
+      if (!_highlightsMaybeAvailable()) {
         return res.status(503).json({ error: 'highlights_unavailable' });
       }
       const { flashcardId, highlights } = req.body || {};
@@ -440,8 +462,7 @@ module.exports = function createFlashcardStudyRoutes({ requireAuth }) {
       }
       if (writeErr) {
         if (writeErr.code === '42703' || /highlights/i.test(writeErr.message || '')) {
-          console.warn('[fc-highlights] column missing — run scripts/add-flashcard-highlights-column.sql');
-          _highlightsColumn = false;
+          _markHighlightsMissing();
           return res.status(503).json({ error: 'highlights_unavailable' });
         }
         return res.status(500).json({ error: writeErr.message });
