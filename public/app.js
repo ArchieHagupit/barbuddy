@@ -570,9 +570,13 @@ window.addEventListener('DOMContentLoaded', async () => {
   // in-flight promise (window._srDueFetchPromise) lets Progress join it
   // rather than refetch.
   if (hasSession) checkDueReviews().catch(() => {});
-  if (hasSession) loadFlashcardBundleOnBoot();
+  // Kicked off here so it overlaps init(), but awaited before the first paint
+  // below — same reason as in onAuthSuccess: the Overview's subject cards read
+  // their totals from this bundle and show "No cards yet" until it arrives.
+  const fcBundle = hasSession ? loadFlashcardBundleOnBoot() : null;
   setLoadingMsg('Loading your dashboard...');
   await init();
+  if (fcBundle) await fcBundle.catch(() => {});
   // Restore last view or fall back to overview
   if (hasSession) {
     try {
@@ -4184,9 +4188,11 @@ function refreshFlashcardProgressUI(subj) {
 
   for (const key of subjects) {
     const prog = getSubjectFlashcardProgress(key);
-    const label = prog.total > 0
-      ? `${prog.done}/${prog.total} cards`
-      : 'No cards yet';
+    const label = !prog.loaded
+      ? 'Loading…'
+      : prog.total > 0
+        ? `${prog.done}/${prog.total} cards`
+        : 'No cards yet';
 
     // Overview subject card
     const ovCard = document.querySelector(`.ov-subj-card[data-subj="${key}"]`);
@@ -4197,13 +4203,17 @@ function refreshFlashcardProgressUI(subj) {
       const pctEl = ovCard.querySelector('.ov-subj-pct');
       if (fill) fill.style.width = prog.pct + '%';
       if (stat) stat.textContent = label;
-      if (pctEl) pctEl.textContent = prog.total > 0 ? prog.pct + '%' : '';
+      if (pctEl) pctEl.textContent = prog.loaded && prog.total > 0 ? prog.pct + '%' : '';
       // Drives the muted empty styling — must follow the data, or a subject
-      // stays greyed out after its first cards are imported.
-      ovCard.classList.toggle('is-empty', prog.total === 0);
-      if (track) track.title = prog.total > 0
-        ? `${prog.done} of ${prog.total} flashcards marked done`
-        : 'No flashcards imported yet';
+      // stays greyed out after its first cards are imported. Gated on loaded
+      // for the same reason as the initial render: an in-flight bundle is not
+      // an empty deck.
+      ovCard.classList.toggle('is-empty', prog.loaded && prog.total === 0);
+      if (track) track.title = !prog.loaded
+        ? 'Loading flashcards…'
+        : prog.total > 0
+          ? `${prog.done} of ${prog.total} flashcards marked done`
+          : 'No flashcards imported yet';
     }
 
     // Subject-page sidebar bar (Learn tab layout)
@@ -4483,19 +4493,22 @@ function renderOverview() {
           const mockOk       = ts.mockbar    !== false;
           // `empty` mutes the track instead of rendering a full-width trough
           // next to the words "No cards yet", which said the same thing twice.
-          const empty = prog.total === 0;
+          // Gated on prog.loaded so a bundle that is still in flight (or that
+          // failed) is never reported as an empty deck — "No cards yet" on a
+          // subject holding 800 cards is worse than saying nothing yet.
+          const empty = prog.loaded && prog.total === 0;
           return `
             <div class="ov-subj-card${empty ? ' is-empty' : ''}" data-subj="${s.key}" style="--subj-color:${s.color}">
               <div class="ov-subj-top">
                 <div class="ov-subj-dot" style="background:${s.color}"></div>
                 <div class="ov-subj-name">${h(s.name)}</div>
-                <div class="ov-subj-pct">${empty ? '' : pct + '%'}</div>
+                <div class="ov-subj-pct">${prog.loaded && prog.total > 0 ? pct + '%' : ''}</div>
               </div>
-              <div class="ov-subj-prog-track" title="${prog.total > 0 ? `${prog.done} of ${prog.total} flashcards marked done` : 'No flashcards imported yet'}">
+              <div class="ov-subj-prog-track" title="${!prog.loaded ? 'Loading flashcards…' : prog.total > 0 ? `${prog.done} of ${prog.total} flashcards marked done` : 'No flashcards imported yet'}">
                 <div class="ov-subj-prog-fill" style="width:${pct}%;background:${s.color}"></div>
               </div>
               <div class="ov-subj-stats">
-                <span>${prog.total > 0 ? `${prog.done}/${prog.total} cards` : 'No cards yet'}</span>
+                <span>${!prog.loaded ? 'Loading…' : prog.total > 0 ? `${prog.done}/${prog.total} cards` : 'No cards yet'}</span>
                 ${pb > 0 ? `<span>${pb} past Qs</span>` : ''}
               </div>
               <div class="ov-subj-actions">
@@ -7981,9 +7994,16 @@ async function onAuthSuccess(token, user) {
   // _renderProgressDashboardInto joins the in-flight promise if it's still
   // running when the user's last view was Progress.
   checkDueReviews().catch(() => {});
-  loadFlashcardBundleOnBoot();
+  // Awaited below rather than fired and forgotten. The Overview's subject
+  // cards read their totals from this bundle, and getSubjectFlashcardProgress
+  // reports total:0 until it lands — so letting the dashboard paint first made
+  // every subject claim "No cards yet" for a beat, including ones with
+  // hundreds of cards, before the repaint corrected it. Still starts here, so
+  // it overlaps the five fetches below rather than queueing behind them.
+  const fcBundle = loadFlashcardBundleOnBoot();
   // Prefetch KB and progress in parallel before rendering
   await Promise.allSettled([
+    fcBundle,
     refreshKBState(),
     applyTabSettings(),
     syncProgressFromServer(),
