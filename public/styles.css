@@ -35,12 +35,16 @@
   --fg-done:#7fe3c8;--fg-done-hi:#9dedd8;
   /* warm surface behind the exam header and generation banners */
   --exam-head:linear-gradient(135deg,#1a0a00,#2a1400);--exam-head-muted:#a08060;
-  /* Flashcard highlighter. Its own pair rather than a reuse of --gold-rgb:
-     that token is a dark brown on paper because it is tuned as a foreground,
-     and tinting with it produced taupe instead of a highlight. On navy the
-     wash has to stay dark enough for near-white card text — 5.8:1 here. */
-  --hl:rgba(255,196,60,.32);--hl-edge:rgba(255,196,60,.55);
-  --hl-off:rgba(224,112,128,.30);--hl-off-edge:rgba(224,112,128,.6);
+  /* Flashcard highlighter pens. Their own values rather than a reuse of the
+     accent tokens: those are tuned as foregrounds and go muddy when used as a
+     wash. On navy every pen has to stay dark enough for near-white card text,
+     so these run at low alpha — 6.1:1 (yellow) to 8.5:1 (pink). --hl-off is
+     the hover state, which previews removal. */
+  --hl-yellow:rgba(255,196,60,.32);
+  --hl-green:rgba(74,222,128,.26);
+  --hl-blue:rgba(96,180,255,.28);
+  --hl-pink:rgba(255,120,190,.26);
+  --hl-off:rgba(224,112,128,.30);
   /* text */
   --white:#f0ece3;--text:#f0ece3;--text-muted:rgba(var(--txt-rgb),.55);
   --muted:rgba(var(--txt-rgb),.4);
@@ -111,11 +115,15 @@
   /* Exam header: a warm amber tint instead of the dark slab, so the Exit and
      Flag controls (which use --muted) stay legible on it. */
   --exam-head:linear-gradient(135deg,#fdf3e6,#fbe9d6);--exam-head-muted:#7a4a1c;
-  /* Highlighter on paper: an actual marker yellow rather than the dark-brown
-     gold, which washed out to taupe. Near-black card text sits at 15.7:1 on
-     it, so it can be this saturated without costing legibility. */
-  --hl:rgba(255,214,0,.55);--hl-edge:rgba(214,158,0,.6);
-  --hl-off:rgba(255,120,105,.45);--hl-off-edge:rgba(167,42,30,.5);
+  /* Highlighter pens on paper: actual marker colours rather than the darkened
+     accent tokens, which washed out to taupe. Near-black card text sits at
+     13:1–15.7:1 on these, so they can be this saturated without costing
+     legibility — and they need to be, or they read as grey smudges. */
+  --hl-yellow:rgba(255,214,0,.55);
+  --hl-green:rgba(60,220,120,.50);
+  --hl-blue:rgba(90,190,255,.55);
+  --hl-pink:rgba(255,130,200,.48);
+  --hl-off:rgba(255,120,105,.45);
   /* text — near-black on warm paper. Solid rather than washed: body copy sits
      around 18:1 on card surfaces and the muted tiers stay high because low
      alpha is what makes light themes feel faded. */
@@ -1850,26 +1858,47 @@ button[onclick*="switchSubjectTab(currentSubject,'learn')"] { display: none !imp
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
   max-height: 48vh;
+  /* Breathing room for the highlighter. A mark carries its own padding, and
+     this is a scroll box — without the inset the last highlighted line is
+     sliced by the bottom edge and a full-width one runs into the scrollbar. */
+  padding-bottom: 8px;
+  padding-right: 8px;
 }
+/* The pens themselves scroll away with the card body, so they sit above it. */
+.fc-pens{display:flex;align-items:center;gap:7px;margin-bottom:10px;}
+.fc-pens-label{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-right:1px;}
+.fc-pen{width:19px;height:19px;border-radius:50%;border:1px solid var(--bdr2);cursor:pointer;padding:0;transition:transform .15s,border-color .15s;}
+.fc-pen:hover{transform:scale(1.12);}
+.fc-pen.on{border-color:var(--gold);box-shadow:0 0 0 2px rgba(var(--gold-rgb),.3);}
+.fc-pen[data-c="yellow"]{background:var(--hl-yellow);}
+.fc-pen[data-c="green"] {background:var(--hl-green);}
+.fc-pen[data-c="blue"]  {background:var(--hl-blue);}
+.fc-pen[data-c="pink"]  {background:var(--hl-pink);}
 .fc-card-content strong,.fc-card-content b{font-weight:700;color:var(--text);}
 /* Student highlights. A tinted band rather than a solid fill, so the card's
    own text colour shows through and stays legible in both themes. The wash
-   itself is themed (--hl / --hl-edge), because a single wash cannot work on
+   pens are themed (--hl-yellow …), because one wash cannot work on
    both navy and paper: on dark it must stay dark enough for near-white text,
    on light it wants to be a saturated marker yellow. Hover previews removal. */
 .fc-card-content mark.fc-hl{
-  background:var(--hl);
+  background:var(--hl-yellow);
   color:inherit;
   border-radius:3px;
-  padding:.05em 0;
-  box-shadow:0 0 0 1px var(--hl-edge);
+  /* Vertical padding is kept under half the leading so a highlight on one
+     line never touches the one above or below — stacked bands read as a
+     single slab rather than as separate marks. */
+  padding:.08em .2em;
+  /* Without this a wrapped highlight gets its padding and rounding only at
+     the very start and end, so the middle lines run edge to edge. */
+  box-decoration-break:clone;
+  -webkit-box-decoration-break:clone;
   cursor:pointer;
-  transition:background .15s,box-shadow .15s;
+  transition:background .15s;
 }
-.fc-card-content mark.fc-hl:hover{
-  background:var(--hl-off);
-  box-shadow:0 0 0 1px var(--hl-off-edge);
-}
+.fc-card-content mark.fc-hl[data-c="green"]{background:var(--hl-green);}
+.fc-card-content mark.fc-hl[data-c="blue"] {background:var(--hl-blue);}
+.fc-card-content mark.fc-hl[data-c="pink"] {background:var(--hl-pink);}
+.fc-card-content mark.fc-hl:hover{background:var(--hl-off);}
 /* The faces are selectable even though the card flips on tap — the tap
    handler bows out when a selection exists. */
 .fc-card-content{user-select:text;-webkit-user-select:text;}
