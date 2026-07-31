@@ -5300,8 +5300,17 @@ function removeBookmarkFromPanel(subject, topicId) {
   }
 }
 
-// Load all subject syllabuses in background so overview progress bars are accurate
+// Warm syllabusCache for every subject so the Learn tree opens instantly.
+//
+// /api/syllabus/:subject is authenticated and loadSubjectSyllabus only caches
+// on r.ok, so running this without a token fired eight requests that were
+// guaranteed to 401 and cache nothing. init() runs on every page load, auth or
+// not, so a logged-out visitor paid for all eight and a freshly signed-in user
+// got nothing from them — onAuthSuccess never re-ran the preload, leaving the
+// cache empty on exactly the path that needed it most. Guarded here and
+// re-issued after login.
 async function preloadAllSyllabuses() {
+  if (!sessionToken) return;
   const subjects = ['civil','criminal','political','labor','commercial','taxation','remedial','ethics'];
   await Promise.all(subjects.map(s => loadSubjectSyllabus(s)));
   // If overview is currently visible, re-render with updated data
@@ -8005,6 +8014,11 @@ async function onAuthSuccess(token, user) {
   // Check for an interrupted exam session and show resume banner
   checkForInterruptedExam().catch(() => {});
   hideLoadingScreen();
+  // Fire-and-forget after the dashboard is up: init()'s copy ran before the
+  // token existed and cached nothing, so this is the fresh-login path's only
+  // chance to warm the cache. Not awaited — the Learn tab lazy-loads per
+  // subject regardless.
+  preloadAllSyllabuses().catch(() => {});
 }
 
 function updateUserDisplay() {

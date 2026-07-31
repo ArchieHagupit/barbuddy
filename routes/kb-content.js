@@ -18,7 +18,6 @@
 // the same 1-line helper.
 
 const express = require('express');
-const { supabase } = require('../config/supabase');
 
 // Usage in server.js:
 //   app.use(require('./routes/kb-content')({
@@ -47,20 +46,18 @@ module.exports = function createKbContentRoutes({
     }));
     const totalQuestions = pastBarSummary.reduce((a,p) => a + p.qCount, 0);
 
-    // Also get total count from normalized questions table
-    let totalQuestionsDB = null;
-    let subjectQuestionCounts = {};
-    try {
-      const { count } = await supabase
-        .from('questions').select('*', { count: 'exact', head: true });
-      totalQuestionsDB = count;
-      // Per-subject counts
-      for (const subj of VALID_SUBJECTS) {
-        const { count: sc } = await supabase
-          .from('questions').select('*', { count: 'exact', head: true }).eq('subject', subj);
-        if (sc) subjectQuestionCounts[subj] = sc;
-      }
-    } catch(_) { /* non-fatal — table may not exist yet */ }
+    // This endpoint used to also return `totalQuestionsDB` and
+    // `subjectQuestionCounts`, built from ten sequential Supabase count
+    // queries — one total plus one per subject, each awaited in turn. That
+    // cost 3.5–10s on every login and every refresh, because refreshKBState()
+    // is awaited in the client's boot preamble before anything renders. It
+    // was ~99% of the sign-in wait; every other boot call answers in ~1ms.
+    //
+    // Nothing consumed either field. The sidebar's per-subject "166q" badges
+    // come from KB.pastBar via refreshSidebarDots(), not from these. They were
+    // removed rather than parallelised: even batched they cost ~770ms of work
+    // no screen was reading. If a question-count view is ever needed, give it
+    // its own endpoint so the sign-in path stays clear of it.
 
     res.json({
       hasSyllabus:    !!(KB.syllabus?.subjects),
@@ -68,8 +65,6 @@ module.exports = function createKbContentRoutes({
       references:     KB.references.map(r => ({ id:r.id, name:r.name, subject:r.subject, type:r.type, size:r.size, uploadedAt:r.uploadedAt })),
       pastBar:        pastBarSummary,
       totalQuestions,
-      totalQuestionsDB,
-      subjectQuestionCounts,
       contentTopics:  n,
       genState:       { running:GEN.running, done:GEN.done, total:GEN.total, current:GEN.current, finishedAt:GEN.finishedAt },
       customRefs:     KB.references.filter(r => r.subject === 'custom').length,
