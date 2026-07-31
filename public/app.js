@@ -3627,6 +3627,7 @@ function renderFlashcardCardViewer() {
   };
 
   _attachFlashcardTapHandlers(_fcEls.card);
+  _fcBindHighlighting();
   _fcPaintCard({ animate: false });
 }
 
@@ -3735,6 +3736,9 @@ function _attachFlashcardTapHandlers(cardEl) {
     if (Date.now() - startT > 700) return;                  // long-press, not a tap
     const sel = window.getSelection?.();
     if (sel && !sel.isCollapsed && sel.toString().trim()) return; // text selection
+    // Tapping a highlight removes it; this fires before that click handler,
+    // so the flip has to bow out here or the card turns as the mark is cleared.
+    if (ev.target?.closest?.('mark.fc-hl')) return;
     flipFlashcard();
   });
 }
@@ -3753,6 +3757,9 @@ function _fcPaintCard({ animate = true } = {}) {
   _fcEls.frontBody.textContent = card.front || '';
   _fcEls.backBody.innerHTML = formatFlashcardBack(card.back);
   _fcEls.path.textContent = card.node_path || '';
+  // Re-apply after every paint: the faces are rebuilt from source text each
+  // time, so highlights have to be laid back over them.
+  _fcPaintHighlights();
 
   if (card.source_snippet) {
     _fcEls.source.style.display = '';
@@ -3798,6 +3805,173 @@ function _fcPaintDoneState() {
   _fcEls.card.classList.toggle('fc-card-done', isDone);
   _fcEls.doneBtn.classList.toggle('fc-nav-done-active', isDone);
   _fcEls.doneLabel.textContent = isDone ? '✓ Marked Done' : 'Mark as Done';
+}
+
+// ══════════════════════════════════
+// FLASHCARD HIGHLIGHTS
+// ══════════════════════════════════
+// Highlights are anchored by character offset into the card's own front/back
+// source text, never by DOM position — the faces are rebuilt from that text on
+// every paint, flip and resize, so anything anchored to nodes would not
+// survive. The two functions below are inverses of each other over the same
+// mapping, and everything else is bookkeeping.
+
+// Walk a face's text nodes and record where each one sits in the source text.
+// formatFlashcardBack turns every \n into a <br>, so a <br> stands for exactly
+// one source character; without counting it the back's offsets drift by one
+// per line break.
+function _fcTextMap(container) {
+  const map = [];
+  let offset = 0;
+  (function walk(node) {
+    for (const child of node.childNodes) {
+      if (child.nodeType === 3) {
+        map.push({ node: child, start: offset, end: offset + child.data.length });
+        offset += child.data.length;
+      } else if (child.nodeName === 'BR') {
+        offset += 1;
+      } else if (child.nodeType === 1) {
+        walk(child);
+      }
+    }
+  })(container);
+  return { map, length: offset };
+}
+
+// DOM position → source offset. Returns null for a node outside this face,
+// which is how a selection that escaped the card gets rejected.
+function _fcOffsetOf(map, node, nodeOffset) {
+  for (const entry of map) {
+    if (entry.node === node) return entry.start + nodeOffset;
+  }
+  return null;
+}
+
+// Wrap [start,end) of the source text in <mark>, splitting text nodes as
+// needed. Ranges may span <br> and <strong>, so this walks every overlapping
+// text node rather than assuming one.
+function _fcWrapRange(container, start, end, index) {
+  const { map } = _fcTextMap(container);
+  const touched = map.filter(e => e.start < end && e.end > start);
+  for (const entry of touched) {
+    const from = Math.max(0, start - entry.start);
+    const to   = Math.min(entry.node.data.length, end - entry.start);
+    if (to <= from) continue;
+    const node = entry.node;
+    const tail = node.splitText(from);
+    if (to - from < tail.data.length) tail.splitText(to - from);
+    const mark = document.createElement('mark');
+    mark.className = 'fc-hl';
+    mark.dataset.hlIndex = String(index);
+    mark.title = 'Click to remove this highlight';
+    node.parentNode.insertBefore(mark, tail);
+    mark.appendChild(tail);
+  }
+}
+
+// The current card's highlights, normalised. Ranges are clamped to the text
+// that exists now and dropped if they no longer fit, so a card edited in
+// admin degrades to fewer highlights rather than to misplaced ones.
+function _fcCardHighlights(card, face) {
+  const text = (face === 'front' ? card.front : card.back) || '';
+  return (card.highlights || [])
+    .map((h, i) => ({ ...h, _i: i }))
+    .filter(h => h.face === face && h.start < text.length && h.end > h.start)
+    .map(h => ({ ...h, end: Math.min(h.end, text.length) }));
+}
+
+function _fcPaintHighlights() {
+  if (!_fcSession || !_fcEls) return;
+  const card = _fcSession.cards[_fcSession.position];
+  if (!card) return;
+  for (const [face, el] of [['front', _fcEls.frontBody], ['back', _fcEls.backBody]]) {
+    if (!el) continue;
+    // Descending so an earlier wrap cannot shift a later range's offsets.
+    const ranges = _fcCardHighlights(card, face).sort((a, b) => b.start - a.start);
+    for (const r of ranges) _fcWrapRange(el, r.start, r.end, r._i);
+  }
+}
+
+// Called on mouseup inside a face. Turns the live selection into a stored
+// range, or does nothing if the selection is empty, collapsed, or strays
+// outside the face it started in.
+function _fcHighlightSelection(face) {
+  if (!_fcSession) return;
+  const card = _fcSession.cards[_fcSession.position];
+  const el = face === 'front' ? _fcEls?.frontBody : _fcEls?.backBody;
+  if (!card || !el) return;
+  const sel = window.getSelection();
+  if (!sel || sel.isCollapsed || sel.rangeCount === 0) return;
+  const range = sel.getRangeAt(0);
+  if (!el.contains(range.startContainer) || !el.contains(range.endContainer)) return;
+
+  const { map } = _fcTextMap(el);
+  let start = _fcOffsetOf(map, range.startContainer, range.startOffset);
+  let end   = _fcOffsetOf(map, range.endContainer, range.endOffset);
+  if (start == null || end == null) return;
+  if (start > end) [start, end] = [end, start];
+  if (end - start < 1) return;
+
+  const existing = (card.highlights || []).slice();
+  // Merge into any range this one touches, so dragging across a highlight
+  // extends it rather than stacking a second <mark> on the same words.
+  let lo = start, hi = end;
+  const kept = [];
+  for (const h of existing) {
+    if (h.face === face && h.start <= hi && h.end >= lo) {
+      lo = Math.min(lo, h.start);
+      hi = Math.max(hi, h.end);
+    } else {
+      kept.push(h);
+    }
+  }
+  kept.push({ face, start: lo, end: hi });
+  _fcCommitHighlights(card, kept);
+  sel.removeAllRanges();
+}
+
+function _fcRemoveHighlight(index) {
+  if (!_fcSession) return;
+  const card = _fcSession.cards[_fcSession.position];
+  if (!card || !Array.isArray(card.highlights)) return;
+  const next = card.highlights.filter((_, i) => i !== index);
+  _fcCommitHighlights(card, next);
+}
+
+// Optimistic: repaint immediately, persist in the background. A failed save
+// is surfaced but the mark is left in place — the student can keep working
+// and a later save for the same card sends the full set again anyway.
+function _fcCommitHighlights(card, highlights) {
+  card.highlights = highlights;
+  _fcPaintCard({ animate: false });
+  if (!sessionToken) return;
+  fetch('/api/flashcards/highlights', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-session-token': sessionToken },
+    body: JSON.stringify({ flashcardId: card.id, highlights }),
+  }).then(r => {
+    if (r.status === 503) {
+      showToast('Highlights need a one-time database update — see scripts/add-flashcard-highlights-column.sql', 'error');
+    } else if (!r.ok) {
+      showToast('Could not save that highlight', 'error');
+    }
+  }).catch(() => showToast('Could not save that highlight', 'error'));
+}
+
+// One delegated listener per face, bound once when the viewer is built.
+function _fcBindHighlighting() {
+  for (const [face, el] of [['front', _fcEls?.frontBody], ['back', _fcEls?.backBody]]) {
+    if (!el || el._fcHlBound) continue;
+    el._fcHlBound = true;
+    el.addEventListener('mouseup', () => setTimeout(() => _fcHighlightSelection(face), 0));
+    el.addEventListener('click', e => {
+      const mark = e.target.closest?.('mark.fc-hl');
+      if (!mark) return;
+      // Stop the card flipping out from under the tap.
+      e.stopPropagation();
+      _fcRemoveHighlight(Number(mark.dataset.hlIndex));
+    });
+  }
 }
 
 function formatFlashcardBack(text) {

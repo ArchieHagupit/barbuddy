@@ -12,6 +12,7 @@
 //   GET  /api/flashcards/subject/:subject        — ALL cards for one subject in ONE request
 //   GET  /api/flashcards/topic/:subject/:nodeId  — all cards for one topic (incl. done flag)
 //   POST /api/flashcards/mark-done               — toggle done flag for a card
+//   POST /api/flashcards/highlights              — replace a card's highlights
 //   GET  /api/flashcards/stats/:subject          — subject-scoped stats (done/total)
 //   GET  /api/flashcards/stats-all               — cross-subject aggregate for dashboard
 //   GET  /api/flashcards/topic-counts/:subject   — nodeId → count (unchanged from Session 3c)
@@ -65,6 +66,50 @@ async function fetchDoneSet(userId, cardIds) {
     for (const r of (data || [])) doneSet.add(r.flashcard_id);
   }
   return doneSet;
+}
+
+// Tri-state: null = not yet probed, true/false = known. Set to false the
+// first time Postgres reports the column missing, so a deploy that lands
+// before scripts/add-flashcard-highlights-column.sql is run degrades to
+// "no highlights" instead of failing every session fetch.
+let _highlightsColumn = null;
+
+// done + highlights for `cardIds` in one pass. Used by the two session
+// endpoints only — deliberately NOT by the boot bundle, which covers every
+// card the student owns and has no reason to carry highlight payloads.
+async function fetchReviewState(userId, cardIds) {
+  const doneSet = new Set();
+  const highlightsByCard = {};
+  const wantHighlights = _highlightsColumn !== false;
+  const cols = wantHighlights ? 'flashcard_id, done, highlights' : 'flashcard_id, done';
+
+  for (let i = 0; i < cardIds.length; i += 500) {
+    const chunk = cardIds.slice(i, i + 500);
+    const { data, error } = await supabase
+      .from('flashcard_reviews')
+      .select(cols)
+      .eq('user_id', userId)
+      .in('flashcard_id', chunk);
+
+    if (error) {
+      // 42703 = undefined_column. Remember it and retry this chunk bare.
+      if (wantHighlights && (error.code === '42703' || /highlights/i.test(error.message || ''))) {
+        console.warn('[fc-highlights] column missing — run scripts/add-flashcard-highlights-column.sql');
+        _highlightsColumn = false;
+        return fetchReviewState(userId, cardIds);
+      }
+      throw error;
+    }
+
+    if (wantHighlights) _highlightsColumn = true;
+    for (const r of (data || [])) {
+      if (r.done) doneSet.add(r.flashcard_id);
+      if (Array.isArray(r.highlights) && r.highlights.length) {
+        highlightsByCard[r.flashcard_id] = r.highlights;
+      }
+    }
+  }
+  return { doneSet, highlightsByCard };
 }
 
 module.exports = function createFlashcardStudyRoutes({ requireAuth }) {
@@ -189,16 +234,21 @@ module.exports = function createFlashcardStudyRoutes({ requireAuth }) {
 
       const cardIds = cards.map(c => c.id);
       let doneSet = new Set();
+      let highlightsByCard = {};
       if (cardIds.length) {
         try {
-          doneSet = await fetchDoneSet(req.userId, cardIds);
+          ({ doneSet, highlightsByCard } = await fetchReviewState(req.userId, cardIds));
         } catch(e) {
-          console.error('[fc-subject] done lookup:', e.message);
-          // Non-fatal — cards still render, just without done marks.
+          console.error('[fc-subject] review-state lookup:', e.message);
+          // Non-fatal — cards still render, just without done marks or highlights.
         }
       }
 
-      const out = cards.map(c => ({ ...c, done: doneSet.has(c.id) }));
+      const out = cards.map(c => ({
+        ...c,
+        done: doneSet.has(c.id),
+        highlights: highlightsByCard[c.id] || [],
+      }));
       res.json({ subject, cards: out, count: out.length });
     } catch(e) {
       console.error('[fc-subject] fatal:', e);
@@ -225,14 +275,19 @@ module.exports = function createFlashcardStudyRoutes({ requireAuth }) {
 
       const cardIds = (cards || []).map(c => c.id);
       let doneSet = new Set();
+      let highlightsByCard = {};
       if (cardIds.length) {
         try {
-          doneSet = await fetchDoneSet(req.userId, cardIds);
+          ({ doneSet, highlightsByCard } = await fetchReviewState(req.userId, cardIds));
         } catch(e) {
-          console.error('[fc-topic] done lookup:', e.message);
+          console.error('[fc-topic] review-state lookup:', e.message);
         }
       }
-      const out = (cards || []).map(c => ({ ...c, done: doneSet.has(c.id) }));
+      const out = (cards || []).map(c => ({
+        ...c,
+        done: doneSet.has(c.id),
+        highlights: highlightsByCard[c.id] || [],
+      }));
       res.json({ cards: out, count: out.length });
     } catch(e) {
       res.status(500).json({ error: e.message });
@@ -304,6 +359,93 @@ module.exports = function createFlashcardStudyRoutes({ requireAuth }) {
       res.json({ ok: true, flashcardId, done });
     } catch(e) {
       console.error('[fc-mark-done] fatal:', e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ── Route 3b: Save highlights for a card ─────────────────────
+  // Body: { flashcardId, highlights: [{face,start,end}] }
+  //
+  // The client always sends the complete set for the card, so removing a
+  // highlight is just a save with it absent — there is no delete route and
+  // no partial-update ordering to get wrong.
+  router.post('/api/flashcards/highlights', requireAuth, async (req, res) => {
+    try {
+      if (_highlightsColumn === false) {
+        return res.status(503).json({ error: 'highlights_unavailable' });
+      }
+      const { flashcardId, highlights } = req.body || {};
+      if (!flashcardId || typeof flashcardId !== 'string') {
+        return res.status(400).json({ error: 'flashcardId required' });
+      }
+      if (!Array.isArray(highlights)) {
+        return res.status(400).json({ error: 'highlights must be an array' });
+      }
+      // Normalise before storing: this is the only gate between a client and
+      // a JSONB column, so drop anything malformed rather than persisting it.
+      // Capped at 200 ranges per card — far above real use, low enough that a
+      // runaway client cannot bloat the row.
+      const clean = [];
+      for (const hRaw of highlights.slice(0, 200)) {
+        if (!hRaw || typeof hRaw !== 'object') continue;
+        const face = hRaw.face === 'front' ? 'front' : hRaw.face === 'back' ? 'back' : null;
+        const start = Number(hRaw.start);
+        const end = Number(hRaw.end);
+        if (!face) continue;
+        if (!Number.isInteger(start) || !Number.isInteger(end)) continue;
+        if (start < 0 || end <= start) continue;
+        clean.push({ face, start, end });
+      }
+
+      const { data: card, error: cardErr } = await supabase
+        .from('flashcards')
+        .select('id')
+        .eq('id', flashcardId)
+        .maybeSingle();
+      if (cardErr) return res.status(500).json({ error: cardErr.message });
+      if (!card) return res.status(404).json({ error: 'Card not found' });
+
+      const { data: existing, error: exErr } = await supabase
+        .from('flashcard_reviews')
+        .select('id')
+        .eq('user_id', req.userId)
+        .eq('flashcard_id', flashcardId)
+        .maybeSingle();
+      if (exErr) return res.status(500).json({ error: exErr.message });
+
+      const nowIso = new Date().toISOString();
+      let writeErr;
+      if (existing) {
+        ({ error: writeErr } = await supabase
+          .from('flashcard_reviews')
+          .update({ highlights: clean, updated_at: nowIso })
+          .eq('id', existing.id));
+      } else {
+        // Highlighting a card the student has not marked done yet is normal,
+        // so this creates the row with done:false rather than requiring one.
+        ({ error: writeErr } = await supabase
+          .from('flashcard_reviews')
+          .insert({
+            id: 'fcr_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
+            user_id: req.userId,
+            flashcard_id: flashcardId,
+            done: false,
+            highlights: clean,
+            review_count: 0,
+          }));
+      }
+      if (writeErr) {
+        if (writeErr.code === '42703' || /highlights/i.test(writeErr.message || '')) {
+          console.warn('[fc-highlights] column missing — run scripts/add-flashcard-highlights-column.sql');
+          _highlightsColumn = false;
+          return res.status(503).json({ error: 'highlights_unavailable' });
+        }
+        return res.status(500).json({ error: writeErr.message });
+      }
+
+      res.json({ ok: true, flashcardId, highlights: clean });
+    } catch(e) {
+      console.error('[fc-highlights] fatal:', e);
       res.status(500).json({ error: e.message });
     }
   });
