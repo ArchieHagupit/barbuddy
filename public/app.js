@@ -3558,6 +3558,8 @@ function renderFlashcardCardViewer() {
         <button class="btn-og" onclick="endFlashcardSession()" style="font-size:11px;padding:5px 10px;">End Session</button>
       </div>
 
+      ${_fcPensMarkup()}
+
       <div class="fc-card-outer">
         <div class="fc-card">
           <div class="fc-card-face fc-card-front">
@@ -3816,6 +3818,36 @@ function _fcPaintDoneState() {
 // survive. The two functions below are inverses of each other over the same
 // mapping, and everything else is bookkeeping.
 
+// The active pen. Remembered across sessions because a student tends to keep
+// one colour for one meaning (rule, exception, case name) and re-picking it on
+// every card would defeat the point.
+const FC_PENS = ['yellow', 'green', 'blue', 'pink'];
+let _fcPen = (() => {
+  try {
+    const saved = localStorage.getItem('bb_fc_pen');
+    return FC_PENS.includes(saved) ? saved : 'yellow';
+  } catch (e) { return 'yellow'; }
+})();
+
+function setFlashcardPen(color) {
+  if (!FC_PENS.includes(color)) return;
+  _fcPen = color;
+  try { localStorage.setItem('bb_fc_pen', color); } catch (e) {}
+  document.querySelectorAll('.fc-pen').forEach(b => {
+    b.classList.toggle('on', b.dataset.c === color);
+    b.setAttribute('aria-pressed', b.dataset.c === color ? 'true' : 'false');
+  });
+}
+
+function _fcPensMarkup() {
+  return `<div class="fc-pens">
+    <span class="fc-pens-label">Highlighter</span>
+    ${FC_PENS.map(c => `<button type="button" class="fc-pen${c === _fcPen ? ' on' : ''}" data-c="${c}"
+      aria-pressed="${c === _fcPen}" title="Highlight in ${c}"
+      onclick="setFlashcardPen('${c}')"></button>`).join('')}
+  </div>`;
+}
+
 // Walk a face's text nodes and record where each one sits in the source text.
 // formatFlashcardBack turns every \n into a <br>, so a <br> stands for exactly
 // one source character; without counting it the back's offsets drift by one
@@ -3850,7 +3882,7 @@ function _fcOffsetOf(map, node, nodeOffset) {
 // Wrap [start,end) of the source text in <mark>, splitting text nodes as
 // needed. Ranges may span <br> and <strong>, so this walks every overlapping
 // text node rather than assuming one.
-function _fcWrapRange(container, start, end, index) {
+function _fcWrapRange(container, start, end, index, color) {
   const { map } = _fcTextMap(container);
   const touched = map.filter(e => e.start < end && e.end > start);
   for (const entry of touched) {
@@ -3863,6 +3895,7 @@ function _fcWrapRange(container, start, end, index) {
     const mark = document.createElement('mark');
     mark.className = 'fc-hl';
     mark.dataset.hlIndex = String(index);
+    if (color && color !== 'yellow') mark.dataset.c = color;
     mark.title = 'Click to remove this highlight';
     node.parentNode.insertBefore(mark, tail);
     mark.appendChild(tail);
@@ -3888,7 +3921,7 @@ function _fcPaintHighlights() {
     if (!el) continue;
     // Descending so an earlier wrap cannot shift a later range's offsets.
     const ranges = _fcCardHighlights(card, face).sort((a, b) => b.start - a.start);
-    for (const r of ranges) _fcWrapRange(el, r.start, r.end, r._i);
+    for (const r of ranges) _fcWrapRange(el, r.start, r.end, r._i, r.color);
   }
 }
 
@@ -3925,7 +3958,7 @@ function _fcHighlightSelection(face) {
       kept.push(h);
     }
   }
-  kept.push({ face, start: lo, end: hi });
+  kept.push({ face, start: lo, end: hi, color: _fcPen });
   _fcCommitHighlights(card, kept);
   sel.removeAllRanges();
 }

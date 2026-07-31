@@ -385,6 +385,7 @@ module.exports = function createFlashcardStudyRoutes({ requireAuth }) {
       // a JSONB column, so drop anything malformed rather than persisting it.
       // Capped at 200 ranges per card — far above real use, low enough that a
       // runaway client cannot bloat the row.
+      const PENS = ['yellow', 'green', 'blue', 'pink'];
       const clean = [];
       for (const hRaw of highlights.slice(0, 200)) {
         if (!hRaw || typeof hRaw !== 'object') continue;
@@ -394,7 +395,10 @@ module.exports = function createFlashcardStudyRoutes({ requireAuth }) {
         if (!face) continue;
         if (!Number.isInteger(start) || !Number.isInteger(end)) continue;
         if (start < 0 || end <= start) continue;
-        clean.push({ face, start, end });
+        // Unknown or absent colour falls back to yellow rather than being
+        // rejected, so rows written before pens existed keep working.
+        const color = PENS.includes(hRaw.color) ? hRaw.color : 'yellow';
+        clean.push({ face, start, end, color });
       }
 
       const { data: card, error: cardErr } = await supabase
