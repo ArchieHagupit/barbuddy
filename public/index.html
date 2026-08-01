@@ -70,18 +70,10 @@ new PerformanceObserver((list) => {
   z-index: 99999;
   transition: opacity 0.4s ease;
 ">
-  <div style="
-    width: 72px;
-    height: 72px;
-    background: linear-gradient(135deg, var(--gold), #f0c96e);
-    border-radius: 16px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin-bottom: 20px;
-    box-shadow: 0 8px 32px rgba(var(--gold-rgb),0.3);
-    animation: bbPulse 1.8s ease-in-out infinite;
-  " class="bb-splash-tile">
+  <!-- Presentation lives in styles.css (render-blocking, so no flash) rather
+       than inline, because an inline background cannot be overridden by the
+       :has() rule that removes the plate when the crest loads. -->
+  <div class="bb-splash-tile">
     <img src="/BarBuddy.png?v=__APP_VERSION__" alt="" class="bb-mark bb-mark-splash"
          onerror="this.outerHTML='&lt;span style=&quot;font-size:36px&quot;&gt;&#x2696;&#xFE0F;&lt;/span&gt;'">
   </div>

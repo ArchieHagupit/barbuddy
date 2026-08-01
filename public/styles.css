@@ -196,11 +196,24 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
    stops matching the moment onerror swaps the img out, which restores the
    tile for the emoji that takes its place. */
 .bb-mark{display:block;object-fit:contain;}
-.bb-mark-splash{width:56px;height:56px;}
+.bb-mark-splash{width:84px;height:84px;}
 .bb-mark-auth{width:40px;height:40px;}
 .bb-mark-side{width:34px;height:34px;}
+/* Boot splash plate. Only ever seen behind the ⚖️ fallback — see below. */
+.bb-splash-tile{
+  width:72px;height:72px;border-radius:16px;margin-bottom:20px;
+  display:flex;align-items:center;justify-content:center;
+  background:linear-gradient(135deg,var(--gold),#f0c96e);
+  box-shadow:0 8px 32px rgba(var(--gold-rgb),.3);
+  animation:bbPulse 1.8s ease-in-out infinite;
+}
 .s-logo:has(.bb-mark),
 .bb-splash-tile:has(.bb-mark){background:none;box-shadow:none;border-radius:0;}
+/* The crest brings its own gold frame, so it stands on the page rather than
+   on a plate. It also needs its own pulse: bbPulse animates a rectangular
+   box-shadow, which would glow as a square behind a transparent PNG. */
+.bb-splash-tile:has(.bb-mark){width:auto;height:auto;animation-name:bbPulseBare;}
+@keyframes bbPulseBare{0%,100%{transform:scale(1);}50%{transform:scale(1.05);}}
 /* The crest is navy-on-transparent, so on the dark theme its shield can sink
    into the sidebar. A soft gold halo separates it without a hard plate. */
 .s-logo:has(.bb-mark) .bb-mark{filter:drop-shadow(0 1px 5px rgba(var(--gold-rgb),.35));}
