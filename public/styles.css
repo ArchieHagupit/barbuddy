@@ -1878,41 +1878,6 @@ button[onclick*="switchSubjectTab(currentSubject,'learn')"] { display: none !imp
 .fc-hl-save{font-size:10.5px;font-weight:600;letter-spacing:.02em;margin-left:4px;}
 .fc-hl-save.warn{color:var(--muted);}
 .fc-hl-save.bad{color:var(--danger);}
-
-/* ── Pomodoro ──────────────────────────────────────────────────
-   Sits at the far end of the pens row so every study control is on one line.
-   Colour carries the phase: gold while focusing, teal on a break — both are
-   theme tokens, so the dial reads on navy and on paper without a second set
-   of rules. */
-.pomo{display:flex;align-items:center;gap:8px;margin-left:auto;padding:4px 6px 4px 4px;
-  border:1px solid var(--bdr2);border-radius:999px;background:rgba(var(--ovl),.03);}
-.pomo-dial{position:relative;width:30px;height:30px;flex-shrink:0;padding:0;border:none;
-  background:none;cursor:pointer;display:grid;place-items:center;}
-.pomo-dial svg{position:absolute;inset:0;width:100%;height:100%;transform:rotate(-90deg);}
-.pomo-dial circle{fill:none;stroke-width:2.5;}
-.pomo-track{stroke:rgba(var(--ovl),.10);}
-/* No transition while running: the tick is fine-grained enough to look smooth
-   on its own, and animating a 250ms step makes the ring lag behind the digits. */
-.pomo-fill{stroke:var(--gold);stroke-linecap:round;}
-.pomo.resting .pomo-fill{stroke:var(--teal-d);}
-.pomo-icon{position:relative;font-size:9px;line-height:1;color:var(--gold);letter-spacing:-.5px;}
-.pomo.resting .pomo-icon{color:var(--teal-d);}
-.pomo-dial:hover .pomo-icon{transform:scale(1.15);}
-.pomo-meta{display:flex;flex-direction:column;line-height:1.15;min-width:44px;}
-.pomo-time{font-family:var(--fm);font-size:13px;font-weight:700;color:var(--text);
-  font-variant-numeric:tabular-nums;font-feature-settings:'tnum' 1;}
-.pomo-phase{font-size:9px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);white-space:nowrap;}
-.pomo-btn{width:22px;height:22px;flex-shrink:0;padding:0;border:none;border-radius:7px;
-  background:transparent;color:var(--muted);cursor:pointer;font-size:12px;line-height:1;transition:background .15s,color .15s;}
-.pomo-btn:hover{background:rgba(var(--ovl),.08);color:var(--text);}
-/* A running focus block gets a faint halo — noticeable in peripheral vision,
-   not distracting while reading. */
-.pomo.running{border-color:rgba(var(--gold-rgb),.35);background:rgba(var(--gold-rgb),.06);}
-.pomo.running.resting{border-color:rgba(var(--teal-d-rgb),.4);background:rgba(var(--teal-d-rgb),.07);}
-@media(max-width:640px){
-  .pomo{margin-left:0;}
-  .fc-pens{gap:6px;}
-}
 .fc-card-content strong,.fc-card-content b{font-weight:700;color:var(--text);}
 /* Student highlights. A tinted band rather than a solid fill, so the card's
    own text colour shows through and stays legible in both themes. The wash
