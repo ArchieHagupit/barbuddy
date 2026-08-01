@@ -3630,6 +3630,11 @@ function renderFlashcardCardViewer() {
 
   _attachFlashcardTapHandlers(_fcEls.card);
   _fcBindHighlighting();
+  // The viewer's markup is rebuilt on every topic change, so both of these
+  // re-attach to fresh nodes from state that outlived the render.
+  _fcRenderSaveState();
+  _pomoRender();
+  if (_pomo.running) _pomoLoop();
   _fcPaintCard({ animate: false });
 }
 
@@ -3845,8 +3850,147 @@ function _fcPensMarkup() {
     ${FC_PENS.map(c => `<button type="button" class="fc-pen${c === _fcPen ? ' on' : ''}" data-c="${c}"
       aria-pressed="${c === _fcPen}" title="Highlight in ${c}"
       onclick="setFlashcardPen('${c}')"></button>`).join('')}
+    <span id="fc-hl-save" class="fc-hl-save" role="status" aria-live="polite"></span>
+    ${_pomoMarkup()}
   </div>`;
 }
+
+// ══════════════════════════════════
+// POMODORO — focus timer for flashcard review
+// ══════════════════════════════════
+// State is held here rather than in the DOM because the study viewer rebuilds
+// its markup on every topic change, and a timer that reset itself each time
+// you switched topics would be worse than no timer. Time is tracked as an
+// absolute `endsAt` rather than a decrementing counter: setInterval is
+// throttled in background tabs and drifts over 25 minutes, and a student who
+// switches away to read a case would come back to a timer that had silently
+// fallen behind. Persisted for the same reason a reload should not cost you
+// the pomodoro you are 18 minutes into.
+const POMO_PHASES = {
+  focus:      { label: 'Focus',       mins: 25, next: 'break' },
+  break:      { label: 'Short break', mins: 5,  next: 'focus' },
+  longBreak:  { label: 'Long break',  mins: 15, next: 'focus' },
+};
+const POMO_LONG_BREAK_EVERY = 4;
+
+let _pomo = { phase: 'focus', endsAt: 0, remaining: POMO_PHASES.focus.mins * 60000, running: false, done: 0 };
+let _pomoTick = null;
+
+(function _pomoRestore() {
+  try {
+    const raw = JSON.parse(localStorage.getItem('bb_pomo') || 'null');
+    if (raw && POMO_PHASES[raw.phase]) {
+      _pomo = { ...(_pomo), ...raw };
+      // A timer left running is caught up from wall-clock, not resumed blind.
+      if (_pomo.running) {
+        const left = _pomo.endsAt - Date.now();
+        if (left <= 0) { _pomo.running = false; _pomo.remaining = 0; }
+        else _pomo.remaining = left;
+      }
+    }
+  } catch (e) {}
+})();
+
+function _pomoSave() {
+  try { localStorage.setItem('bb_pomo', JSON.stringify(_pomo)); } catch (e) {}
+}
+
+function _pomoLeft() {
+  return _pomo.running ? Math.max(0, _pomo.endsAt - Date.now()) : _pomo.remaining;
+}
+
+function _pomoMarkup() {
+  return `<div class="pomo" id="pomo">
+    <button type="button" class="pomo-dial" id="pomo-toggle" onclick="togglePomodoro()" title="Start or pause the focus timer">
+      <svg viewBox="0 0 36 36" aria-hidden="true">
+        <circle class="pomo-track" cx="18" cy="18" r="15.5"></circle>
+        <circle class="pomo-fill"  cx="18" cy="18" r="15.5"></circle>
+      </svg>
+      <span class="pomo-icon" id="pomo-icon">▶</span>
+    </button>
+    <div class="pomo-meta">
+      <div class="pomo-time" id="pomo-time">25:00</div>
+      <div class="pomo-phase" id="pomo-phase">Focus</div>
+    </div>
+    <button type="button" class="pomo-btn" onclick="resetPomodoro()" title="Reset this interval">↺</button>
+    <button type="button" class="pomo-btn" onclick="skipPomodoro()" title="Skip to the next interval">⇥</button>
+  </div>`;
+}
+
+function _pomoRender() {
+  const wrap = document.getElementById('pomo');
+  if (!wrap) return;
+  const left = _pomoLeft();
+  const total = POMO_PHASES[_pomo.phase].mins * 60000;
+  const secs = Math.ceil(left / 1000);
+  const t = document.getElementById('pomo-time');
+  if (t) t.textContent = `${String(Math.floor(secs / 60)).padStart(2, '0')}:${String(secs % 60).padStart(2, '0')}`;
+  const p = document.getElementById('pomo-phase');
+  if (p) p.textContent = POMO_PHASES[_pomo.phase].label + (_pomo.done ? ` · ${_pomo.done}` : '');
+  const icon = document.getElementById('pomo-icon');
+  if (icon) icon.textContent = _pomo.running ? '❚❚' : '▶';
+  wrap.classList.toggle('running', _pomo.running);
+  wrap.classList.toggle('resting', _pomo.phase !== 'focus');
+  // Circumference of r=15.5 is ~97.39; draw the remaining portion.
+  const fill = wrap.querySelector('.pomo-fill');
+  if (fill) {
+    const C = 2 * Math.PI * 15.5;
+    fill.style.strokeDasharray = String(C);
+    fill.style.strokeDashoffset = String(C * (1 - (total ? left / total : 0)));
+  }
+}
+
+function _pomoLoop() {
+  if (_pomoTick) return;
+  _pomoTick = setInterval(() => {
+    if (!_pomo.running) return;
+    if (_pomoLeft() <= 0) { _pomoAdvance(); return; }
+    _pomoRender();
+  }, 250);
+}
+
+function _pomoAdvance(manual) {
+  const from = _pomo.phase;
+  if (from === 'focus' && !manual) _pomo.done += 1;
+  let next = POMO_PHASES[from].next;
+  if (next === 'break' && _pomo.done > 0 && _pomo.done % POMO_LONG_BREAK_EVERY === 0) next = 'longBreak';
+  _pomo.phase = next;
+  _pomo.remaining = POMO_PHASES[next].mins * 60000;
+  // Breaks start on their own; a new focus block waits for the student.
+  _pomo.running = next !== 'focus';
+  _pomo.endsAt = Date.now() + _pomo.remaining;
+  _pomoSave();
+  _pomoRender();
+  if (!manual) {
+    showToast(from === 'focus'
+      ? `Pomodoro ${_pomo.done} done — ${POMO_PHASES[next].label.toLowerCase()} for ${POMO_PHASES[next].mins} min`
+      : `Break over — back to focus`, 'success');
+  }
+}
+
+function togglePomodoro() {
+  if (_pomo.running) {
+    _pomo.remaining = _pomoLeft();
+    _pomo.running = false;
+  } else {
+    if (_pomo.remaining <= 0) _pomo.remaining = POMO_PHASES[_pomo.phase].mins * 60000;
+    _pomo.endsAt = Date.now() + _pomo.remaining;
+    _pomo.running = true;
+    _pomoLoop();
+  }
+  _pomoSave();
+  _pomoRender();
+}
+
+function resetPomodoro() {
+  _pomo.running = false;
+  _pomo.remaining = POMO_PHASES[_pomo.phase].mins * 60000;
+  _pomo.endsAt = 0;
+  _pomoSave();
+  _pomoRender();
+}
+
+function skipPomodoro() { _pomoAdvance(true); }
 
 // Walk a face's text nodes and record where each one sits in the source text.
 // formatFlashcardBack turns every \n into a <br>, so a <br> stands for exactly
@@ -3971,24 +4115,82 @@ function _fcRemoveHighlight(index) {
   _fcCommitHighlights(card, next);
 }
 
-// Optimistic: repaint immediately, persist in the background. A failed save
-// is surfaced but the mark is left in place — the student can keep working
-// and a later save for the same card sends the full set again anyway.
+// Optimistic: repaint immediately, persist in the background.
+//
+// The save has to be more than fire-and-forget. A highlight lives only in the
+// card object until the write lands, so a dropped request on flaky campus wifi
+// left the mark on screen and gone on the next load — the student had no way
+// to know. Now every card carries its save state, retries on a backoff, and
+// says so in the pens row until it succeeds.
+//
+// Only the newest set for a card is ever in flight: highlights are sent whole,
+// so a later edit supersedes an earlier one outright and there is no ordering
+// to preserve.
+const _fcSaveState = new Map();   // cardId -> 'saving' | 'retrying' | 'failed'
+const FC_SAVE_RETRIES = [1000, 3000, 8000];
+
 function _fcCommitHighlights(card, highlights) {
   card.highlights = highlights;
   _fcPaintCard({ animate: false });
   if (!sessionToken) return;
+  _fcPushHighlights(card.id, highlights, 0);
+}
+
+function _fcPushHighlights(cardId, highlights, attempt) {
+  _fcSaveState.set(cardId, attempt === 0 ? 'saving' : 'retrying');
+  _fcRenderSaveState();
   fetch('/api/flashcards/highlights', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-session-token': sessionToken },
-    body: JSON.stringify({ flashcardId: card.id, highlights }),
+    body: JSON.stringify({ flashcardId: cardId, highlights }),
   }).then(r => {
-    if (r.status === 503) {
-      showToast('Highlights need a one-time database update — see scripts/add-flashcard-highlights-column.sql', 'error');
-    } else if (!r.ok) {
-      showToast('Could not save that highlight', 'error');
-    }
-  }).catch(() => showToast('Could not save that highlight', 'error'));
+    if (r.ok) { _fcSettleSave(cardId, null); return; }
+    // 503 means the column is missing — retrying cannot help, and the server
+    // re-probes on its own schedule, so report it plainly instead.
+    if (r.status === 503) { _fcSettleSave(cardId, 'setup'); return; }
+    _fcRetryHighlights(cardId, highlights, attempt);
+  }).catch(() => _fcRetryHighlights(cardId, highlights, attempt));
+}
+
+function _fcRetryHighlights(cardId, highlights, attempt) {
+  // A newer edit for this card has already taken over — drop this attempt.
+  const current = _fcSession?.cards.find(c => c.id === cardId);
+  if (current && current.highlights !== highlights) return;
+  if (attempt >= FC_SAVE_RETRIES.length) { _fcSettleSave(cardId, 'failed'); return; }
+  setTimeout(() => _fcPushHighlights(cardId, highlights, attempt + 1), FC_SAVE_RETRIES[attempt]);
+  _fcSaveState.set(cardId, 'retrying');
+  _fcRenderSaveState();
+}
+
+function _fcSettleSave(cardId, failure) {
+  if (!failure) _fcSaveState.delete(cardId);
+  else _fcSaveState.set(cardId, failure);
+  _fcRenderSaveState();
+  if (failure === 'setup') {
+    showToast('Highlights need a one-time database update — see scripts/add-flashcard-highlights-column.sql', 'error');
+  } else if (failure === 'failed') {
+    showToast('Could not save your highlight — it may not be here next time', 'error');
+  }
+}
+
+// A quiet line in the pens row. Deliberately not a toast per attempt: a
+// student mid-card does not need three popups about one save.
+function _fcRenderSaveState() {
+  const el = document.getElementById('fc-hl-save');
+  if (!el) return;
+  const states = [..._fcSaveState.values()];
+  const worst = states.includes('failed') ? 'failed'
+              : states.includes('setup') ? 'setup'
+              : states.includes('retrying') ? 'retrying'
+              : states.includes('saving') ? 'saving' : null;
+  const copy = {
+    saving:   ['', ''],                                   // too brief to be worth announcing
+    retrying: ['↻ Saving…', 'warn'],
+    failed:   ['⚠ Not saved', 'bad'],
+    setup:    ['⚠ Setup needed', 'bad'],
+  }[worst] || ['', ''];
+  el.textContent = copy[0];
+  el.className = 'fc-hl-save' + (copy[1] ? ' ' + copy[1] : '');
 }
 
 // One delegated listener per face, bound once when the viewer is built.
@@ -5865,7 +6067,7 @@ function renderModelAnswer(evaluation, questionType){
   }
   // 4. Formatted ALAC string or plain modelAnswer
   const text=evaluation.modelAnswerFormatted||evaluation.modelAnswer||evaluation.correctAnswer||'';
-  if(!text) return '<em style="color:#777;font-size:13px;">No model answer available for this question.</em>';
+  if(!text) return '<em style="color:var(--muted);font-size:13px;">No model answer available for this question.</em>';
   // 5. Try parsing as ALAC text
   const comps=parseALACString(text);
   if(comps){
@@ -6917,7 +7119,11 @@ const _EXPORT_TOKENS={
     '--danger':'#e07080','--warn':'#ff8c42','--amber':'#f0c040','--og':'#e8904a',
     '--fg-blue':'#7dc0ff','--fg-slate':'#a0a0c0','--fg-done':'#7fe3c8','--fg-violet':'#c080f0',
     '--text':'#f0ece3','--white':'#f0ece3',
-    '--text-muted':'rgba(var(--txt-rgb),.55)','--muted':'rgba(var(--txt-rgb),.4)',
+    // .7/.65, not the .55/.4 in the first :root block of styles.css — a later
+    // "Contrast Ratio Fixes" block there raises both, and copying the earlier
+    // values meant the saved and emailed HTML rendered its secondary text
+    // weaker than the app it was supposed to mirror.
+    '--text-muted':'rgba(var(--txt-rgb),.7)','--muted':'rgba(var(--txt-rgb),.65)',
     '--bdr':'rgba(var(--txt-rgb),.08)','--bdr2':'rgba(var(--txt-rgb),.12)',
   },
   light:{
@@ -7027,7 +7233,7 @@ function _resultsRules(){
   .alac-table th{text-align:left;padding:6px 10px;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--bdr2);}
   .alac-table td{padding:7px 10px;vertical-align:top;border-bottom:1px solid rgba(var(--ovl),.04);}
   .alac-score{font-weight:700;font-size:13px;white-space:nowrap;padding:2px 8px;border-radius:5px;display:inline-block;font-variant-numeric:tabular-nums;}
-  .alac-score.hi{color:var(--teal-d);background:rgba(var(--teal-d-rgb),.15);}
+  .alac-score.hi{color:var(--teal);background:rgba(var(--teal-d-rgb),.15);}
   .alac-score.mid{color:var(--gold);background:rgba(var(--gold-rgb),.15);}
   .alac-score.lo{color:var(--danger);background:rgba(var(--crim-rgb),.15);}
   .alac-total-row td{border-top:1px solid var(--bdr2);font-weight:700;padding:8px 10px;}
