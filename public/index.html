@@ -81,8 +81,9 @@ new PerformanceObserver((list) => {
     margin-bottom: 20px;
     box-shadow: 0 8px 32px rgba(var(--gold-rgb),0.3);
     animation: bbPulse 1.8s ease-in-out infinite;
-  ">
-    <span style="font-size: 36px;">⚖️</span>
+  " class="bb-splash-tile">
+    <img src="/BarBuddy.png?v=__APP_VERSION__" alt="" class="bb-mark bb-mark-splash"
+         onerror="this.outerHTML='&lt;span style=&quot;font-size:36px&quot;&gt;&#x2696;&#xFE0F;&lt;/span&gt;'">
   </div>
   <div style="
     font-size: 28px;
@@ -147,7 +148,10 @@ new PerformanceObserver((list) => {
 <!-- AUTH WALL -->
 <div id="authWall">
   <div class="auth-card">
-    <div class="auth-logo">⚖️ BarBuddy</div>
+    <div class="auth-logo">
+      <img src="/BarBuddy.png?v=__APP_VERSION__" alt="" class="bb-mark bb-mark-auth"
+           onerror="this.outerHTML='&lt;span&gt;&#x2696;&#xFE0F;&lt;/span&gt;'">BarBuddy
+    </div>
     <div class="auth-sub">Philippine Bar Exam AI Companion</div>
     <div class="auth-tabs" id="authTabRow">
       <button class="auth-tab-btn active" onclick="switchAuthTab('login')">Log In</button>
@@ -196,7 +200,8 @@ new PerformanceObserver((list) => {
 <div id="apiBanner">⚠️ Claude API is currently overloaded — some features may be slow or unavailable. <button onclick="document.getElementById('apiBanner').style.display='none'">Dismiss</button></div>
 <aside class="sidebar" id="mainSidebar">
   <div class="sb-logo-section">
-    <div class="s-logo">⚖️</div>
+    <div class="s-logo"><img src="/BarBuddy.png?v=__APP_VERSION__" alt="BarBuddy" class="bb-mark bb-mark-side"
+         onerror="this.outerHTML='&lt;span&gt;&#x2696;&#xFE0F;&lt;/span&gt;'"></div>
     <div>
       <div class="sb-logo-title">BarBuddy</div>
       <div class="sb-logo-sub">Philippine Bar 2026</div>
