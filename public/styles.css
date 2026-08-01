@@ -186,6 +186,24 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .sb-logo-section{display:flex;align-items:center;gap:10px;padding:16px 16px 12px;border-bottom:1px solid rgba(var(--gold-rgb),.1);flex-shrink:0;background:linear-gradient(180deg,rgba(var(--gold-rgb),.08) 0%,transparent 100%);}
 .s-logo{width:36px;height:36px;background:linear-gradient(145deg,var(--gold),var(--gold-d));border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;box-shadow:0 3px 12px rgba(var(--gold-rgb),.3);}
 .sb-logo-title{font-family:var(--fd);font-size:17px;font-weight:700;color:var(--gold);line-height:1.1;}
+/* ── Brand mark ────────────────────────────────────────────────
+   The crest replaces the ⚖️ emoji in the three places the product names
+   itself: the boot splash, the sign-in card and the sidebar. Each <img>
+   falls back to the emoji via onerror, so a missing or renamed file leaves
+   the previous behaviour rather than a broken-image glyph.
+   The artwork carries its own gold frame, so the gold tile that used to sit
+   behind the emoji is dropped wherever the image actually loaded — :has()
+   stops matching the moment onerror swaps the img out, which restores the
+   tile for the emoji that takes its place. */
+.bb-mark{display:block;object-fit:contain;}
+.bb-mark-splash{width:56px;height:56px;}
+.bb-mark-auth{width:40px;height:40px;}
+.bb-mark-side{width:34px;height:34px;}
+.s-logo:has(.bb-mark),
+.bb-splash-tile:has(.bb-mark){background:none;box-shadow:none;border-radius:0;}
+/* The crest is navy-on-transparent, so on the dark theme its shield can sink
+   into the sidebar. A soft gold halo separates it without a hard plate. */
+.s-logo:has(.bb-mark) .bb-mark{filter:drop-shadow(0 1px 5px rgba(var(--gold-rgb),.35));}
 .sb-logo-sub{font-size:9px;color:var(--muted);letter-spacing:.04em;margin-top:2px;}
 .sb-divider{border:none;border-top:1px solid rgba(var(--txt2-rgb),.08);margin:6px 12px;flex-shrink:0;}
 .sb-section-label,.sb-overview-btn,#sb-subj-custom,#sb-admin,#accessControlBadge,#sbXpSection{flex-shrink:0;}
@@ -1240,7 +1258,8 @@ select.form-input{cursor:pointer;}
 #authWall{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(8,12,24,.85);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);background-image:radial-gradient(ellipse at 20% 50%,rgba(120,40,40,.15) 0%,transparent 60%),radial-gradient(ellipse at 80% 20%,rgba(var(--gold-rgb),.08) 0%,transparent 50%);opacity:0;transition:opacity 0.25s ease;}
 .auth-card{background:var(--card);border:1px solid rgba(var(--gold-rgb),.25);border-radius:20px;width:100%;max-width:440px;padding:36px 32px;position:relative;box-shadow:0 32px 80px rgba(0,0,0,.6),0 0 0 1px rgba(var(--gold-rgb),.08),inset 0 1px 0 rgba(var(--ovl),.06);}
 .auth-card::before{content:'';position:absolute;top:0;left:10%;right:10%;height:1px;background:linear-gradient(90deg,transparent,var(--gold),transparent);}
-.auth-logo{font-family:var(--fd);font-size:28px;font-weight:800;color:var(--gold-l);text-align:center;margin-bottom:4px;letter-spacing:.02em;}
+.auth-logo{font-family:var(--fd);font-size:28px;font-weight:800;color:var(--gold-l);text-align:center;margin-bottom:4px;letter-spacing:.02em;
+  display:flex;align-items:center;justify-content:center;gap:10px;}
 .auth-sub{font-size:13px;color:var(--muted);text-align:center;margin-bottom:28px;}
 .auth-tabs{display:flex;gap:6px;margin-bottom:22px;background:rgba(var(--ovl),.04);border-radius:11px;padding:4px;}
 .auth-tab-btn{flex:1;padding:8px;border:none;border-radius:8px;cursor:pointer;font-family:var(--fm);font-size:13px;font-weight:700;background:transparent;color:var(--muted);transition:all .2s;}
