@@ -3630,11 +3630,9 @@ function renderFlashcardCardViewer() {
 
   _attachFlashcardTapHandlers(_fcEls.card);
   _fcBindHighlighting();
-  // The viewer's markup is rebuilt on every topic change, so both of these
-  // re-attach to fresh nodes from state that outlived the render.
+  // The viewer's markup is rebuilt on every topic change, so this re-attaches
+  // to fresh nodes from state that outlived the render.
   _fcRenderSaveState();
-  _pomoRender();
-  if (_pomo.running) _pomoLoop();
   _fcPaintCard({ animate: false });
 }
 
@@ -3851,146 +3849,8 @@ function _fcPensMarkup() {
       aria-pressed="${c === _fcPen}" title="Highlight in ${c}"
       onclick="setFlashcardPen('${c}')"></button>`).join('')}
     <span id="fc-hl-save" class="fc-hl-save" role="status" aria-live="polite"></span>
-    ${_pomoMarkup()}
   </div>`;
 }
-
-// ══════════════════════════════════
-// POMODORO — focus timer for flashcard review
-// ══════════════════════════════════
-// State is held here rather than in the DOM because the study viewer rebuilds
-// its markup on every topic change, and a timer that reset itself each time
-// you switched topics would be worse than no timer. Time is tracked as an
-// absolute `endsAt` rather than a decrementing counter: setInterval is
-// throttled in background tabs and drifts over 25 minutes, and a student who
-// switches away to read a case would come back to a timer that had silently
-// fallen behind. Persisted for the same reason a reload should not cost you
-// the pomodoro you are 18 minutes into.
-const POMO_PHASES = {
-  focus:      { label: 'Focus',       mins: 25, next: 'break' },
-  break:      { label: 'Short break', mins: 5,  next: 'focus' },
-  longBreak:  { label: 'Long break',  mins: 15, next: 'focus' },
-};
-const POMO_LONG_BREAK_EVERY = 4;
-
-let _pomo = { phase: 'focus', endsAt: 0, remaining: POMO_PHASES.focus.mins * 60000, running: false, done: 0 };
-let _pomoTick = null;
-
-(function _pomoRestore() {
-  try {
-    const raw = JSON.parse(localStorage.getItem('bb_pomo') || 'null');
-    if (raw && POMO_PHASES[raw.phase]) {
-      _pomo = { ...(_pomo), ...raw };
-      // A timer left running is caught up from wall-clock, not resumed blind.
-      if (_pomo.running) {
-        const left = _pomo.endsAt - Date.now();
-        if (left <= 0) { _pomo.running = false; _pomo.remaining = 0; }
-        else _pomo.remaining = left;
-      }
-    }
-  } catch (e) {}
-})();
-
-function _pomoSave() {
-  try { localStorage.setItem('bb_pomo', JSON.stringify(_pomo)); } catch (e) {}
-}
-
-function _pomoLeft() {
-  return _pomo.running ? Math.max(0, _pomo.endsAt - Date.now()) : _pomo.remaining;
-}
-
-function _pomoMarkup() {
-  return `<div class="pomo" id="pomo">
-    <button type="button" class="pomo-dial" id="pomo-toggle" onclick="togglePomodoro()" title="Start or pause the focus timer">
-      <svg viewBox="0 0 36 36" aria-hidden="true">
-        <circle class="pomo-track" cx="18" cy="18" r="15.5"></circle>
-        <circle class="pomo-fill"  cx="18" cy="18" r="15.5"></circle>
-      </svg>
-      <span class="pomo-icon" id="pomo-icon">▶</span>
-    </button>
-    <div class="pomo-meta">
-      <div class="pomo-time" id="pomo-time">25:00</div>
-      <div class="pomo-phase" id="pomo-phase">Focus</div>
-    </div>
-    <button type="button" class="pomo-btn" onclick="resetPomodoro()" title="Reset this interval">↺</button>
-    <button type="button" class="pomo-btn" onclick="skipPomodoro()" title="Skip to the next interval">⇥</button>
-  </div>`;
-}
-
-function _pomoRender() {
-  const wrap = document.getElementById('pomo');
-  if (!wrap) return;
-  const left = _pomoLeft();
-  const total = POMO_PHASES[_pomo.phase].mins * 60000;
-  const secs = Math.ceil(left / 1000);
-  const t = document.getElementById('pomo-time');
-  if (t) t.textContent = `${String(Math.floor(secs / 60)).padStart(2, '0')}:${String(secs % 60).padStart(2, '0')}`;
-  const p = document.getElementById('pomo-phase');
-  if (p) p.textContent = POMO_PHASES[_pomo.phase].label + (_pomo.done ? ` · ${_pomo.done}` : '');
-  const icon = document.getElementById('pomo-icon');
-  if (icon) icon.textContent = _pomo.running ? '❚❚' : '▶';
-  wrap.classList.toggle('running', _pomo.running);
-  wrap.classList.toggle('resting', _pomo.phase !== 'focus');
-  // Circumference of r=15.5 is ~97.39; draw the remaining portion.
-  const fill = wrap.querySelector('.pomo-fill');
-  if (fill) {
-    const C = 2 * Math.PI * 15.5;
-    fill.style.strokeDasharray = String(C);
-    fill.style.strokeDashoffset = String(C * (1 - (total ? left / total : 0)));
-  }
-}
-
-function _pomoLoop() {
-  if (_pomoTick) return;
-  _pomoTick = setInterval(() => {
-    if (!_pomo.running) return;
-    if (_pomoLeft() <= 0) { _pomoAdvance(); return; }
-    _pomoRender();
-  }, 250);
-}
-
-function _pomoAdvance(manual) {
-  const from = _pomo.phase;
-  if (from === 'focus' && !manual) _pomo.done += 1;
-  let next = POMO_PHASES[from].next;
-  if (next === 'break' && _pomo.done > 0 && _pomo.done % POMO_LONG_BREAK_EVERY === 0) next = 'longBreak';
-  _pomo.phase = next;
-  _pomo.remaining = POMO_PHASES[next].mins * 60000;
-  // Breaks start on their own; a new focus block waits for the student.
-  _pomo.running = next !== 'focus';
-  _pomo.endsAt = Date.now() + _pomo.remaining;
-  _pomoSave();
-  _pomoRender();
-  if (!manual) {
-    showToast(from === 'focus'
-      ? `Pomodoro ${_pomo.done} done — ${POMO_PHASES[next].label.toLowerCase()} for ${POMO_PHASES[next].mins} min`
-      : `Break over — back to focus`, 'success');
-  }
-}
-
-function togglePomodoro() {
-  if (_pomo.running) {
-    _pomo.remaining = _pomoLeft();
-    _pomo.running = false;
-  } else {
-    if (_pomo.remaining <= 0) _pomo.remaining = POMO_PHASES[_pomo.phase].mins * 60000;
-    _pomo.endsAt = Date.now() + _pomo.remaining;
-    _pomo.running = true;
-    _pomoLoop();
-  }
-  _pomoSave();
-  _pomoRender();
-}
-
-function resetPomodoro() {
-  _pomo.running = false;
-  _pomo.remaining = POMO_PHASES[_pomo.phase].mins * 60000;
-  _pomo.endsAt = 0;
-  _pomoSave();
-  _pomoRender();
-}
-
-function skipPomodoro() { _pomoAdvance(true); }
 
 // Walk a face's text nodes and record where each one sits in the source text.
 // formatFlashcardBack turns every \n into a <br>, so a <br> stands for exactly
