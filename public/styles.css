@@ -1796,6 +1796,39 @@ button[onclick*="switchSubjectTab(currentSubject,'learn')"] { display: none !imp
   padding: 8px 4px 20px;
 }
 
+/* ── Fullscreen study ──────────────────────────────────────────
+   A fullscreen element paints on the UA's own backdrop (black by default)
+   and stops inheriting the page's background, so the theme has to be
+   restated here or light mode turns black. The rules are duplicated per
+   prefix rather than comma-joined: a selector list containing one
+   unrecognised pseudo-class is dropped whole by the parser, which would
+   take the standard rule down with the prefixed one. */
+.fc-viewer-wrap:fullscreen{
+  max-width:none;width:100%;height:100%;
+  background:var(--ink);
+  padding:24px clamp(16px,6vw,80px);
+  display:flex;flex-direction:column;justify-content:center;
+  overflow-y:auto;
+}
+.fc-viewer-wrap:fullscreen .fc-card-outer{margin:14px auto;width:100%;max-width:1100px;}
+.fc-viewer-wrap:fullscreen .fc-card{min-height:min(420px,52vh);}
+/* The card body is the thing worth more room in fullscreen. */
+.fc-viewer-wrap:fullscreen .fc-card-content{max-height:58vh;font-size:calc(var(--fs-read) + 1.5px);}
+.fc-viewer-wrap:fullscreen .fc-pens,
+.fc-viewer-wrap:fullscreen .fc-nav-row{width:100%;max-width:1100px;margin-left:auto;margin-right:auto;}
+.fc-viewer-wrap:-webkit-full-screen{
+  max-width:none;width:100%;height:100%;
+  background:var(--ink);
+  padding:24px clamp(16px,6vw,80px);
+  display:flex;flex-direction:column;justify-content:center;
+  overflow-y:auto;
+}
+.fc-viewer-wrap:-webkit-full-screen .fc-card-outer{margin:14px auto;width:100%;max-width:1100px;}
+.fc-viewer-wrap:-webkit-full-screen .fc-card{min-height:min(420px,52vh);}
+.fc-viewer-wrap:-webkit-full-screen .fc-card-content{max-height:58vh;font-size:calc(var(--fs-read) + 1.5px);}
+.fc-viewer-wrap:-webkit-full-screen .fc-pens,
+.fc-viewer-wrap:-webkit-full-screen .fc-nav-row{width:100%;max-width:1100px;margin-left:auto;margin-right:auto;}
+
 .fc-card-outer {
   perspective: 1600px;
   margin: 10px 0 18px;
