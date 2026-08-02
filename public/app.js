@@ -418,41 +418,61 @@ const BB_LOADING_MESSAGES = [
 ];
 let _bbMsgIdx = 0;
 let _bbMsgInterval = null;
+let _bbMsgFade = null;      // the in-flight half of a cross-fade
 
+// Cancels the rotator and any fade waiting to write text. Every entry point
+// calls this first, so only one thing is ever scheduled to touch the message.
+function _bbStopMessages() {
+  if (_bbMsgInterval) { clearInterval(_bbMsgInterval); _bbMsgInterval = null; }
+  if (_bbMsgFade) { clearTimeout(_bbMsgFade); _bbMsgFade = null; }
+}
+
+// startLoadingScreen runs twice on a sign-in — once on DOMContentLoaded and
+// again from doLogin — and used to leave the first interval running. Two
+// rotators then cross-faded the same element out of phase: one would drop it
+// to opacity 0 while the other wrote a different message and faded it back,
+// so the text flickered between two strings and ghosted mid-fade. Stopping
+// first makes a second call a restart rather than a second rotator.
 function startLoadingScreen() {
   const screen = document.getElementById('bb-loading-screen');
   const msg = document.getElementById('bb-loading-msg');
   if (!screen) return;
+  _bbStopMessages();
   screen.style.display = 'flex';
   screen.style.opacity = '1';
   screen.classList.remove('fade-out');
+  if (msg) msg.style.opacity = '1';
   _bbMsgInterval = setInterval(() => {
     _bbMsgIdx = (_bbMsgIdx + 1) % BB_LOADING_MESSAGES.length;
-    if (msg) {
-      msg.style.opacity = '0';
-      setTimeout(() => {
-        msg.textContent = BB_LOADING_MESSAGES[_bbMsgIdx];
-        msg.style.opacity = '1';
-      }, 200);
-    }
+    if (!msg) return;
+    msg.style.opacity = '0';
+    _bbMsgFade = setTimeout(() => {
+      _bbMsgFade = null;
+      msg.textContent = BB_LOADING_MESSAGES[_bbMsgIdx];
+      msg.style.opacity = '1';
+    }, 200);
   }, 1500);
 }
 
 function hideLoadingScreen() {
   const screen = document.getElementById('bb-loading-screen');
   if (!screen) return;
-  if (_bbMsgInterval) { clearInterval(_bbMsgInterval); _bbMsgInterval = null; }
+  _bbStopMessages();
   const msg = document.getElementById('bb-loading-msg');
-  if (msg) msg.textContent = 'Ready!';
+  if (msg) { msg.textContent = 'Ready!'; msg.style.opacity = '1'; }
   setTimeout(() => {
     screen.classList.add('fade-out');
     setTimeout(() => { screen.style.display = 'none'; }, 400);
   }, 300);
 }
 
+// A named stage ("Verifying your session…") outranks the rotator — otherwise
+// the next tick overwrote it a moment later, which is why the stage messages
+// never seemed to stick.
 function setLoadingMsg(text) {
+  _bbStopMessages();
   const msg = document.getElementById('bb-loading-msg');
-  if (msg) msg.textContent = text;
+  if (msg) { msg.textContent = text; msg.style.opacity = '1'; }
 }
 
 // ══════════════════════════════════
@@ -3537,6 +3557,9 @@ function renderFlashcardCardViewer() {
   if (!_fcSession) return;
   const container = document.getElementById('subject-tab-content');
   if (!container) return;
+  // A portaled fullscreen wrap lives on <body>; the innerHTML below would
+  // build a second viewer underneath and leave that one stranded.
+  if (_fcPseudoOn()) _fcExitPseudo();
 
   if (!_fcSession.cards[_fcSession.position]) {
     renderFlashcardSessionSummary();
@@ -3653,7 +3676,7 @@ function _fcSizeStudyLayout() {
   // pinned to a viewport-derived height. Guarded here rather than at the call
   // sites because entering fullscreen also fires a resize, and the order of
   // that against fullscreenchange is not guaranteed — the two would race.
-  if (_fcFullscreenEl()) { layout.style.height = 'auto'; return; }
+  if (_fcIsFullscreen()) { layout.style.height = 'auto'; return; }
   if (window.innerWidth <= 900) { layout.style.height = ''; return; } // stacked
   const top = layout.getBoundingClientRect().top;
   // Floor low enough that the card can still shrink on short viewports. Above
@@ -4105,25 +4128,74 @@ function _fcFullscreenEl() {
   return document.fullscreenElement || document.webkitFullscreenElement || null;
 }
 
+// iPhone Safari has no element Fullscreen API at all — requestFullscreen and
+// webkitRequestFullscreen are both undefined outside <video>, so the button
+// only ever produced a "not supported" toast on a phone. The fallback pins the
+// viewer over the viewport with CSS instead, which behaves the same to a
+// student and works on every browser. Native is still preferred where it
+// exists, because it also hides the browser chrome.
+function _fcPseudoOn() {
+  return !!document.querySelector('.fc-viewer-wrap.fc-pseudo-fs');
+}
+function _fcIsFullscreen() {
+  return !!_fcFullscreenEl() || _fcPseudoOn();
+}
+
+// The wrap is moved to <body> for the duration. Left where it lives, a
+// position:fixed z-9000 overlay still painted *under* the 300 sidebar — an
+// identical overlay wins from <body> and loses from inside .fc-study-main, so
+// something in that subtree traps it regardless of z-index. Portalling
+// sidesteps the question. The nodes themselves are moved, not re-rendered, so
+// _fcEls and the highlight listeners bound to the faces stay valid.
+let _fcPseudoHome = null;
+
+function _fcEnterPseudo(el) {
+  _fcPseudoHome = { parent: el.parentNode, next: el.nextSibling };
+  document.body.appendChild(el);
+  el.classList.add('fc-pseudo-fs');
+  document.body.classList.add('fc-fs-lock');
+  _fcSyncFullscreenBtn();
+}
+function _fcExitPseudo() {
+  const el = document.querySelector('.fc-viewer-wrap.fc-pseudo-fs');
+  if (el) {
+    el.classList.remove('fc-pseudo-fs');
+    // Back to the exact slot it came from, so the study layout is unchanged.
+    if (_fcPseudoHome?.parent?.isConnected) {
+      _fcPseudoHome.parent.insertBefore(el, _fcPseudoHome.next);
+    } else {
+      el.remove(); // its home was re-rendered away; drop the orphan
+    }
+  }
+  _fcPseudoHome = null;
+  document.body.classList.remove('fc-fs-lock');
+  _fcSyncFullscreenBtn();
+}
+
 function toggleFlashcardFullscreen() {
   const el = document.querySelector('.fc-viewer-wrap');
   if (!el) return;
+  if (_fcPseudoOn()) { _fcExitPseudo(); return; }
   if (_fcFullscreenEl()) {
     (document.exitFullscreen || document.webkitExitFullscreen)?.call(document);
     return;
   }
   const req = el.requestFullscreen || el.webkitRequestFullscreen;
-  if (!req) { showToast('This browser does not support full screen', 'warning'); return; }
-  // navigationUI:'hide' is ignored where unsupported; the catch covers a
-  // browser refusing the request outside a user gesture.
-  Promise.resolve(req.call(el, { navigationUI: 'hide' })).catch(() => {
-    showToast('Could not enter full screen', 'error');
-  });
+  if (!req) { _fcEnterPseudo(el); return; }
+  // A browser can also refuse a request it nominally supports (an iframe
+  // without allowfullscreen, or outside a user gesture) — fall back rather
+  // than leaving the student with nothing.
+  Promise.resolve(req.call(el, { navigationUI: 'hide' })).catch(() => _fcEnterPseudo(el));
 }
+
+// Native fullscreen handles its own Esc; the fallback has to.
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && _fcPseudoOn()) { e.preventDefault(); _fcExitPseudo(); }
+});
 
 function _fcSyncFullscreenBtn() {
   const btn = document.getElementById('fc-fs-btn');
-  const on = !!_fcFullscreenEl();
+  const on = _fcIsFullscreen();
   if (btn) {
     btn.innerHTML = on ? '⛶ Exit Full Screen' : '⛶ Full Screen';
     btn.setAttribute('aria-pressed', on ? 'true' : 'false');
@@ -4287,6 +4359,10 @@ function renderFlashcardSessionSummary() {
 }
 
 function endFlashcardSession() {
+  // Leave fullscreen before tearing the session down, or the wrap stays
+  // pinned over the viewport with nothing behind it.
+  if (_fcPseudoOn()) _fcExitPseudo();
+  else if (_fcFullscreenEl()) (document.exitFullscreen || document.webkitExitFullscreen)?.call(document);
   const subj = _fcSession?.subject;
   const nodeIdToRestore = _fcLastClickedNodeId; // captured before _fcSession is cleared
   _fcSession = null;

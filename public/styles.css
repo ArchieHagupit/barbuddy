@@ -1853,6 +1853,26 @@ button[onclick*="switchSubjectTab(currentSubject,'learn')"] { display: none !imp
 .fc-viewer-wrap:-webkit-full-screen .fc-card-content{max-height:58vh;font-size:calc(var(--fs-read) + 1.5px);}
 .fc-viewer-wrap:-webkit-full-screen .fc-pens,
 .fc-viewer-wrap:-webkit-full-screen .fc-nav-row{width:100%;max-width:1100px;margin-left:auto;margin-right:auto;}
+/* CSS fallback for browsers with no element Fullscreen API — iPhone Safari
+   above all, where the button did nothing. Same result to a student, minus
+   hiding the browser chrome. dvh after vh so the older unit is the fallback:
+   on mobile 100vh is the chrome-less height, which leaves the nav row under
+   the address bar. */
+.fc-viewer-wrap.fc-pseudo-fs{
+  position:fixed;inset:0;z-index:9000;
+  max-width:none;width:100%;height:100vh;height:100dvh;
+  background:var(--ink);
+  padding:16px clamp(12px,4vw,80px);
+  display:flex;flex-direction:column;justify-content:center;
+  overflow-y:auto;-webkit-overflow-scrolling:touch;
+}
+.fc-viewer-wrap.fc-pseudo-fs .fc-card-outer{margin:14px auto;width:100%;max-width:1100px;}
+.fc-viewer-wrap.fc-pseudo-fs .fc-card{min-height:min(420px,46vh);}
+.fc-viewer-wrap.fc-pseudo-fs .fc-card-content{max-height:52vh;}
+.fc-viewer-wrap.fc-pseudo-fs .fc-pens,
+.fc-viewer-wrap.fc-pseudo-fs .fc-nav-row{width:100%;max-width:1100px;margin-left:auto;margin-right:auto;}
+/* Stops the page behind scrolling under the overlay on touch. */
+body.fc-fs-lock{overflow:hidden;}
 
 .fc-card-outer {
   perspective: 1600px;
