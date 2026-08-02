@@ -231,7 +231,10 @@ function showToast(message, type = 'info') {
   toast.id = 'bb-toast';
   toast.style.cssText = `position:fixed;top:72px;left:50%;transform:translateX(-50%);z-index:9999;background:${c.bg};border:1px solid ${c.border};color:${c.color};padding:10px 20px;border-radius:10px;font-size:13px;font-weight:600;font-family:var(--fb);box-shadow:0 4px 16px rgba(0,0,0,.2);animation:slideDown .2s ease;white-space:nowrap;max-width:calc(100vw - 48px);text-align:center;`;
   toast.textContent = message;
-  document.body.appendChild(toast);
+  // Only the fullscreen element's subtree is painted while fullscreen is
+  // active, so a toast parented to <body> would be invisible exactly when a
+  // student is most focused — including the "highlight not saved" warning.
+  (document.fullscreenElement || document.webkitFullscreenElement || document.body).appendChild(toast);
   setTimeout(() => { toast.style.opacity='0'; toast.style.transition='opacity .3s'; setTimeout(() => toast.remove(), 300); }, 3000);
 }
 
@@ -2626,13 +2629,13 @@ function renderSubjectHeader(subj) {
   const s = ALL_SUBJS.find(x => x.key === subj);
   if (!s) return;
   const refs   = (KB.references||[]).filter(r=>r.subject===subj).length;
-  const pbSets = (KB.pastBar||[]).filter(p=>p.subject===subj).length;
   const pbQs   = (KB.pastBar||[]).filter(p=>p.subject===subj).reduce((a,p)=>a+(p.qCount||0),0);
   const cached = Object.keys(CACHE[subj]||{}).length;
   const topicCount = (KB.syllabusTopics||[]).find(st=>st.key===subj)?.topics?.length || 0;
   const metaParts = [];
   if (refs) metaParts.push(`${refs} reference${refs!==1?'s':''}`);
-  if (pbSets) metaParts.push(`${pbSets} past bar set${pbSets!==1?'s':''}`);
+  // How many batches a subject was uploaded in is an admin detail — the
+  // student only cares how many questions it comes to.
   if (pbQs) metaParts.push(`${pbQs} questions`);
   if (topicCount) metaParts.push(`${topicCount} topics`);
   if (cached) metaParts.push(`${cached} cached`);
@@ -3555,6 +3558,9 @@ function renderFlashcardCardViewer() {
             <div class="fc-progress-fill" style="height:100%;background:linear-gradient(90deg,var(--gold),var(--gold-l));width:0%;transition:width .25s;"></div>
           </div>
         </div>
+        <button class="btn-og fc-fs-btn" id="fc-fs-btn" onclick="toggleFlashcardFullscreen()"
+                style="font-size:11px;padding:5px 10px;" title="Full screen (Esc to exit)"
+                aria-pressed="false">⛶ Full Screen</button>
         <button class="btn-og" onclick="endFlashcardSession()" style="font-size:11px;padding:5px 10px;">End Session</button>
       </div>
 
@@ -3643,6 +3649,11 @@ function renderFlashcardCardViewer() {
 function _fcSizeStudyLayout() {
   const layout = document.querySelector('.fc-study-layout');
   if (!layout) return;
+  // Fullscreen sizes the viewer against the screen, so the layout must not be
+  // pinned to a viewport-derived height. Guarded here rather than at the call
+  // sites because entering fullscreen also fires a resize, and the order of
+  // that against fullscreenchange is not guaranteed — the two would race.
+  if (_fcFullscreenEl()) { layout.style.height = 'auto'; return; }
   if (window.innerWidth <= 900) { layout.style.height = ''; return; } // stacked
   const top = layout.getBoundingClientRect().top;
   // Floor low enough that the card can still shrink on short viewports. Above
@@ -4083,6 +4094,46 @@ function flipFlashcard() {
   _fcSession.currentFlipped = !_fcSession.currentFlipped;
   _fcEls.card.classList.toggle('fc-card-flipped', _fcSession.currentFlipped);
 }
+
+// ── Fullscreen study ───────────────────────────────────────
+// The whole .fc-viewer-wrap goes fullscreen — pens row, card and nav row
+// together — so highlighting, Previous/Next and Mark as Done all keep
+// working inside it. Only the topic outline is left behind, which is the
+// point. The keyboard shortcuts are bound on `document`, and the fullscreen
+// element is still in the document, so ←/→/Space/D need no special handling.
+function _fcFullscreenEl() {
+  return document.fullscreenElement || document.webkitFullscreenElement || null;
+}
+
+function toggleFlashcardFullscreen() {
+  const el = document.querySelector('.fc-viewer-wrap');
+  if (!el) return;
+  if (_fcFullscreenEl()) {
+    (document.exitFullscreen || document.webkitExitFullscreen)?.call(document);
+    return;
+  }
+  const req = el.requestFullscreen || el.webkitRequestFullscreen;
+  if (!req) { showToast('This browser does not support full screen', 'warning'); return; }
+  // navigationUI:'hide' is ignored where unsupported; the catch covers a
+  // browser refusing the request outside a user gesture.
+  Promise.resolve(req.call(el, { navigationUI: 'hide' })).catch(() => {
+    showToast('Could not enter full screen', 'error');
+  });
+}
+
+function _fcSyncFullscreenBtn() {
+  const btn = document.getElementById('fc-fs-btn');
+  const on = !!_fcFullscreenEl();
+  if (btn) {
+    btn.innerHTML = on ? '⛶ Exit Full Screen' : '⛶ Full Screen';
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+  }
+  // _fcSizeStudyLayout self-guards on fullscreen, so one call covers both
+  // entering (height:auto) and leaving (re-measure against the viewport).
+  _fcSizeStudyLayout();
+}
+document.addEventListener('fullscreenchange', _fcSyncFullscreenBtn);
+document.addEventListener('webkitfullscreenchange', _fcSyncFullscreenBtn);
 
 function goPrevFlashcard() {
   if (!_fcSession) return;
