@@ -10,4 +10,8 @@ uploads/settings.json
 uploads/reset_requests.json
 *.log
 
+# macOS writes these into every folder it opens; they are per-machine
+# view metadata and were being carried in commits.
+.DS_Store
+
 .claude/
