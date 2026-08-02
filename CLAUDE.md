@@ -344,19 +344,36 @@ during scroll in both Mock Bar and Speed Drill.
 Contains: question number, source badge, timer, 
 Flag/Exit/End & Score buttons — all always visible.
 
-### Timer Warning Colors (runTimer() ~line 5185)
+### Timer Warning States (runTimer() in public/app.js)
 Controlled by CSS classes on the timer element:
-- >60s remaining: normal gold color (no class)
-- 30-60s remaining: .warn — pink/red with blink
-- ≤30s remaining: .critical — bright red with 
-  faster pulse animation (timerPulse keyframe)
+- >60s remaining: normal, --warn colour (no state class)
+- 30-60s remaining: .is-warn — --danger, slow ring pulse
+- ≤30s remaining: .is-critical — --danger-crit, fast ring pulse
 
-### CSS Classes (index.html ~line 721-727)
+The state classes are `is-warn` / `is-critical`, NOT `warn` /
+`critical`. styles.css has a generic `.warn` card component, and its
+`.warn span` rule beat the timer's own styles — the digits dropped to
+12px and a hardcoded #a08040 for the whole 30-60s window, then snapped
+back at 30s. Do not rename these back.
+
+The pulse animates a ring OUTSIDE the digits rather than the digits'
+opacity. The original blink/timerPulse faded the text to 1.9:1 (warn)
+and 2.7:1 (critical) — least readable exactly when it mattered. A
+tinted plate behind the digits was no better: the urgency colour and
+the text are the same red, so it moved the background toward the text
+(2.75:1 on light). Text now holds 5.1-7.6:1 in every state, both
+themes, for the whole cycle.
+
+fmtTime() pads minutes below ten so the string keeps a fixed width;
+unpadded it lost a character at 9:59 and shifted the sticky header.
+
+### CSS Classes (public/styles.css)
 - .ms-header — sticky session header
-- .ms-timer — base timer styles
-- .ms-timer.warn — 30-60s warning state
-- .ms-timer.critical — ≤30s critical state
-- @keyframes timerPulse — pulse animation for critical
+- .ms-timer — base timer styles (padding lives here, so a state
+  change never resizes the header)
+- .ms-timer.is-warn — 30-60s warning state
+- .ms-timer.is-critical — ≤30s critical state
+- @keyframes timerWarnPulse / timerCritPulse — the ring pulses
 
 ### Applies To
 Both Mock Bar and Speed Drill share .ms-header 

@@ -6474,10 +6474,15 @@ function startMockSession(questions, timeMin, subjectKey) {
   ExamSession.startAutoSave(() => window.activeExamSession);
 }
 
+// Minutes are padded even below ten, so the string keeps a fixed width all
+// the way down. Unpadded, it lost a character at 9:59 — tabular figures keep
+// digits the same width but cannot help when the count of them changes, so
+// the timer and everything after it in the sticky header jumped sideways
+// mid-exam. Only the timer calls this.
 function fmtTime(secs){
   const h=Math.floor(secs/3600),m=Math.floor((secs%3600)/60),s=secs%60;
   const mm=m.toString().padStart(2,'0'),ss=s.toString().padStart(2,'0');
-  return h>0?`${h}:${mm}:${ss}`:`${m}:${ss}`;
+  return h>0?`${h}:${mm}:${ss}`:`${mm}:${ss}`;
 }
 function fmt(n,decimals=1){
   if(n===null||n===undefined)return'0';
@@ -6497,8 +6502,12 @@ function runTimer(){
     mockLeft--;
     document.getElementById('timer-val').textContent=fmtTime(mockLeft);
     const timerEl=document.getElementById('ms-timer');
-    timerEl.classList.toggle('critical',mockLeft<=30);
-    timerEl.classList.toggle('warn',mockLeft>30&&mockLeft<=60);
+    // is-warn / is-critical, not warn / critical: styles.css has a generic
+    // .warn card component whose `.warn span` rule was winning over the
+    // timer's own styles, dropping the digits to 12px and a hardcoded
+    // #a08040 for the whole 30-60s window before they snapped back.
+    timerEl.classList.toggle('is-critical',mockLeft<=30);
+    timerEl.classList.toggle('is-warn',mockLeft>30&&mockLeft<=60);
     // Track elapsed time for session restore
     if (window.activeExamSession) {
       window.activeExamSession.timeElapsed = (mockTimeLimitSecs||0) - mockLeft;
