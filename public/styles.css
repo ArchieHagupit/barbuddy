@@ -1107,11 +1107,36 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .ms-header{background:var(--exam-head);border:1px solid rgba(var(--warn-rgb),.2);border-radius:13px;padding:15px 20px;display:flex;align-items:center;gap:16px;margin-bottom:18px;position:sticky;top:58px;z-index:100;backdrop-filter:blur(10px);}
 .ms-q-num{font-family:var(--fd);font-size:22px;font-weight:700;color:var(--warn);}
 .ms-of{font-size:12px;color:var(--exam-head-muted);font-family:var(--fm);}
-.ms-timer{display:flex;align-items:center;gap:6px;font-size:22px;font-weight:700;color:var(--warn);font-family:var(--fm);margin-left:auto;}
-.ms-timer.warn{color:var(--danger);animation:blink 1s infinite;}
-.ms-timer.critical{color:var(--danger-crit);animation:timerPulse .8s infinite;}
-@keyframes blink{0%,100%{opacity:1;}50%{opacity:.4;}}
-@keyframes timerPulse{0%,100%{opacity:1;}50%{opacity:.6;}}
+/* Padding is on the base rule, not the warn/critical ones: adding it only in
+   the urgent states would shift the header the moment the timer changed
+   colour, which is the same jump the padded minutes above fix. */
+.ms-timer{display:flex;align-items:center;gap:6px;font-size:22px;font-weight:700;color:var(--warn);font-family:var(--fm);margin-left:auto;padding:2px 9px;border-radius:9px;}
+/* The escalation pulses a ring *outside* the digits. The old blink/timerPulse
+   animated opacity on the text itself, which took it to 1.9:1 (warn) and
+   2.7:1 (critical) at the trough — the timer was least readable exactly when
+   it mattered most, and inverted too: warn dipped to .4 while critical only
+   reached .6, so the less urgent state was the more distracting one.
+   A tinted plate behind the digits was no better; measured, it moved the
+   background toward the text colour in both themes (2.75:1 on light), since
+   the urgency colour and the text are the same red. A ring never sits behind
+   the glyphs, so the digits hold their full contrast the whole cycle and only
+   the halo moves — faster and further as time runs out. */
+.ms-timer.is-warn{color:var(--danger);animation:timerWarnPulse 1.6s ease-in-out infinite;}
+.ms-timer.is-critical{color:var(--danger-crit);animation:timerCritPulse .9s ease-in-out infinite;}
+@keyframes timerWarnPulse{
+  0%,100%{box-shadow:0 0 0 0 rgba(var(--danger-rgb),.5);}
+  50%    {box-shadow:0 0 0 5px rgba(var(--danger-rgb),0);}
+}
+@keyframes timerCritPulse{
+  0%,100%{box-shadow:0 0 0 0 rgba(var(--crim-rgb),.75);}
+  50%    {box-shadow:0 0 0 8px rgba(var(--crim-rgb),0);}
+}
+@media(prefers-reduced-motion:reduce){
+  /* Hold the ring steady rather than dropping it — it is the only cue left
+     once the motion is gone. */
+  .ms-timer.is-warn{animation:none;box-shadow:0 0 0 2px rgba(var(--danger-rgb),.45);}
+  .ms-timer.is-critical{animation:none;box-shadow:0 0 0 3px rgba(var(--crim-rgb),.65);}
+}
 .ms-source{font-size:10px;color:var(--exam-head-muted);background:rgba(var(--warn-rgb),.1);border-radius:5px;padding:2px 7px;font-family:var(--fm);}
 .q-markers{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:16px;}
 .q-marker{width:26px;height:26px;border-radius:6px;border:1px solid var(--bdr2);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;cursor:pointer;transition:all .18s;color:var(--muted);}
