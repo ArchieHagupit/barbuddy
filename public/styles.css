@@ -477,7 +477,8 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 /* Replaced the old #sr-review-banner, a fixed bar that pushed itself under
    the topbar across the full content width on every load. */
 /* Theme toggle — sits beside the notification bell and matches its metrics */
-.theme-toggle{width:32px;height:32px;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:transparent;border:1px solid var(--bdr2);border-radius:9px;cursor:pointer;font-size:14px;line-height:1;padding:0;transition:border-color .2s,background .2s;}
+.theme-toggle{width:32px;height:32px;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:transparent;border:1px solid var(--bdr2);border-radius:9px;cursor:pointer;font-size:14px;line-height:1;padding:0;box-shadow:var(--emboss-btn);transition:border-color .2s,background .2s,box-shadow .2s,transform .2s;}
+.theme-toggle:active,.notif-bell:active{transform:translateY(1px);box-shadow:var(--deboss);}
 .theme-toggle:hover{border-color:var(--bdr-gold);background:rgba(var(--gold-rgb),.1);}
 .theme-toggle:focus-visible{outline:2px solid var(--gold);outline-offset:2px;}
 .theme-toggle-ic{display:block;transition:transform .3s ease;}
@@ -485,7 +486,7 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 @media(prefers-reduced-motion:reduce){.theme-toggle-ic{transition:none;}.theme-toggle:hover .theme-toggle-ic{transform:none;}}
 
 .notif-wrap{position:relative;flex-shrink:0;}
-.notif-bell{position:relative;width:32px;height:32px;display:flex;align-items:center;justify-content:center;background:transparent;border:1px solid var(--bdr2);border-radius:9px;cursor:pointer;font-size:15px;line-height:1;padding:0;transition:border-color .2s,background .2s;}
+.notif-bell{position:relative;width:32px;height:32px;display:flex;align-items:center;justify-content:center;background:transparent;border:1px solid var(--bdr2);border-radius:9px;cursor:pointer;font-size:15px;line-height:1;padding:0;box-shadow:var(--emboss-btn);transition:border-color .2s,background .2s,box-shadow .2s,transform .2s;}
 .notif-bell:hover{border-color:rgba(var(--gold-rgb),.45);background:rgba(var(--gold-rgb),.08);}
 .notif-bell.has-unread{border-color:rgba(var(--gold-rgb),.4);}
 .notif-bell.has-unread>span[aria-hidden]{animation:notifNudge 2.4s ease-in-out 3;transform-origin:50% 15%;}
@@ -642,7 +643,7 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 /* Streak rides the greeting rather than sitting in a row of stat chips. The
    chips restated numbers the two cards below already carry, and pushed the
    one actionable control in the hero below the fold on a laptop. */
-.ov-streak-pill{display:inline-flex;align-items:center;gap:5px;background:rgba(var(--gold-rgb),.16);color:var(--gold-l);font-weight:700;font-size:12px;padding:4px 11px;border-radius:999px;white-space:nowrap;cursor:help;}
+.ov-streak-pill{display:inline-flex;align-items:center;gap:5px;background:rgba(var(--gold-rgb),.16);color:var(--gold-l);font-weight:700;font-size:12px;padding:4px 11px;border-radius:999px;white-space:nowrap;cursor:help;box-shadow:var(--deboss);}
 
 .ov-hero-cards{display:flex;gap:16px;flex-wrap:wrap;align-items:stretch;}
 
@@ -731,7 +732,7 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .ov-subj-card.is-fresh .ov-subj-dot{opacity:.6;}
 .ov-subj-card.is-fresh .ov-subj-name{color:var(--text-muted);}
 .ov-subj-card.is-fresh:hover .ov-subj-name{color:var(--white);}
-.ov-not-started{flex-shrink:0;font-size:10px;font-weight:700;color:var(--muted);background:rgba(var(--ovl),.07);border-radius:999px;padding:3px 9px;white-space:nowrap;}
+.ov-not-started{flex-shrink:0;font-size:10px;font-weight:700;color:var(--muted);background:rgba(var(--ovl),.07);border-radius:999px;padding:3px 9px;white-space:nowrap;box-shadow:var(--deboss);}
 
 .ov-subj-top{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 10px;}
 .ov-subj-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
@@ -765,9 +766,14 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .ov-btn-learn{flex:1;min-width:0;background:linear-gradient(135deg,var(--gold-fill),var(--gold-fill-d));color:#1a1200;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:var(--emboss-btn);}
 .ov-btn-learn:hover{box-shadow:var(--emboss-btn),0 4px 14px rgba(var(--gold-rgb),.28);}
 .ov-btn-learn:active{box-shadow:var(--deboss);transform:translateY(1px);}
-.ov-btn-mock{flex:0 0 38px;width:38px;background:transparent;color:var(--text-muted);border-color:var(--bdr2);}
-.ov-btn-mock:hover{background:rgba(var(--ovl),.07);color:var(--white);}
+.ov-btn-mock{flex:0 0 38px;width:38px;background:transparent;color:var(--text-muted);border-color:var(--bdr2);box-shadow:var(--emboss-btn);}
+.ov-btn-mock:hover{background:rgba(var(--ovl),.07);color:var(--white);box-shadow:var(--emboss);}
 .ov-btn-mock:active,.ov-btn-start:active{box-shadow:var(--deboss);transform:translateY(1px);}
+/* Every interactive thing on this page is reachable by keyboard, so every
+   one of them needs a focus ring that isn't the browser's default outline
+   sitting flush against a rounded corner. */
+.ov-btn-learn:focus-visible,.ov-btn-mock:focus-visible,.ov-btn-start:focus-visible,
+.ov-countdown:focus-visible{outline:2px solid var(--gold);outline-offset:2px;}
 /* When an admin has turned Flashcards off for a subject, Mock is the card's
    only action — it takes the full width and its label back, rather than
    leaving a lone unlabelled icon as the whole card. */
@@ -775,8 +781,8 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 /* The not-started card's single action is an outline in the subject's own
    colour: unmistakably a different affordance from the solid gold "Continue"
    on a started card, so the grid reads as two kinds of thing at a glance. */
-.ov-btn-start{flex:1;background:transparent;border-color:var(--subj-color);color:var(--subj-color);}
-.ov-btn-start:hover{background:rgba(var(--ovl),.06);}
+.ov-btn-start{flex:1;background:transparent;border-color:var(--subj-color);color:var(--subj-color);box-shadow:var(--emboss-btn);}
+.ov-btn-start:hover{background:rgba(var(--ovl),.06);box-shadow:var(--emboss);}
 
 @media(max-width:1180px){.ov-subjects-grid{grid-template-columns:repeat(3,minmax(0,1fr));}}
 @media(max-width:900px){.ov-subjects-grid{grid-template-columns:repeat(2,minmax(0,1fr));}}
@@ -913,18 +919,39 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .left-col{display:flex;flex-direction:column;gap:16px;}
 .right-col{display:flex;flex-direction:column;gap:14px;}
 /* BUTTONS */
-.btn-gold{display:inline-flex;align-items:center;gap:7px;background:linear-gradient(135deg,var(--gold-fill),var(--gold-fill-d));color:#1a1200;padding:11px 22px;border-radius:12px;font-size:14px;font-weight:800;cursor:pointer;border:none;transition:all .2s;font-family:var(--fd);box-shadow:0 3px 14px rgba(var(--gold-rgb),.2);}
-.btn-gold:hover{transform:translateY(-1px);box-shadow:0 6px 20px rgba(var(--gold-rgb),.3);background:linear-gradient(135deg,#e0b84e,var(--gold));}
+/* ── Buttons ─────────────────────────────────────────────────
+   Every button carries the same relief story as the cards: a lit top lip
+   and a shaded bottom (--emboss-btn) at rest, a deeper cast on hover, and
+   --deboss plus a 1px nudge down on :active so a press physically sinks the
+   control. Before this the gold buttons had a coloured glow and nothing
+   else, so they read as flat plates with a halo, and the outline buttons
+   had no press feedback at all. */
+.btn-gold{display:inline-flex;align-items:center;gap:7px;background:linear-gradient(135deg,var(--gold-fill),var(--gold-fill-d));color:#1a1200;padding:11px 22px;border-radius:12px;font-size:14px;font-weight:800;cursor:pointer;border:none;transition:transform .2s,box-shadow .2s,background .2s;font-family:var(--fd);box-shadow:var(--emboss-btn),0 3px 14px rgba(var(--gold-rgb),.2);}
+.btn-gold:hover{transform:translateY(-1px);box-shadow:var(--emboss-btn),0 6px 20px rgba(var(--gold-rgb),.3);background:linear-gradient(135deg,#e0b84e,var(--gold));}
+.btn-gold:active:not(:disabled){transform:translateY(1px);box-shadow:var(--deboss);}
 .btn-gold:disabled{opacity:.45;cursor:not-allowed;transform:none;}
-.btn-og{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--bdr2);color:var(--text-muted);padding:9px 18px;border-radius:12px;font-size:13px;font-weight:600;cursor:pointer;background:transparent;transition:all .2s;font-family:var(--fb);}
-.btn-og:hover{border-color:var(--bdr-gold);color:var(--gold-l);background:rgba(var(--gold-rgb),.05);}
+.btn-og{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--bdr2);color:var(--text-muted);padding:9px 18px;border-radius:12px;font-size:13px;font-weight:600;cursor:pointer;background:transparent;transition:transform .2s,box-shadow .2s,background .2s,border-color .2s,color .2s;font-family:var(--fb);box-shadow:var(--emboss-btn);}
+.btn-og:hover{border-color:var(--bdr-gold);color:var(--gold-l);background:rgba(var(--gold-rgb),.05);box-shadow:var(--emboss);}
+.btn-og:active:not(:disabled){transform:translateY(1px);box-shadow:var(--deboss);}
 .btn-og:disabled{opacity:.4;cursor:not-allowed;}
-.btn-ghost{display:inline-flex;align-items:center;gap:6px;background:rgba(var(--ovl),.06);color:var(--white);padding:8px 16px;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;border:1px solid var(--bdr2);transition:all .2s;font-family:var(--fb);}
-.btn-ghost:hover{background:rgba(var(--ovl),.1);}
-.btn-mock{display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,#d4a843,#c49030);color:#1a1200;padding:11px 20px;border-radius:12px;font-size:14px;font-weight:800;cursor:pointer;border:none;transition:all .2s;font-family:var(--fd);box-shadow:0 4px 20px rgba(var(--gold-rgb),.3),0 1px 0 rgba(var(--ovl),.2) inset;letter-spacing:.02em;}
-.btn-mock:hover{transform:translateY(-2px);box-shadow:0 8px 30px rgba(var(--gold-rgb),.4),0 1px 0 rgba(var(--ovl),.2) inset;background:linear-gradient(135deg,#e0b84e,#d4a843);}
-.btn-mock:active{transform:translateY(0);}
+.btn-ghost{display:inline-flex;align-items:center;gap:6px;background:rgba(var(--ovl),.06);color:var(--white);padding:8px 16px;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;border:1px solid var(--bdr2);transition:transform .2s,box-shadow .2s,background .2s;font-family:var(--fb);box-shadow:var(--emboss-btn);}
+.btn-ghost:hover{background:rgba(var(--ovl),.1);box-shadow:var(--emboss);}
+.btn-ghost:active:not(:disabled){transform:translateY(1px);box-shadow:var(--deboss);}
+.btn-mock{display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,#d4a843,#c49030);color:#1a1200;padding:11px 20px;border-radius:12px;font-size:14px;font-weight:800;cursor:pointer;border:none;transition:transform .2s,box-shadow .2s,background .2s;font-family:var(--fd);box-shadow:var(--emboss-btn),0 4px 20px rgba(var(--gold-rgb),.3);letter-spacing:.02em;}
+.btn-mock:hover{transform:translateY(-2px);box-shadow:var(--emboss-btn),0 8px 30px rgba(var(--gold-rgb),.4);background:linear-gradient(135deg,#e0b84e,#d4a843);}
+.btn-mock:active:not(:disabled){transform:translateY(1px);box-shadow:var(--deboss);}
 .btn-mock:disabled{opacity:.45;cursor:not-allowed;transform:none;}
+/* The press nudge is motion, so it goes with the rest of it. The shadow
+   still swaps to --deboss, which is what actually communicates the press —
+   the 1px is only the flourish on top. */
+@media(prefers-reduced-motion:reduce){
+  .btn-gold,.btn-og,.btn-ghost,.btn-mock,.fc-nav-btn,.theme-toggle,.notif-bell{transition:box-shadow .01s,background .01s,border-color .01s,color .01s;}
+  .btn-gold:hover,.btn-og:hover,.btn-ghost:hover,.btn-mock:hover,.fc-nav-btn:hover:not(:disabled),
+  .btn-gold:active,.btn-og:active,.btn-ghost:active,.btn-mock:active,
+  .fc-nav-btn:active:not(:disabled),.theme-toggle:active,.notif-bell:active{transform:none;}
+  .fc-pen,.fc-pen:hover{transition:none;transform:none;}
+}
+
 /* CARDS */
 .card{background:var(--card);border:1px solid var(--bdr2);border-radius:16px;overflow:hidden;transition:all .2s;}
 .card:hover{border-color:var(--bdr-gold);box-shadow:0 4px 24px rgba(0,0,0,.2),0 0 0 1px rgba(var(--gold-rgb),.08);transform:translateY(-1px);}
@@ -1991,7 +2018,14 @@ button[onclick*="switchSubjectTab(currentSubject,'learn')"] { display: none !imp
   display: flex; flex-direction: column;
   flex: 1; min-height: 0; width: 100%;
 }
-.fc-study-main .fc-card-outer { flex: 1; min-height: 0; overflow-y: auto; }
+/* The padding is what makes the card look embossed in here.
+   .fc-card-face is inset:0 inside a full-height .fc-card, so its cast shadow
+   falls entirely outside this box — and this box scrolls, which clips it.
+   Without room to cast into, the card kept its inset lip but lost all its
+   lift and read flat in the one place a student actually studies. The
+   percentage height below resolves against the content box, so padding here
+   shrinks the card rather than introducing a scrollbar. */
+.fc-study-main .fc-card-outer { flex: 1; min-height: 0; overflow-y: auto; padding: 8px 18px 26px; }
 /* In the fixed-height study frame the card yields to the available space and
    scrolls its own body, so the nav row below it is never pushed off. */
 .fc-study-main .fc-card { min-height: 240px; height: 100%; }
@@ -2209,9 +2243,11 @@ body.fc-fs-lock{overflow:hidden;}
 /* The pens themselves scroll away with the card body, so they sit above it. */
 .fc-pens{display:flex;align-items:center;gap:7px;margin-bottom:10px;flex-wrap:wrap;}
 .fc-pens-label{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-right:1px;}
-.fc-pen{width:19px;height:19px;border-radius:50%;border:1px solid var(--bdr2);cursor:pointer;padding:0;transition:transform .15s,border-color .15s;}
+/* Physical ink dots: raised at rest, pressed in when selected, so the active
+   pen is legible without relying on the gold ring alone. */
+.fc-pen{width:19px;height:19px;border-radius:50%;border:1px solid var(--bdr2);cursor:pointer;padding:0;box-shadow:var(--emboss-btn);transition:transform .15s,border-color .15s,box-shadow .15s;}
 .fc-pen:hover{transform:scale(1.12);}
-.fc-pen.on{border-color:var(--gold);box-shadow:0 0 0 2px rgba(var(--gold-rgb),.3);}
+.fc-pen.on{border-color:var(--gold);box-shadow:var(--deboss),0 0 0 2px rgba(var(--gold-rgb),.3);}
 .fc-pen[data-c="yellow"]{background:var(--hl-yellow);}
 .fc-pen[data-c="green"] {background:var(--hl-green);}
 .fc-pen[data-c="blue"]  {background:var(--hl-blue);}
@@ -2364,12 +2400,17 @@ body.fc-fs-lock{overflow:hidden;}
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
   user-select: none;
+  box-shadow: var(--emboss);
 }
 
-.fc-nav-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,.2); }
-.fc-nav-btn:active:not(:disabled) { transform: translateY(0) scale(.975); background: rgba(var(--gold-rgb),.1); }
-.fc-nav-btn:disabled { opacity: .35; cursor: not-allowed; }
+.fc-nav-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: var(--emboss-hover); }
+/* Sinks rather than shrinking. The old scale(.975) shifted the label a
+   fraction of a pixel and read as a wobble; a press should go down. */
+.fc-nav-btn:active:not(:disabled) { transform: translateY(1px); box-shadow: var(--deboss); background: rgba(var(--gold-rgb),.1); }
+.fc-nav-btn:disabled { opacity: .35; cursor: not-allowed; box-shadow: none; }
 
+/* Recessed into the button — it's a hint stamped on the control, not a
+   second control sitting on top of it. */
 .fc-nav-key {
   font-size: 10px;
   min-width: 22px;
@@ -2382,6 +2423,7 @@ body.fc-fs-lock{overflow:hidden;}
   justify-content: center;
   font-family: var(--fm);
   padding: 0 4px;
+  box-shadow: var(--deboss);
 }
 
 .fc-nav-label { font-size: 13px; font-weight: 700; }

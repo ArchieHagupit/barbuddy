@@ -4668,7 +4668,13 @@ function getStudyMomentum() {
   const daysLeft = msLeft > 0 ? Math.max(1, Math.ceil(msLeft / 86400000)) : 0;
   // The number the countdown actually implies. Without it "30 days" is a
   // clock; with it, the student can tell whether today was a good day.
-  const perDay = daysLeft > 0 ? Math.ceil(remaining / daysLeft) : remaining;
+  //
+  // Zero once the bar date is behind us. It used to fall back to `remaining`,
+  // which meant that from Sept 7 2026 onward every student was told to drill
+  // the entire outstanding deck "today to stay on pace" — a four-figure daily
+  // target against a deadline that no longer exists. Callers read perDay === 0
+  // as "no meaningful daily target" and say something else instead.
+  const perDay = daysLeft > 0 ? Math.ceil(remaining / daysLeft) : 0;
 
   return {
     totalCards, totalDone, remaining,
@@ -4994,6 +5000,10 @@ function renderOverview() {
   if (mo && mo.totalCards > 0) {
     if (mo.remaining === 0) {
       focusLine = `You've cleared every flashcard 🎉 — jump into a Mock Bar to test your recall under timed conditions.`;
+    } else if (mo.daysLeft === 0) {
+      // Bar date passed. There is no pace to keep, so say what's left plainly
+      // rather than inventing a daily target against a dead deadline.
+      focusLine = `${mo.remaining.toLocaleString()} card${mo.remaining!==1?'s':''} still in your deck.${pickUp}`;
     } else if (mo.doneToday >= mo.perDay) {
       focusLine = `You're on pace — ${mo.doneToday.toLocaleString()} card${mo.doneToday!==1?'s':''} drilled today.${pickUp}`;
     } else if (mo.doneToday > 0) {
@@ -5052,7 +5062,10 @@ function renderOverview() {
         <p class="ov-focus-line">${focusLine}</p>
 
         <!-- Two cards side by side: what to do next, and the deadline that
-             says how much of it to do. -->
+             says how much of it to do. The wrapper is omitted when neither
+             exists (bar date passed AND every deck finished or disabled),
+             rather than leaving an empty flex row and its gap behind. -->
+        ${(resumeCard || _cdDays >= 0) ? `
         <div class="ov-hero-cards">
           ${resumeCard}
           ${_cdDays >= 0
@@ -5065,7 +5078,7 @@ function renderOverview() {
                 <span class="ov-cd-link">My Progress →</span>
               </button>`
             : ''}
-        </div>
+        </div>` : ''}
 
         <div class="ov-prog" id="fc-overview-widget"></div>
       </section>
