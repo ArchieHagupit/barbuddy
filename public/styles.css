@@ -75,6 +75,24 @@
   /* Buttons carry a shallower version — enough to look pressable without
      competing with the card they sit on. */
   --emboss-btn:inset 0 1px 0 rgba(255,255,255,.24),inset 0 -1px 0 rgba(0,0,0,.22),0 1px 2px rgba(0,0,0,.24);
+  /* ── Chunk ───────────────────────────────────────────────────
+     The knobs behind the friendlier, more illustrated feel on Overview and
+     Flashcards. Kept as tokens so the character is tuned in one place and
+     the two surfaces cannot drift apart — and so extending it to the rest
+     of the app later is a matter of applying them, not re-deciding them.
+
+     --bdr-chunk is a real 2px line rather than the 1px hairline the rest of
+     the app uses: a heavier outline is most of what separates "illustrated"
+     from "minimal", and it also survives the downscaling that phone screens
+     do to a hairline.
+
+     --ease-pop overshoots slightly on the way out, so a card lifting under
+     the cursor has a little spring in it instead of a linear glide. Presses
+     deliberately do NOT use it — a press should land, not wobble. */
+  --bdr-chunk:2px;
+  --r-chunk:20px;      /* cards  */
+  --r-chunk-sm:14px;   /* buttons, chips */
+  --ease-pop:cubic-bezier(.34,1.56,.64,1);
   /* page wash */
   --wash-gold:rgba(var(--gold-rgb),.07);--wash-crim:rgba(139,31,53,.06);--wash-blue:rgba(91,168,255,.04);
   /* layout & fonts */
@@ -635,7 +653,7 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 /* Hero — greeting + streak, today's target, then two cards: what to do next
    and the deadline that sizes it. The aggregate "N left / N%" that used to
    headline this card is now a footnote at the bottom of it, in .ov-prog. */
-.ov-hero{display:flex;flex-direction:column;background:linear-gradient(160deg,rgba(var(--gold-rgb),.09),rgba(var(--gold-rgb),.02) 60%,transparent);border:1px solid var(--bdr-gold);border-radius:18px;padding:22px 24px;margin-bottom:16px;}
+.ov-hero{display:flex;flex-direction:column;background:linear-gradient(160deg,rgba(var(--gold-rgb),.09),rgba(var(--gold-rgb),.02) 60%,transparent);border:var(--bdr-chunk) solid var(--bdr-gold);border-radius:24px;padding:22px 24px;margin-bottom:16px;}
 .ov-hero-head{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:6px;}
 .ov-greeting{font-family:var(--fd);font-size:24px;font-weight:700;color:var(--white);margin:0;line-height:1.15;letter-spacing:.01em;}
 .ov-focus-line{font-size:13.5px;line-height:1.55;color:var(--text-muted);margin:0 0 18px;max-width:60ch;}
@@ -655,13 +673,14 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
    progress line with the button huddled bottom-left and a third of the card
    empty. Side by side, the text stack takes the slack and the button sits
    where the eye already is. It flips back to a column under 760px. */
-.ov-resume-card{flex:1 1 260px;min-width:0;display:flex;align-items:center;gap:26px;background:var(--card);border:1px solid var(--bdr);border-top:3px solid var(--subj-color,var(--gold));border-radius:14px;padding:15px 18px;cursor:pointer;text-align:left;font-family:var(--fb);box-shadow:var(--emboss);transition:transform .18s,box-shadow .18s,border-color .18s;}
-.ov-resume-card:hover{transform:translateY(-2px);box-shadow:var(--emboss-hover);border-color:var(--bdr2);border-top-color:var(--subj-color,var(--gold));}
+.ov-resume-card{flex:1 1 260px;min-width:0;display:flex;align-items:center;gap:26px;background:var(--card);border:var(--bdr-chunk) solid var(--bdr2);border-top:4px solid var(--subj-color,var(--gold));border-radius:var(--r-chunk);padding:15px 18px;cursor:pointer;text-align:left;font-family:var(--fb);box-shadow:var(--emboss);transition:transform .24s var(--ease-pop),box-shadow .24s,border-color .18s;}
+.ov-resume-card:hover{transform:translateY(-4px);box-shadow:var(--emboss-hover);border-color:var(--subj-color,var(--gold));border-top-color:var(--subj-color,var(--gold));}
 .ov-resume-card:focus-visible{outline:2px solid var(--gold);outline-offset:2px;}
 .ov-resume-body{flex:1;min-width:0;}
 .ov-resume-label{font-size:10px;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);font-weight:700;margin-bottom:7px;}
-.ov-resume-title{display:flex;align-items:center;gap:8px;font-family:var(--fd);font-size:16px;font-weight:700;color:var(--white);margin-bottom:10px;}
-.ov-resume-ic{font-size:15px;line-height:1;flex-shrink:0;}
+.ov-resume-title{display:flex;align-items:center;gap:9px;font-family:var(--fd);font-size:16px;font-weight:800;color:var(--white);margin-bottom:10px;}
+.ov-resume-ic{display:flex;align-items:center;line-height:0;flex-shrink:0;}
+.ov-resume-ic svg{width:21px;height:21px;display:block;}
 /* Capped: past about 420px a 6px bar stops reading as a measure of anything
    and just becomes a rule across the card. */
 .ov-resume-track{display:block;width:100%;max-width:420px;height:6px;border-radius:99px;background:rgba(var(--ovl),.08);overflow:hidden;margin-bottom:8px;box-shadow:var(--deboss);}
@@ -670,18 +689,18 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 /* A span, not a button — the whole card is the click target, and a real
    button inside a role="button" card is both invalid and a second tab stop
    for the same action. */
-.ov-resume-btn{flex-shrink:0;display:inline-block;font-size:12.5px;font-weight:700;padding:10px 20px;border-radius:10px;background:linear-gradient(135deg,var(--gold-fill),var(--gold-fill-d));color:#1a1200;white-space:nowrap;box-shadow:var(--emboss-btn);transition:box-shadow .18s;}
+.ov-resume-btn{flex-shrink:0;display:inline-block;font-size:12.5px;font-weight:800;padding:11px 22px;border-radius:var(--r-chunk-sm);background:linear-gradient(135deg,var(--gold-fill),var(--gold-fill-d));color:#1a1200;white-space:nowrap;box-shadow:var(--emboss-btn);transition:box-shadow .18s;}
 .ov-resume-card:hover .ov-resume-btn{box-shadow:var(--emboss-btn),0 4px 16px rgba(var(--gold-rgb),.3);}
 
 /* Countdown. It carries the pace the number implies as well as the number:
    "30 days" alone is a clock, and a clock is only frightening. The gold pill
    is the actionable half — "≈142 cards/day" is something to do today. */
-.ov-countdown{flex:0 0 176px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:15px 14px;background:var(--card);border:1px solid var(--bdr);border-radius:14px;cursor:pointer;font-family:var(--fb);box-shadow:var(--emboss);transition:border-color .2s,transform .2s,box-shadow .2s;}
-.ov-countdown:hover{border-color:var(--bdr-gold);transform:translateY(-2px);box-shadow:var(--emboss-hover);}
+.ov-countdown{flex:0 0 176px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:15px 14px;background:var(--card);border:var(--bdr-chunk) solid var(--bdr2);border-radius:var(--r-chunk);cursor:pointer;font-family:var(--fb);box-shadow:var(--emboss);transition:border-color .2s,transform .24s var(--ease-pop),box-shadow .24s;}
+.ov-countdown:hover{border-color:var(--gold);transform:translateY(-4px);box-shadow:var(--emboss-hover);}
 /* The pace pill is set INTO the countdown card — a small recess reads as a
    readout inset in the surface, which is what it is. */
 .ov-countdown .ov-cd-pace{box-shadow:var(--deboss);}
-.ov-cd-num{font-family:var(--fd);font-size:32px;font-weight:700;color:var(--white);line-height:1;}
+.ov-cd-num{font-family:var(--fd);font-size:34px;font-weight:800;color:var(--white);line-height:1;}
 .ov-cd-lbl{margin-top:4px;font-size:10px;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;text-align:center;font-weight:600;}
 .ov-cd-pace{margin-top:10px;padding:6px 9px;border-radius:8px;background:rgba(var(--gold-rgb),.16);font-size:11px;font-weight:700;line-height:1.35;color:var(--gold-l);text-align:center;}
 /* No opacity here: at 11px any transparency dropped the effective contrast
@@ -712,8 +731,8 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
    with no ragged trailing row. flex:1 lets the two rows share whatever
    vertical space is left over instead of leaving it blank below. */
 .ov-subjects-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;flex:1;align-content:stretch;}
-.ov-subj-card{display:flex;flex-direction:column;background:var(--card);border:1px solid var(--bdr);border-top:3px solid var(--subj-color);border-radius:12px;padding:15px 16px 14px;box-shadow:var(--emboss);transition:transform .2s,box-shadow .2s,border-color .2s;min-height:140px;}
-.ov-subj-card:hover{transform:translateY(-2px);box-shadow:var(--emboss-hover);border-color:var(--bdr2);border-top-color:var(--subj-color);}
+.ov-subj-card{display:flex;flex-direction:column;background:var(--card);border:var(--bdr-chunk) solid var(--bdr2);border-top:4px solid var(--subj-color);border-radius:var(--r-chunk);padding:15px 16px 14px;box-shadow:var(--emboss);transition:transform .24s var(--ease-pop),box-shadow .24s,border-color .2s;min-height:140px;}
+.ov-subj-card:hover{transform:translateY(-4px);box-shadow:var(--emboss-hover);border-color:var(--subj-color);border-top-color:var(--subj-color);}
 .ov-subj-card.is-empty{opacity:.72;}
 .ov-subj-card.is-empty:hover{opacity:1;}
 
@@ -727,8 +746,8 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 /* Debossed rather than flat. The started cards are raised; pressing these
    INTO the page keeps the two states as far apart as the old flat-vs-shadow
    treatment did, while still giving every box on the grid real relief. */
-.ov-subj-card.is-fresh{background:transparent;box-shadow:var(--deboss);border-top-color:rgba(var(--ovl),.14);}
-.ov-subj-card.is-fresh:hover{background:var(--card);box-shadow:var(--emboss-hover);border-top-color:var(--subj-color);}
+.ov-subj-card.is-fresh{background:transparent;box-shadow:var(--deboss);border-color:var(--bdr);border-top-color:rgba(var(--ovl),.16);}
+.ov-subj-card.is-fresh:hover{background:var(--card);box-shadow:var(--emboss-hover);border-color:var(--subj-color);border-top-color:var(--subj-color);}
 .ov-subj-card.is-fresh .ov-subj-dot{opacity:.6;}
 .ov-subj-card.is-fresh .ov-subj-name{color:var(--text-muted);}
 .ov-subj-card.is-fresh:hover .ov-subj-name{color:var(--white);}
@@ -736,11 +755,14 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 
 .ov-subj-top{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 10px;}
 .ov-subj-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
-.ov-subj-name{display:flex;align-items:center;gap:7px;font-family:var(--fd);font-size:13.5px;font-weight:700;color:var(--white);line-height:1.3;min-width:0;transition:color .2s;}
-/* Its own element so the flex gap applies. As a bare "${icon} ${name}" text
-   node the separating space collapsed against the dot's flex gap and the
-   emoji sat flush against the subject name. */
-.ov-subj-ic{font-size:13px;line-height:1;flex-shrink:0;}
+.ov-subj-name{display:flex;align-items:center;gap:7px;font-family:var(--fd);font-size:13.5px;font-weight:800;color:var(--white);line-height:1.3;min-width:0;transition:color .2s;}
+/* Its own element so the flex gap applies, and so the icon can be tinted
+   independently of the label — it carries the subject's colour while the
+   name stays plain text. */
+.ov-subj-ic{display:flex;align-items:center;line-height:0;flex-shrink:0;}
+.ov-subj-ic svg{width:17px;height:17px;display:block;}
+.ov-subj-card.is-fresh .ov-subj-ic{opacity:.65;}
+.ov-subj-card.is-fresh:hover .ov-subj-ic{opacity:1;}
 .ov-subj-pct{font-family:var(--fd);font-size:13.5px;font-weight:700;color:var(--white);flex-shrink:0;}
 /* Grooves, not lines. A progress track is a channel cut into the card, so it
    takes the inverse of the card's own relief. */
@@ -757,7 +779,8 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 /* Actions pinned to the card's bottom edge, so cards of unequal height in a
    stretched row still line their buttons up. */
 .ov-subj-actions{display:flex;gap:8px;margin-top:auto;}
-.ov-btn-learn,.ov-btn-mock,.ov-btn-start{padding:8px 10px;border-radius:9px;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--fb);transition:background .15s,color .15s,border-color .15s,box-shadow .15s;border:1px solid transparent;}
+.ov-btn-learn,.ov-btn-mock,.ov-btn-start{padding:9px 10px;border-radius:var(--r-chunk-sm);font-size:12px;font-weight:800;cursor:pointer;font-family:var(--fb);transition:background .15s,color .15s,border-color .15s,box-shadow .15s,transform .18s var(--ease-pop);border:var(--bdr-chunk) solid transparent;}
+.ov-btn-learn:hover,.ov-btn-start:hover,.ov-btn-mock:hover{transform:translateY(-1px);}
 /* One primary action per card. The Flashcards/Mock pair repeated eight times
    was a wall of identical chrome once you were scanning the grid rather than
    reading a single card, so Mock shrank to a fixed-width icon button and
@@ -814,8 +837,11 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 }
 @media(max-width:520px){.ov-subjects-grid{grid-template-columns:1fr;}}
 @media(prefers-reduced-motion:reduce){
-  .ov-subj-card,.ov-countdown,.ov-resume-card{transition:none;}
-  .ov-subj-card:hover,.ov-countdown:hover,.ov-resume-card:hover{transform:none;}
+  .ov-subj-card,.ov-countdown,.ov-resume-card,
+  .ov-btn-learn,.ov-btn-mock,.ov-btn-start{transition:none;}
+  .ov-subj-card:hover,.ov-countdown:hover,.ov-resume-card:hover,
+  .ov-btn-learn:hover,.ov-btn-mock:hover,.ov-btn-start:hover,
+  .ov-btn-learn:active,.ov-btn-mock:active,.ov-btn-start:active{transform:none;}
   .ov-prog-fill,.ov-subj-prog-fill,.ov-resume-fill{transition:none;}
 }
 /* Legacy overview classes (kept for any remaining references) */
@@ -1977,7 +2003,16 @@ button[onclick*="switchSubjectTab(currentSubject,'learn')"] { display: none !imp
    Its background/border/radius come from inline styles in
    paintFlashcardsTabFromBundle; box-shadow doesn't, so the emboss lands here
    without having to unpick that markup. */
-.fc-study-card { box-shadow: var(--emboss); }
+/* Its background/border/radius used to be inline, which meant the chunk
+   tokens could not reach them. They live here now. */
+.fc-study-card {
+  background: var(--card);
+  border: var(--bdr-chunk) solid var(--bdr2);
+  border-radius: var(--r-chunk);
+  padding: 22px;
+  margin-bottom: 16px;
+  box-shadow: var(--emboss);
+}
 .fc-stat { text-align: center; }
 .fc-stat-num { font-size: 28px; font-weight: 700; line-height: 1.1; font-family: var(--fd); }
 .fc-stat-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; margin-top: 4px; }
@@ -2069,10 +2104,14 @@ button[onclick*="switchSubjectTab(currentSubject,'learn')"] { display: none !imp
 #page-subject.fc-session-active .subject-tab-bar { margin-bottom: 12px; }
 
 @media (max-width: 900px) {
-  /* Stack: outline above the card with its own capped scroll area, and let
-     the page scroll normally again rather than caging it in the viewport. */
+  /* Stack, and put the CARD first. The outline used to sit above it, which
+     on a phone meant ~200px of topic list before the thing the student
+     opened the session for — the card started below the fold every time.
+     Grid items honour `order`, so this is a DOM-order-preserving swap: the
+     outline stays a jump list, just underneath. */
   .fc-study-layout { grid-template-columns: 1fr; height: auto !important; }
-  .fc-study-outline { max-height: 200px; }
+  .fc-study-main { order: 1; }
+  .fc-study-outline { order: 2; max-height: 200px; }
   .fc-study-main .fc-card-outer { overflow-y: visible; }
   #page-subject.fc-session-active #subject-sticky-head { position: static; margin: 0; padding: 0; }
 }
@@ -2083,6 +2122,29 @@ button[onclick*="switchSubjectTab(currentSubject,'learn')"] { display: none !imp
   margin: 0 auto;
   padding: 8px 4px 20px;
 }
+
+/* Viewer topbar — card count + progress on the left, session actions on the
+   right. These were inline styles, which meant the meta group's flex:1 could
+   not be relaxed from a media query: on a phone the count, the progress bar
+   and the Full Screen button all fought for the same ~250px and overlapped. */
+.fc-viewer-topbar {
+  display: flex; justify-content: space-between; align-items: center;
+  gap: 12px; margin-bottom: 14px; flex-wrap: wrap;
+}
+.fc-vt-meta { display: flex; align-items: center; gap: 12px; min-width: 0; flex: 1; }
+.fc-count { font-size: 11px; color: var(--muted); white-space: nowrap; }
+.fc-vt-track {
+  flex: 1; min-width: 80px; max-width: 220px; height: 4px;
+  background: rgba(var(--ovl),.06); border-radius: 99px; overflow: hidden;
+  box-shadow: var(--deboss);
+}
+.fc-progress-fill {
+  height: 100%; width: 0%; border-radius: 99px;
+  background: linear-gradient(90deg, var(--gold), var(--gold-l));
+  transition: width .25s;
+}
+.fc-vt-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.fc-vt-actions .btn-og { font-size: 11px; padding: 5px 10px; }
 
 /* ── Fullscreen study ──────────────────────────────────────────
    A fullscreen element paints on the UA's own backdrop (black by default)
@@ -2190,8 +2252,8 @@ body.fc-fs-lock{overflow:hidden;}
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
   background: var(--card);
-  border: 1px solid var(--bdr2);
-  border-radius: 20px;
+  border: var(--bdr-chunk) solid var(--bdr2);
+  border-radius: 26px;
   /* Roomier than the old 28/22: generous gutters are most of what makes the
      card feel calm to read from rather than cramped. */
   padding: 34px 38px 26px;
@@ -2315,6 +2377,46 @@ body.fc-fs-lock{overflow:hidden;}
 @media (max-width: 540px) {
   .fc-card-content { font-size: 15.5px; }
   .fc-card-face { padding: 24px 20px 18px; }
+  /* The meta group takes a full row of its own, so the two session buttons
+     wrap onto the next line and share it instead of landing on top of the
+     card count. */
+  .fc-viewer-topbar { gap: 10px; }
+  .fc-vt-meta { flex: 1 0 100%; }
+  .fc-vt-track { max-width: none; }
+  .fc-vt-actions { flex: 1 0 100%; }
+  .fc-vt-actions .btn-og { flex: 1; justify-content: center; }
+}
+
+/* ── Phone: let the card size to its own text ────────────────
+   .fc-card-face is position:absolute/inset:0 so the two faces can stack for
+   the 3D flip, which means the card has to be given a height — and on a
+   phone that fixed height cut sentences off mid-word and put a scrollbar
+   inside the card. Stacking the faces in one grid cell instead lets the card
+   take the height of its tallest face while both stay superimposed, so the
+   flip is unaffected and the text is simply all there.
+   Scoped to the breakpoint where the study layout is already auto-height;
+   the desktop frame still wants a fixed card that scrolls internally. */
+@media (max-width: 900px) {
+  .fc-study-main .fc-card { height: auto; min-height: 0; display: grid; }
+  .fc-study-main .fc-card-face { position: relative; inset: auto; grid-area: 1 / 1; }
+  .fc-study-main .fc-card-content { max-height: none; overflow: visible; }
+}
+
+/* ── Touch: keep small controls small ────────────────────────
+   The blanket `button { min-width:44px; min-height:44px }` under
+   (pointer: coarse) is right for text buttons and wrong for the highlighter
+   dots: it inflated 19px ink spots into 44px blobs that wrapped onto a
+   second row. They get a real-but-modest visual size and an invisible
+   expanded hit area instead — the same trick the sheet already uses for
+   .mb-source-check. 28px of ink on a 40px pitch clears WCAG 2.5.8's 24px
+   floor with room to spare and never overlaps a neighbour's target. */
+@media (pointer: coarse) {
+  .fc-pens { gap: 12px; }
+  .fc-pen { width: 28px; height: 28px; min-width: 0; min-height: 0; position: relative; }
+  .fc-pen::after {
+    content: ''; position: absolute; top: 50%; left: 50%;
+    width: 40px; height: 40px; transform: translate(-50%, -50%); border-radius: 50%;
+  }
 }
 
 /* The standalone "Flashcards Progress" overview card is gone — its aggregate
@@ -2385,14 +2487,14 @@ body.fc-fs-lock{overflow:hidden;}
 }
 
 .fc-nav-btn {
-  border: 1px solid var(--bdr2);
+  border: var(--bdr-chunk) solid var(--bdr2);
   background: var(--card2);
-  border-radius: 10px;
+  border-radius: var(--r-chunk-sm);
   padding: 12px 8px;
   cursor: pointer;
   color: var(--text);
   text-align: center;
-  transition: transform .12s, box-shadow .12s, background .12s, border-color .12s;
+  transition: transform .2s var(--ease-pop), box-shadow .16s, background .12s, border-color .12s;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -2403,7 +2505,7 @@ body.fc-fs-lock{overflow:hidden;}
   box-shadow: var(--emboss);
 }
 
-.fc-nav-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: var(--emboss-hover); }
+.fc-nav-btn:hover:not(:disabled) { transform: translateY(-3px); box-shadow: var(--emboss-hover); border-color: var(--bdr-gold); }
 /* Sinks rather than shrinking. The old scale(.975) shifted the label a
    fraction of a pixel and read as a wobble; a press should go down. */
 .fc-nav-btn:active:not(:disabled) { transform: translateY(1px); box-shadow: var(--deboss); background: rgba(var(--gold-rgb),.1); }
