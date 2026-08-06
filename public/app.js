@@ -121,45 +121,6 @@ const SUBJS=[
   {key:'ethics',   name:'Legal Ethics',             cls:'sg-eth',f:'bf-b', color:'var(--c-ethics)',    icon:'🎓'},
 ];
 const CUSTOM_SUBJ = {key:'custom', name:'Custom Subject', color:'var(--c-custom)', icon:'📁'};
-
-// ── Subject icons ────────────────────────────────────────────
-// Line-art rather than the emoji in SUBJS[].icon. Emoji are drawn by the
-// operating system, so the same card shows Apple's glossy 3D glyphs on an
-// iPhone, Google's flat ones on Android and Segoe's on Windows — three
-// different visual languages in a grid that is supposed to read as one set,
-// and none of them take the subject's colour. These are one stroke weight,
-// one geometry, and inherit currentColor, so a card's icon is the same hue
-// as its dot and its accent rail.
-//
-// 24x24 box, 2px round-capped strokes: heavy enough to stay legible at the
-// 16px they render at, and to match the thicker borders elsewhere.
-const SUBJ_ICON_PATHS = {
-  // scales of justice
-  civil:      '<path d="M12 3.5v17"/><path d="M7.5 20.5h9"/><path d="M4.5 7.5h15"/><path d="M4.5 7.5 1.8 13.4a2.9 2.9 0 0 0 5.4 0z"/><path d="M19.5 7.5l2.7 5.9a2.9 2.9 0 0 1-5.4 0z"/>',
-  // handcuffs
-  criminal:   '<circle cx="6.6" cy="16.4" r="4.4"/><circle cx="17.4" cy="16.4" r="4.4"/><path d="M9.4 13a5.6 5.6 0 0 1 5.2 0"/><path d="M12 3.2v7"/>',
-  // capitol columns
-  political:  '<path d="M2.8 20.8h18.4"/><path d="M5.4 18V10M9.8 18V10M14.2 18V10M18.6 18V10"/><path d="M2.4 10h19.2L12 3.4z"/>',
-  // hard hat
-  labor:      '<path d="M3.2 18.4h17.6"/><path d="M5.6 18.4v-3.2a6.4 6.4 0 0 1 12.8 0v3.2"/><path d="M9.8 9.4V4.8h4.4v4.6"/>',
-  // office block
-  commercial: '<rect x="4.2" y="3.2" width="15.6" height="17.6" rx="2.2"/><path d="M8.6 7.6h2M13.4 7.6h2M8.6 12h2M13.4 12h2"/><path d="M9.8 20.8v-4.2h4.4v4.2"/>',
-  // coin stack
-  taxation:   '<ellipse cx="12" cy="5.8" rx="6.8" ry="2.8"/><path d="M5.2 5.8v5.6c0 1.6 3 2.8 6.8 2.8s6.8-1.2 6.8-2.8V5.8"/><path d="M5.2 11.4v5.6c0 1.6 3 2.8 6.8 2.8s6.8-1.2 6.8-2.8v-5.6"/>',
-  // scroll
-  remedial:   '<path d="M6.2 3.2h8.6l4.4 4.4v13.2H6.2z"/><path d="M14.8 3.2v4.4h4.4"/><path d="M9.4 12.4h6M9.4 16.4h6"/>',
-  // shield with a tick
-  ethics:     '<path d="M12 3.2l7.6 2.8v5.6c0 4.8-3.2 7.9-7.6 9.2-4.4-1.3-7.6-4.4-7.6-9.2V6z"/><path d="M9.2 12l2.2 2.2 4-4"/>',
-  // folder
-  custom:     '<path d="M3.2 7a2 2 0 0 1 2-2h3.6l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5.2a2 2 0 0 1-2-2z"/>',
-};
-
-function subjIconSvg(key, cls) {
-  const d = SUBJ_ICON_PATHS[key];
-  if (!d) return '';
-  return `<svg class="${cls || 'bb-subj-icon'}" viewBox="0 0 24 24" fill="none" stroke="currentColor" `
-       + `stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${d}</svg>`;
-}
 const ALL_SUBJS = [...SUBJS, CUSTOM_SUBJ];
 
 // ══════════════════════════════════
@@ -5086,7 +5047,7 @@ function renderOverview() {
          onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();navToSubject('${resume.subj}','flashcards');}">
       <div class="ov-resume-body">
         <div class="ov-resume-label">${resume.resumed ? 'Continue where you left off' : resume.prog.done > 0 ? 'Your furthest subject' : 'Start here'}</div>
-        <div class="ov-resume-title"><span class="ov-resume-ic" style="color:${resume.color}">${subjIconSvg(resume.subj)}</span>${h(resume.name)}</div>
+        <div class="ov-resume-title"><span class="ov-resume-ic">${resume.icon}</span>${h(resume.name)}</div>
         <div class="ov-resume-track"><span class="ov-resume-fill" style="width:${resume.prog.pct}%"></span></div>
         <div class="ov-resume-meta">${resume.prog.done.toLocaleString()} of ${resume.prog.total.toLocaleString()} cards · ${resume.prog.pct}%</div>
       </div>
@@ -5184,7 +5145,7 @@ function renderOverview() {
             return `
               <div class="ov-subj-card is-fresh" data-subj="${s.key}" style="--subj-color:${s.color}">
                 <div class="ov-subj-top">
-                  <div class="ov-subj-name"><span class="ov-subj-dot" style="background:${s.color}"></span><span class="ov-subj-ic" style="color:${s.color}">${subjIconSvg(s.key)}</span>${h(s.name)}</div>
+                  <div class="ov-subj-name"><span class="ov-subj-dot" style="background:${s.color}"></span><span class="ov-subj-ic">${s.icon}</span>${h(s.name)}</div>
                   <span class="ov-not-started">Not started</span>
                 </div>
                 <div class="ov-subj-stats is-center">
@@ -5203,7 +5164,7 @@ function renderOverview() {
           return `
             <div class="ov-subj-card${stateCls}" data-subj="${s.key}" style="--subj-color:${s.color}">
               <div class="ov-subj-top">
-                <div class="ov-subj-name"><span class="ov-subj-dot" style="background:${s.color}"></span><span class="ov-subj-ic" style="color:${s.color}">${subjIconSvg(s.key)}</span>${h(s.name)}</div>
+                <div class="ov-subj-name"><span class="ov-subj-dot" style="background:${s.color}"></span><span class="ov-subj-ic">${s.icon}</span>${h(s.name)}</div>
                 <div class="ov-subj-pct">${prog.loaded && prog.total > 0 ? pct + '%' : ''}</div>
               </div>
               <div class="ov-subj-prog-track" title="${!prog.loaded ? 'Loading flashcards…' : prog.total > 0 ? `${prog.done} of ${prog.total} flashcards marked done` : 'No flashcards imported yet'}">

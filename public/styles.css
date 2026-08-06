@@ -679,8 +679,7 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .ov-resume-body{flex:1;min-width:0;}
 .ov-resume-label{font-size:10px;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);font-weight:700;margin-bottom:7px;}
 .ov-resume-title{display:flex;align-items:center;gap:9px;font-family:var(--fd);font-size:16px;font-weight:800;color:var(--white);margin-bottom:10px;}
-.ov-resume-ic{display:flex;align-items:center;line-height:0;flex-shrink:0;}
-.ov-resume-ic svg{width:21px;height:21px;display:block;}
+.ov-resume-ic{font-size:17px;line-height:1;flex-shrink:0;}
 /* Capped: past about 420px a 6px bar stops reading as a measure of anything
    and just becomes a rule across the card. */
 .ov-resume-track{display:block;width:100%;max-width:420px;height:6px;border-radius:99px;background:rgba(var(--ovl),.08);overflow:hidden;margin-bottom:8px;box-shadow:var(--deboss);}
@@ -756,11 +755,10 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .ov-subj-top{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 10px;}
 .ov-subj-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
 .ov-subj-name{display:flex;align-items:center;gap:7px;font-family:var(--fd);font-size:13.5px;font-weight:800;color:var(--white);line-height:1.3;min-width:0;transition:color .2s;}
-/* Its own element so the flex gap applies, and so the icon can be tinted
-   independently of the label — it carries the subject's colour while the
-   name stays plain text. */
-.ov-subj-ic{display:flex;align-items:center;line-height:0;flex-shrink:0;}
-.ov-subj-ic svg{width:17px;height:17px;display:block;}
+/* Its own element so the flex gap applies. As a bare "${icon} ${name}" text
+   node the separating space collapsed against the dot's flex gap and the
+   emoji sat flush against the subject name. */
+.ov-subj-ic{font-size:14px;line-height:1;flex-shrink:0;}
 .ov-subj-card.is-fresh .ov-subj-ic{opacity:.65;}
 .ov-subj-card.is-fresh:hover .ov-subj-ic{opacity:1;}
 .ov-subj-pct{font-family:var(--fd);font-size:13.5px;font-weight:700;color:var(--white);flex-shrink:0;}
