@@ -92,17 +92,35 @@ const syllabusCache = {};
 let currentTopic = null; // tracks last-clicked syllabus node for PDF retry
 let mbCount = 20, mbTimeMins = 0, mbDifficulty = 'balanced';  // mock bar setup state
 
+// Subject identity colours are the --c-* theme tokens, never literals.
+//
+// Criminal Law used to be var(--danger) — literally the alert colour, so red
+// meant both "a subject" and "something is wrong". It keeps its crimson (the
+// natural colour for the subject) and owns --c-criminal instead; the clash
+// was resolved on the other side, by retiring red from the "sections
+// disabled" badge in favour of amber. See .sb-access-note in styles.css.
+//
+// The other seven were raw hex tuned for the navy theme, a stale duplicate of
+// the --c-* tokens that already existed and already had paper-safe values.
+// On light theme the dots and progress fills were rendering in dark-theme
+// brights and washing out. Every consumer of .color is a CSS context (inline
+// style / custom property), so var() resolves in all of them.
+//
+// `icon` is used only by the Overview cards and the hero's resume card, where
+// eight rows of identical dot-plus-name needed a faster way to tell subjects
+// apart at a glance. The sidebar stays dot-only — it is already a short list
+// read top to bottom, and emoji there would fight the nav icons above it.
 const SUBJS=[
-  {key:'civil',    name:'Civil Law',               cls:'sg-civ',f:'bf-g', color:'#4a9eff'},
-  {key:'criminal', name:'Criminal Law',             cls:'sg-cri',f:'bf-r', color:'var(--danger)'},
-  {key:'political',name:'Political Law',            cls:'sg-pol',f:'bf-b', color:'#50d090'},
-  {key:'labor',    name:'Labor & Social Leg.',      cls:'sg-lab',f:'bf-t', color:'#f0a040'},
-  {key:'commercial',name:'Commercial Law',          cls:'sg-com',f:'bf-g', color:'#a070e0'},
-  {key:'taxation', name:'Taxation',                 cls:'sg-tax',f:'bf-r', color:'#40c0b0'},
-  {key:'remedial', name:'Remedial Law',             cls:'sg-rem',f:'bf-t', color:'#e0c050'},
-  {key:'ethics',   name:'Legal Ethics',             cls:'sg-eth',f:'bf-b', color:'#c0a080'},
+  {key:'civil',    name:'Civil Law',               cls:'sg-civ',f:'bf-g', color:'var(--c-civil)',     icon:'⚖️'},
+  {key:'criminal', name:'Criminal Law',             cls:'sg-cri',f:'bf-r', color:'var(--c-criminal)',  icon:'🚔'},
+  {key:'political',name:'Political Law',            cls:'sg-pol',f:'bf-b', color:'var(--c-political)', icon:'🏛️'},
+  {key:'labor',    name:'Labor & Social Leg.',      cls:'sg-lab',f:'bf-t', color:'var(--c-labor)',     icon:'👷'},
+  {key:'commercial',name:'Commercial Law',          cls:'sg-com',f:'bf-g', color:'var(--c-commercial)',icon:'🏢'},
+  {key:'taxation', name:'Taxation',                 cls:'sg-tax',f:'bf-r', color:'var(--c-taxation)',  icon:'💰'},
+  {key:'remedial', name:'Remedial Law',             cls:'sg-rem',f:'bf-t', color:'var(--c-remedial)',  icon:'📜'},
+  {key:'ethics',   name:'Legal Ethics',             cls:'sg-eth',f:'bf-b', color:'var(--c-ethics)',    icon:'🎓'},
 ];
-const CUSTOM_SUBJ = {key:'custom', name:'Custom Subject', color:'#8899aa'};
+const CUSTOM_SUBJ = {key:'custom', name:'Custom Subject', color:'var(--c-custom)', icon:'📁'};
 const ALL_SUBJS = [...SUBJS, CUSTOM_SUBJ];
 
 // ══════════════════════════════════
@@ -1508,14 +1526,23 @@ function refreshNotifications() {
   wrap.style.display = (sessionToken && currentUser) ? '' : 'none';
 
   const items = _collectNotifications();
-  // Due reviews count as their question total (the number a student cares
-  // about); everything else counts as one item.
-  const count = items.reduce((n, i) => n + (i.id === 'sr-due' ? (window._srDueItems?.length || 0) : 1), 0);
+  // A presence dot, not a count.
+  //
+  // Due reviews used to contribute their whole question total, which pinned
+  // the badge at "99+" more or less permanently. A badge that never changes
+  // stops being a signal — the eye learns to skip it, and a genuinely new
+  // item arrives behind the same three characters as yesterday's backlog.
+  // The dot says only "there is something here", which is all a bell needs
+  // to say; the counts live in the panel, where each comes with a button.
+  const count = items.length;
   if (count > 0) {
-    badge.textContent = count > 99 ? '99+' : count;
+    badge.textContent = '';
     badge.style.display = '';
     bell.classList.add('has-unread');
-    bell.title = `${count} item${count !== 1 ? 's' : ''} need${count === 1 ? 's' : ''} your attention`;
+    // The tooltip carries the detail the badge deliberately doesn't.
+    bell.title = items.map(i =>
+      i.id === 'sr-due' ? `${window._srDueItems?.length || 0} questions due for review`
+                        : 'Unfinished exam to resume').join(' · ');
   } else {
     badge.style.display = 'none';
     bell.classList.remove('has-unread');
@@ -3509,6 +3536,18 @@ async function startFlashcardStudySession(subj, mode, nodeId) {
       nodeIdFilter: topicId,
     };
 
+    // The only record of which deck the student was last in — the Overview
+    // hero reads it back for "Resume where you left off". Per-user key so a
+    // shared machine never resumes someone else's subject; localStorage
+    // rather than sessionStorage so it survives closing the tab, which is
+    // exactly the case the button exists for.
+    if (currentUser?.id) {
+      try {
+        localStorage.setItem('bb_fc_last_' + currentUser.id,
+          JSON.stringify({ subj, topicId: topicId || null, at: Date.now() }));
+      } catch(_) { /* quota or private mode — the derived tiers still work */ }
+    }
+
     renderFlashcardCardViewer();
     attachFlashcardKeyboardListener();
   } catch(e) {
@@ -4306,6 +4345,16 @@ function _applyFlashcardDoneLocally(card, done, fallbackSubj) {
     } else if (Array.isArray(_fcBundleCache.doneCardIds)) {
       _fcBundleCache.doneCardIds = _fcBundleCache.doneCardIds.filter(id => id !== card.id);
     }
+    // Today's tally, so "cards today" and the streak move as the student
+    // works instead of waiting for the next boot. Marking a card sets
+    // last_reviewed_at to now server-side, which is what this mirrors.
+    // Un-marking always decrements TODAY even if the card was originally
+    // done on an earlier day — we don't hold per-card dates on the client.
+    // A same-day toggle therefore round-trips exactly (the common case) and
+    // anything else self-corrects on the next bundle fetch.
+    const byDate = _fcBundleCache.doneCountByDate || (_fcBundleCache.doneCountByDate = {});
+    const today  = _manilaDay(new Date());
+    byDate[today] = Math.max(0, (byDate[today] || 0) + (done ? 1 : -1));
   }
 
   // Keep the Overview subject bars + widget live while studying.
@@ -4527,11 +4576,13 @@ function renderDashboardFlashcardWidget() {
   _paintFlashcardOverviewWidget(el, _fcBundleCache);
 }
 
-// Renders the aggregate flashcard progress bar inside the overview hero.
-// It used to be a standalone card that also listed a chip per subject —
-// the same dot, name and done/total as the subject grid directly below it,
-// with the same click target. That duplicate list is gone; the subject cards
-// own per-subject detail, and this owns the single overall number.
+// The aggregate progress footer at the BOTTOM of the hero.
+//
+// This used to be the hero's centrepiece, phrased as what was outstanding.
+// A four-figure denominator is the least encouraging thing to hand someone
+// at login, so it now sits one level down: a hairline bar and one muted line
+// under the streak, today's target and the resume button. The number is still
+// here for anyone who wants it — it just no longer leads.
 function _paintFlashcardOverviewWidget(el, bundle) {
   el.style.display = '';
 
@@ -4550,12 +4601,12 @@ function _paintFlashcardOverviewWidget(el, bundle) {
     return;
   }
 
+  // Label first, then a short track — deliberately not a full-width bar with
+  // a big percentage on the end. At this size it reads as a footnote to the
+  // hero rather than as its headline, which is the whole point of the move.
   el.innerHTML = `
-    <div class="ov-prog-track"><div class="ov-prog-fill" style="width:${overallPct}%"></div></div>
-    <div class="ov-prog-meta">
-      <span><strong>${totalDone.toLocaleString()}</strong> of ${totalCards.toLocaleString()} flashcards done</span>
-      <span class="ov-prog-pct">${overallPct}%</span>
-    </div>`;
+    <span class="ov-prog-meta">${totalDone.toLocaleString()} of ${totalCards.toLocaleString()} total · ${overallPct}%</span>
+    <span class="ov-prog-track"><span class="ov-prog-fill" style="width:${overallPct}%"></span></span>`;
 }
 
 // ── Per-subject flashcard progress ───────────────────────────
@@ -4574,6 +4625,96 @@ function getSubjectFlashcardProgress(subj) {
   };
 }
 
+// ── Study momentum ───────────────────────────────────────────
+// Everything the hero needs in order to lead with what is MOVING rather than
+// with what is left. The overview used to open on "4,251 flashcards left to
+// drill · 8%" directly beside "30 days to the Bar" — two numbers that, read
+// together, are a stress test rather than an invitation. The remaining count
+// still exists (below, small); these are what goes first.
+//
+// All of it derives from the bundle already fetched on boot, so nothing here
+// costs a request.
+const _manilaDay = d => d.toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+
+function getStudyMomentum() {
+  const b = _fcBundleCache;
+  if (!b) return null;
+
+  let totalCards = 0, totalDone = 0;
+  for (const subj of Object.keys(b.totalBySubject || {})) {
+    const t = b.totalBySubject[subj] || 0;
+    // Clamped per subject for the same reason as getSubjectFlashcardProgress:
+    // a stale done count must never push the aggregate past 100%.
+    totalCards += t;
+    totalDone  += Math.min(t, b.doneCountBySubject?.[subj] || 0);
+  }
+  const remaining = Math.max(0, totalCards - totalDone);
+
+  const byDate    = b.doneCountByDate || {};
+  const doneToday = byDate[_manilaDay(new Date())] || 0;
+
+  // Consecutive Manila days ending today. Today is allowed to be missing —
+  // the chain only breaks once a whole day has lapsed, so opening the app at
+  // 8am does not greet the student with "streak: 0".
+  let streak = 0;
+  for (let i = 0; i < 400; i++) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    if ((byDate[_manilaDay(d)] || 0) > 0) streak++;
+    else if (i > 0) break;
+  }
+
+  const msLeft   = _getBarExamDate().getTime() - Date.now();
+  const daysLeft = msLeft > 0 ? Math.max(1, Math.ceil(msLeft / 86400000)) : 0;
+  // The number the countdown actually implies. Without it "30 days" is a
+  // clock; with it, the student can tell whether today was a good day.
+  const perDay = daysLeft > 0 ? Math.ceil(remaining / daysLeft) : remaining;
+
+  return {
+    totalCards, totalDone, remaining,
+    pct: totalCards > 0 ? Math.round(totalDone / totalCards * 100) : 0,
+    doneToday, streak, daysLeft, perDay,
+    onPace: perDay === 0 || doneToday >= perDay,
+  };
+}
+
+// The hero's primary action. Tier 1 is the deck the student actually left
+// (recorded by startFlashcardStudy); tiers 2 and 3 keep the button useful on
+// a fresh device or a first login, so the hero always offers one obvious
+// next tap instead of eight identical cards.
+function getStudyResumePoint() {
+  const enabled = k => window.TAB_SETTINGS?.subjects?.[k]?.flashcards !== false;
+  const usable  = k => {
+    const p = getSubjectFlashcardProgress(k);
+    return enabled(k) && p.loaded && p.total > 0 && p.remaining > 0 ? p : null;
+  };
+  const pack = (key, resumed) => {
+    const meta = SUBJS.find(s => s.key === key);
+    const p = usable(key);
+    return meta && p ? { subj: key, name: meta.name, color: meta.color, icon: meta.icon, prog: p, resumed } : null;
+  };
+
+  // 1. Where they actually were.
+  if (currentUser?.id) {
+    try {
+      const saved = JSON.parse(localStorage.getItem('bb_fc_last_' + currentUser.id) || 'null');
+      const hit = saved?.subj && pack(saved.subj, true);
+      if (hit) return hit;
+    } catch(_) { /* corrupt entry — fall through to the derived tiers */ }
+  }
+
+  // 2. The subject with the most progress that isn't finished.
+  const started = SUBJS.filter(s => s.key !== 'custom')
+    .map(s => ({ s, p: usable(s.key) }))
+    .filter(x => x.p && x.p.done > 0)
+    .sort((a, b) => b.p.done - a.p.done)[0];
+  if (started) return pack(started.s.key, false);
+
+  // 3. Nothing started yet — offer the first subject that has cards.
+  const first = SUBJS.filter(s => s.key !== 'custom').find(s => usable(s.key));
+  return first ? pack(first.key, false) : null;
+}
+
 // Update the progress affordances in place — no full re-render, so this is
 // cheap enough to call after every single mark-done.
 // Pass a subject to touch just that one; omit to refresh all of them.
@@ -4582,23 +4723,32 @@ function refreshFlashcardProgressUI(subj) {
     ? [subj]
     : SUBJS.filter(s => s.key !== 'custom').map(s => s.key);
 
+  // A started card and a not-started card are different markup, not the same
+  // markup with different numbers — the latter has no progress track, no
+  // percentage and a different action. So a subject crossing that boundary
+  // (its very first mark-done) can't be patched in place; it needs the card
+  // rebuilt. Collected here and handled with one re-render below.
+  let needsRebuild = false;
+
   for (const key of subjects) {
     const prog = getSubjectFlashcardProgress(key);
+    const fresh = prog.loaded && prog.total > 0 && prog.done === 0;
     const label = !prog.loaded
       ? 'Loading…'
-      : prog.total > 0
-        ? `${prog.done}/${prog.total} cards`
-        : 'No cards yet';
+      : prog.total === 0
+        ? 'No cards yet'
+        : `${prog.done.toLocaleString()}/${prog.total.toLocaleString()} cards`;
 
     // Overview subject card
     const ovCard = document.querySelector(`.ov-subj-card[data-subj="${key}"]`);
     if (ovCard) {
+      if (ovCard.classList.contains('is-fresh') !== fresh) { needsRebuild = true; continue; }
       const fill  = ovCard.querySelector('.ov-subj-prog-fill');
       const stat  = ovCard.querySelector('.ov-subj-stats span:first-child');
       const track = ovCard.querySelector('.ov-subj-prog-track');
       const pctEl = ovCard.querySelector('.ov-subj-pct');
       if (fill) fill.style.width = prog.pct + '%';
-      if (stat) stat.textContent = label;
+      if (stat && !fresh) stat.textContent = label;
       if (pctEl) pctEl.textContent = prog.loaded && prog.total > 0 ? prog.pct + '%' : '';
       // Drives the muted empty styling — must follow the data, or a subject
       // stays greyed out after its first cards are imported. Gated on loaded
@@ -4619,33 +4769,41 @@ function refreshFlashcardProgressUI(subj) {
     if (txt2)  txt2.textContent  = `${prog.done}/${prog.total} cards · ${prog.pct}%`;
   }
 
-  renderDashboardFlashcardWidget();
+  // The hero's streak, focus line, pace and resume card all come from the
+  // bundle, and none of them are patchable in place — so when the Overview is
+  // the visible page (the boot-load case, where the bundle lands seconds
+  // after first paint) rebuild it outright. A mark-done never happens while
+  // this page is on, so the full render costs nothing in the hot path.
+  // `needsRebuild` covers the other direction: a card that crossed the
+  // not-started boundary while the student was away on a subject page.
+  if (needsRebuild || document.getElementById('page-dashboard')?.classList.contains('on')) renderOverview();
+  else renderDashboardFlashcardWidget();
   refreshSidebarFlashcardBadge();
+  refreshTopbarUser();
   // Green topic roll-ups follow marks made during a study session.
   refreshFlashcardTreeCompletion();
 }
 
 // ── Sidebar badge ────────────────────────────────────────────
+// Shows what's left of TODAY'S target, not the whole outstanding deck.
+//
+// It used to carry total cards remaining, which on a full syllabus meant a
+// permanent "99+" pinned to the Overview button — the same dead signal as the
+// notification bell, and a four-figure backlog restated in the navigation.
+// Today's remainder is a small number that falls as the student works and
+// clears to nothing when the day's target is met.
 function refreshSidebarFlashcardBadge() {
   const el = document.getElementById('sidebarFlashcardBadge');
   if (!el) return;
-  if (!_fcBundleCache) {
+  const mo = getStudyMomentum();
+  const togo = mo ? Math.max(0, mo.perDay - mo.doneToday) : 0;
+  if (!mo || mo.remaining === 0 || togo === 0) {
     el.style.display = 'none';
     return;
   }
-  // Remaining across all subjects
-  let totalRemaining = 0;
-  for (const subj of Object.keys(_fcBundleCache.totalBySubject || {})) {
-    const t = _fcBundleCache.totalBySubject[subj] || 0;
-    const d = _fcBundleCache.doneCountBySubject[subj] || 0;
-    totalRemaining += Math.max(0, t - d);
-  }
-  if (totalRemaining > 0) {
-    el.style.display = '';
-    el.textContent = totalRemaining > 99 ? '99+' : String(totalRemaining);
-  } else {
-    el.style.display = 'none';
-  }
+  el.style.display = '';
+  el.textContent = String(togo);
+  el.title = `${togo.toLocaleString()} more card${togo!==1?'s':''} today to stay on pace`;
 }
 
 function showLockedMessage(subj, mode) {
@@ -4822,25 +4980,54 @@ function renderOverview() {
   const timeWord = manilaHour < 12 ? 'Good morning' : manilaHour < 18 ? 'Good afternoon' : 'Good evening';
   const timeIcon = manilaHour < 12 ? '☀️' : manilaHour < 18 ? '🌤' : '🌙';
 
-  // Pick a focus line that points at what the student can actually do today.
-  // Tier order: due flashcards > active mocks > generic start prompt. Counts
-  // come from the same bundle that powers the Flashcards Progress widget.
+  const mo     = getStudyMomentum();
+  const resume = getStudyResumePoint();
+
+  // The focus line states TODAY'S target and names the deck to open, rather
+  // than the outstanding balance. A student told "142 cards today keeps you
+  // on pace — pick up Civil Law" knows both what a good day looks like and
+  // where to start; one told "4,251 left" only knows the hole is deep.
+  // toLocaleString throughout so grouped figures never sit beside ungrouped
+  // ones — "1207 left" next to "of 1,920" reads as two number systems.
+  const pickUp = resume ? ` Pick up ${h(resume.name)} or start something new.` : '';
   let focusLine = 'Pick a subject below to start drilling flashcards or take a Mock Bar.';
-  if (_fcBundleCache) {
-    let totalRemaining = 0;
-    for (const subj of Object.keys(_fcBundleCache.totalBySubject || {})) {
-      const t = _fcBundleCache.totalBySubject[subj] || 0;
-      const d = _fcBundleCache.doneCountBySubject[subj] || 0;
-      totalRemaining += Math.max(0, t - d);
-    }
-    if (totalRemaining > 0) {
-      // toLocaleString to match the grouped figures in the progress bar below —
-      // "1207 left" beside "of 1,920" read as two different number systems.
-      focusLine = `You have <strong style="color:var(--gold-l)">${totalRemaining.toLocaleString()}</strong> flashcard${totalRemaining!==1?'s':''} left to drill. Keep the streak going.`;
-    } else if (totalRemaining === 0 && Object.keys(_fcBundleCache.totalBySubject||{}).length > 0) {
+  if (mo && mo.totalCards > 0) {
+    if (mo.remaining === 0) {
       focusLine = `You've cleared every flashcard 🎉 — jump into a Mock Bar to test your recall under timed conditions.`;
+    } else if (mo.doneToday >= mo.perDay) {
+      focusLine = `You're on pace — ${mo.doneToday.toLocaleString()} card${mo.doneToday!==1?'s':''} drilled today.${pickUp}`;
+    } else if (mo.doneToday > 0) {
+      const togo = mo.perDay - mo.doneToday;
+      focusLine = `${togo.toLocaleString()} more card${togo!==1?'s':''} today keeps you on pace.${pickUp}`;
+    } else {
+      focusLine = `${mo.perDay.toLocaleString()} card${mo.perDay!==1?'s':''} today keeps you on pace.${pickUp}`;
     }
   }
+
+  // The streak rides on the greeting rather than in a row of stat chips.
+  // Three chips (streak / today / drilled) restated numbers the resume card
+  // and the countdown were already carrying, and pushed the one actionable
+  // thing in the hero below the fold on a laptop.
+  const streakPill = mo && mo.streak > 0
+    ? `<span class="ov-streak-pill" title="Days in a row with at least one flashcard drilled">🔥 ${mo.streak}-day streak</span>`
+    : '';
+
+  // The primary action, given the weight of a card: its own accent rail,
+  // the subject's progress, and a real button. It was a one-line bar, which
+  // made the single most useful control on the page look like a footnote.
+  const resumeCard = resume ? `
+    <div class="ov-resume-card" style="--subj-color:${resume.color}"
+         role="button" tabindex="0"
+         onclick="navToSubject('${resume.subj}','flashcards')"
+         onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();navToSubject('${resume.subj}','flashcards');}">
+      <div class="ov-resume-body">
+        <div class="ov-resume-label">${resume.resumed ? 'Continue where you left off' : resume.prog.done > 0 ? 'Your furthest subject' : 'Start here'}</div>
+        <div class="ov-resume-title"><span class="ov-resume-ic">${resume.icon}</span>${h(resume.name)}</div>
+        <div class="ov-resume-track"><span class="ov-resume-fill" style="width:${resume.prog.pct}%"></span></div>
+        <div class="ov-resume-meta">${resume.prog.done.toLocaleString()} of ${resume.prog.total.toLocaleString()} cards · ${resume.prog.pct}%</div>
+      </div>
+      <span class="ov-resume-btn">${resume.prog.done > 0 ? 'Continue drilling' : 'Start drilling'}</span>
+    </div>` : '';
 
   // Subjects actually shown, computed before render so the section header can
   // report a count that matches what's on screen.
@@ -4858,23 +5045,35 @@ function renderOverview() {
            between them said "Bar Exam 2026" twice and the flashcard count
            three times before any actionable content appeared. -->
       <section class="ov-hero">
-        <div class="ov-hero-main">
+        <div class="ov-hero-head">
           <h2 class="ov-greeting">${timeIcon} ${timeWord}, ${h(userName)}.</h2>
-          <p class="ov-focus-line">${focusLine}</p>
-          <div class="ov-prog" id="fc-overview-widget"></div>
+          ${streakPill}
         </div>
-        ${_cdDays >= 0
-          ? `<button class="ov-countdown" onclick="navToProgress()" title="View my progress">
-              <span class="ov-cd-num">${_cdDays}</span>
-              <span class="ov-cd-lbl">day${_cdDays!==1?'s':''} to the Bar</span>
-              <span class="ov-cd-link">My Progress →</span>
-            </button>`
-          : ''}
+        <p class="ov-focus-line">${focusLine}</p>
+
+        <!-- Two cards side by side: what to do next, and the deadline that
+             says how much of it to do. -->
+        <div class="ov-hero-cards">
+          ${resumeCard}
+          ${_cdDays >= 0
+            ? `<button class="ov-countdown" onclick="navToProgress()" title="View my progress">
+                <span class="ov-cd-num">${_cdDays}</span>
+                <span class="ov-cd-lbl">day${_cdDays!==1?'s':''} to the Bar</span>
+                ${mo && mo.perDay > 0
+                  ? `<span class="ov-cd-pace">≈${mo.perDay.toLocaleString()} cards/day to finish</span>`
+                  : ''}
+                <span class="ov-cd-link">My Progress →</span>
+              </button>`
+            : ''}
+        </div>
+
+        <div class="ov-prog" id="fc-overview-widget"></div>
       </section>
 
       <p class="ov-quote"><span class="ov-quote-star">✦</span> ${h(quote)}</p>
 
       <div class="ov-subjects-head">
+        <span class="ov-subjects-tick"></span>
         <span class="ov-subjects-title">Subjects</span>
         <span class="ov-subjects-count">${visibleSubjs.length}</span>
       </div>
@@ -4893,23 +5092,67 @@ function renderOverview() {
           // failed) is never reported as an empty deck — "No cards yet" on a
           // subject holding 800 cards is worse than saying nothing yet.
           const empty = prog.loaded && prog.total === 0;
+          // A subject with cards and zero progress gets its own state. Six of
+          // eight rendering an identical layout with zeroed bars made the grid
+          // look broken or repetitive rather than like a set of choices; the
+          // two subjects with real progress had nothing to stand out against.
+          // Not-started cards drop the bar and the percentage entirely and
+          // read as an invitation ("812 cards ready · Start").
+          const fresh = prog.loaded && prog.total > 0 && prog.done === 0;
+          const stateCls = empty ? ' is-empty' : fresh ? ' is-fresh' : '';
+          // Past-bar count spelled out. "166 past Qs" needed decoding on first
+          // read — it is the number of past bar exam questions available to
+          // drill in Mock Bar, not how often a topic has been asked.
+          const pbTitle = `${pb.toLocaleString()} question${pb!==1?'s':''} from past bar exams, available in Mock Bar`;
+          const pbText  = `${pb.toLocaleString()} asked in past bars`;
+
+          // A not-started card is a different object, not the same card with
+          // zeroes in it. It drops the progress bar and the "0%" — an empty
+          // trough is not information — states its status in words, folds
+          // both counts onto one centred line, and offers exactly one action.
+          // Mock Bar is deliberately absent here: a subject you have never
+          // opened is not one to sit a timed exam in, and the second button
+          // was most of what made eight identical cards read as a wall.
+          if (fresh) {
+            return `
+              <div class="ov-subj-card is-fresh" data-subj="${s.key}" style="--subj-color:${s.color}">
+                <div class="ov-subj-top">
+                  <div class="ov-subj-name"><span class="ov-subj-dot" style="background:${s.color}"></span><span class="ov-subj-ic">${s.icon}</span>${h(s.name)}</div>
+                  <span class="ov-not-started">Not started</span>
+                </div>
+                <div class="ov-subj-stats is-center">
+                  <span${pb > 0 ? ` title="${pbTitle}"` : ''}>${pb > 0 ? `${pbText} · ` : ''}${prog.total.toLocaleString()} cards</span>
+                </div>
+                <div class="ov-subj-actions">
+                  ${flashcardsOk
+                    ? `<button class="ov-btn-start" onclick="navToSubject('${s.key}','flashcards')">Start Flashcards</button>`
+                    : pb > 0 && mockOk
+                      ? `<button class="ov-btn-start" onclick="navToSubject('${s.key}','mockbar')">Start Mock Bar</button>`
+                      : ''}
+                </div>
+              </div>`;
+          }
+
           return `
-            <div class="ov-subj-card${empty ? ' is-empty' : ''}" data-subj="${s.key}" style="--subj-color:${s.color}">
+            <div class="ov-subj-card${stateCls}" data-subj="${s.key}" style="--subj-color:${s.color}">
               <div class="ov-subj-top">
-                <div class="ov-subj-dot" style="background:${s.color}"></div>
-                <div class="ov-subj-name">${h(s.name)}</div>
+                <div class="ov-subj-name"><span class="ov-subj-dot" style="background:${s.color}"></span><span class="ov-subj-ic">${s.icon}</span>${h(s.name)}</div>
                 <div class="ov-subj-pct">${prog.loaded && prog.total > 0 ? pct + '%' : ''}</div>
               </div>
               <div class="ov-subj-prog-track" title="${!prog.loaded ? 'Loading flashcards…' : prog.total > 0 ? `${prog.done} of ${prog.total} flashcards marked done` : 'No flashcards imported yet'}">
                 <div class="ov-subj-prog-fill" style="width:${pct}%;background:${s.color}"></div>
               </div>
               <div class="ov-subj-stats">
-                <span>${!prog.loaded ? 'Loading…' : prog.total > 0 ? `${prog.done}/${prog.total} cards` : 'No cards yet'}</span>
-                ${pb > 0 ? `<span>${pb} past Qs</span>` : ''}
+                <span>${!prog.loaded ? 'Loading…' : prog.total === 0 ? 'No cards yet' : `${prog.done.toLocaleString()}/${prog.total.toLocaleString()} cards`}</span>
+                ${pb > 0 ? `<span class="ov-subj-pastq" title="${pbTitle}">${pbText}</span>` : ''}
               </div>
               <div class="ov-subj-actions">
-                ${flashcardsOk ? `<button class="ov-btn-learn" onclick="navToSubject('${s.key}','flashcards')">🎴 Flashcards</button>` : ''}
-                ${pb > 0 && mockOk ? `<button class="ov-btn-mock" onclick="navToSubject('${s.key}','mockbar')">⏱ Mock</button>` : ''}
+                ${flashcardsOk
+                  ? `<button class="ov-btn-learn" onclick="navToSubject('${s.key}','flashcards')">▶ Continue — Flashcards</button>`
+                  : ''}
+                ${pb > 0 && mockOk
+                  ? `<button class="ov-btn-mock${flashcardsOk ? '' : ' is-only'}" onclick="navToSubject('${s.key}','mockbar')" title="Mock Bar · ${pbTitle}" aria-label="Mock Bar — ${h(s.name)}">${flashcardsOk ? '⏱' : '⏱ Mock Bar'}</button>`
+                  : ''}
               </div>
             </div>`;
         }).join('')}
@@ -8456,8 +8699,8 @@ function updateUserDisplay() {
   const cpBtn   = document.getElementById('changePwdBtn');
   const sbXp    = document.getElementById('sbXpSection');
   if (currentUser) {
-    disp.textContent     = currentUser.name;
     disp.style.display   = '';
+    refreshTopbarUser();
     logBtn.style.display = '';
     if (cpBtn) cpBtn.style.display = '';
     // Populate sidebar XP section asynchronously
@@ -8494,12 +8737,30 @@ async function refreshSidebarXP(force) {
     if (lvlEl)  lvlEl.textContent  = title;
     if (nums)   nums.textContent   = `${xp.toLocaleString()} XP`;
     if (fill)   setTimeout(() => { fill.style.width = progressPercent + '%'; }, 200);
-    // Also update topbar display with level badge
-    const disp = document.getElementById('userNameDisplay');
-    if (disp && currentUser) {
-      disp.innerHTML = `${h(currentUser.name)} <span class="sb-level-badge" style="margin-left:6px;">Lvl ${level}</span>`;
-    }
+    // The topbar deliberately does NOT repeat the level — see refreshTopbarUser.
+    refreshTopbarUser();
   } catch(e) { /* non-critical */ }
+}
+
+// The topbar user chip.
+//
+// It used to read "Archie  Lvl 45" while the sidebar profile card, a few
+// hundred pixels away and on screen at the same time, showed the identical
+// "Lvl 45" beside the XP bar and the title it belongs to. The sidebar keeps
+// the level — that's where it has context — and this slot spends itself on
+// something not otherwise visible outside the Overview: the study streak.
+function refreshTopbarUser() {
+  const disp = document.getElementById('userNameDisplay');
+  if (!disp || !currentUser) return;
+  const streak = getStudyMomentum()?.streak || 0;
+  // Streak leads: it's the changing value, and putting it after the name left
+  // it reading as a suffix on the name rather than as its own fact.
+  // The name is its own element so narrow viewports can drop it and keep the
+  // streak — the name is already on the sidebar profile card, whereas
+  // Password and Log Out exist nowhere else and must not be squeezed out.
+  disp.innerHTML = (streak > 0
+    ? `<span class="tb-streak" title="${streak}-day study streak — days in a row with at least one flashcard drilled">🔥 ${streak}</span>`
+    : '') + `<span class="tb-name">${h(currentUser.name)}</span>`;
 }
 
 async function doLogout() {

@@ -144,6 +144,8 @@ module.exports = function createFlashcardStudyRoutes({ requireAuth }) {
   //   - totalBySubject:        { subj: number }
   //   - doneCardIds:           string[] — cards THIS user has marked done
   //   - doneCountBySubject:    { subj: number }
+  //   - doneCountByDate:       { 'YYYY-MM-DD' (Manila): number } — study activity
+  //                            behind the Overview streak and daily pace
   // Called once on login; cached client-side. Invalidated after mark-done.
   router.get('/api/flashcards/bundle', requireAuth, async (req, res) => {
     try {
@@ -193,12 +195,21 @@ module.exports = function createFlashcardStudyRoutes({ requireAuth }) {
         doneTopicCountsBySubject[subj] = {};
       }
 
+      // Manila calendar day → how many done cards were last touched that day.
+      // Drives the Overview streak and "cards done today". It is an
+      // approximation on purpose: last_reviewed_at holds the LAST touch, so a
+      // card marked on Monday and re-toggled on Friday only counts for Friday.
+      // A day still registers as long as one of its cards was not re-touched
+      // later, which is the normal case — a student does not usually revisit
+      // every card from a past session.
+      const doneCountByDate = {};
+
       let doneRows = [];
       try {
         doneRows = await fetchAllPaginated(
           supabase
             .from('flashcard_reviews')
-            .select('flashcard_id')
+            .select('flashcard_id, last_reviewed_at')
             .eq('user_id', req.userId)
             .eq('done', true)
         );
@@ -217,6 +228,13 @@ module.exports = function createFlashcardStudyRoutes({ requireAuth }) {
               (doneTopicCountsBySubject[subj][nodeId] || 0) + 1;
           }
         }
+        if (r.last_reviewed_at) {
+          // en-CA gives YYYY-MM-DD; the timeZone option does the UTC→Manila
+          // shift so a 1am Manila session lands on the right calendar day.
+          const day = new Date(r.last_reviewed_at)
+            .toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+          doneCountByDate[day] = (doneCountByDate[day] || 0) + 1;
+        }
       }
 
       res.json({
@@ -225,6 +243,7 @@ module.exports = function createFlashcardStudyRoutes({ requireAuth }) {
         doneCardIds,
         doneCountBySubject,
         doneTopicCountsBySubject,
+        doneCountByDate,
       });
     } catch(e) {
       console.error('[fc-bundle] fatal:', e);

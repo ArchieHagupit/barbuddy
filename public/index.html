@@ -224,8 +224,12 @@ new PerformanceObserver((list) => {
     <span class="sb-ic">⚙️</span><span class="sb-lbl">Admin</span>
   </button>
 
-  <div id="accessControlBadge" class="sb-lbl" style="display:none;margin:8px 12px;padding:8px 12px;background:rgba(var(--crim-rgb),0.15);border:1px solid rgba(var(--crim-rgb),0.3);border-radius:10px;font-size:11px;color:var(--danger);cursor:pointer;" onclick="scrollToTabControl()">
-    🔒 Some sections disabled — <u>Manage access</u>
+  <!-- Informational, not an error: an admin deliberately turned a section
+       off. It used to be crimson-on-crimson, which put alert red directly
+       beside the subject dots and made a configured state look like a
+       failure. Amber says "heads up" without competing with anything. -->
+  <div id="accessControlBadge" class="sb-lbl sb-access-note" style="display:none;" onclick="scrollToTabControl()">
+    🔒 A few sections need setup — <u>Manage access</u>
   </div>
 
   <!-- Sidebar XP mini-bar -->
@@ -276,7 +280,9 @@ new PerformanceObserver((list) => {
            nested here gets cut off at the topbar's 58px edge. -->
     </div>
     <span id="userNameDisplay" style="display:none;"></span>
-    <button class="cp-btn" id="changePwdBtn" style="display:none;" onclick="openChangePassword()" title="Change Password">🔒 Password</button>
+    <!-- The label collapses under 760px so the button survives as a lock
+         icon rather than being clipped off the edge of the topbar. -->
+    <button class="cp-btn" id="changePwdBtn" style="display:none;" onclick="openChangePassword()" title="Change Password" aria-label="Change Password">🔒<span class="cp-btn-lbl"> Password</span></button>
     <button class="btn-og" id="logoutBtn" style="display:none;" onclick="doLogout()">Log Out</button>
   </div>
 </header>

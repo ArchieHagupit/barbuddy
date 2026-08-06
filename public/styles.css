@@ -50,6 +50,31 @@
   --muted:rgba(var(--txt-rgb),.4);
   /* borders */
   --bdr:rgba(var(--txt-rgb),.08);--bdr2:rgba(var(--txt-rgb),.12);--bdr-gold:rgba(var(--gold-rgb),.25);
+  /* ── Emboss ──────────────────────────────────────────────────
+     Raised card surfaces. Four layers, in order: a lit hairline along the
+     top edge, a shaded hairline along the bottom, a tight contact shadow,
+     and a soft cast shadow. The two insets are what make it read as a
+     physical lip rather than as a drop shadow — take them away and the card
+     is just floating.
+
+     These cannot be built from --ovl. That token is white on dark and DARK
+     on light (a white wash is invisible over a light card), but the top
+     highlight has to be white in BOTH themes — it is the light source, not
+     a surface wash. Hence explicit per-theme values here and in the light
+     block below.
+
+     --emboss-deep is for the one surface that should read as physically
+     larger: the flashcard face.
+     --deboss is the inverse — lit on the bottom, shaded on top, no cast
+     shadow — so a not-started subject card reads as pressed INTO the page
+     while the started ones stand off it. */
+  --emboss:inset 0 1px 0 rgba(255,255,255,.06),inset 0 -1px 0 rgba(0,0,0,.34),0 1px 2px rgba(0,0,0,.22),0 5px 14px rgba(0,0,0,.20);
+  --emboss-hover:inset 0 1px 0 rgba(255,255,255,.10),inset 0 -1px 0 rgba(0,0,0,.38),0 2px 4px rgba(0,0,0,.26),0 12px 28px rgba(0,0,0,.32);
+  --emboss-deep:inset 0 1px 0 rgba(255,255,255,.08),inset 0 -2px 0 rgba(0,0,0,.34),0 2px 5px rgba(0,0,0,.22),0 16px 40px rgba(0,0,0,.30);
+  --deboss:inset 0 1px 2px rgba(0,0,0,.30),inset 0 -1px 0 rgba(255,255,255,.05);
+  /* Buttons carry a shallower version — enough to look pressable without
+     competing with the card they sit on. */
+  --emboss-btn:inset 0 1px 0 rgba(255,255,255,.24),inset 0 -1px 0 rgba(0,0,0,.22),0 1px 2px rgba(0,0,0,.24);
   /* page wash */
   --wash-gold:rgba(var(--gold-rgb),.07);--wash-crim:rgba(139,31,53,.06);--wash-blue:rgba(91,168,255,.04);
   /* layout & fonts */
@@ -74,7 +99,12 @@
   --fs-read-sm:15px;     /* secondary copy: feedback, captions */
   --lh-read:1.72;
   --measure:68ch;
-  /* subject colors (brighter) */
+  /* subject colors (brighter).
+     --c-criminal stays crimson — it is the natural colour for the subject and
+     nothing else in the grid competes for it. The old clash with the alert
+     reds was fixed on the other side: the "sections disabled" badge is amber
+     now, so red no longer means both "a subject" and "something is wrong".
+     See .sb-access-note. */
   --c-civil:#5ba8ff;--c-criminal:#ff6b7a;--c-political:#5dd89a;
   --c-labor:#ffaa50;--c-commercial:#b87fff;--c-taxation:#50d0c0;
   --c-remedial:#f0d060;--c-ethics:#d4a878;--c-custom:#8899aa;
@@ -131,6 +161,15 @@
   --muted:rgba(var(--txt-rgb),.78);
   /* borders — need more weight than on dark to read at all */
   --bdr:rgba(var(--txt-rgb),.16);--bdr2:rgba(var(--txt-rgb),.26);--bdr-gold:rgba(var(--gold-rgb),.38);
+  /* Emboss on paper. The top highlight goes near-opaque white — on an
+     already-light card only a strong highlight registers as a lit edge —
+     and every shadow is warm-tinted (60,50,25) rather than neutral black,
+     which on this cream field would read as grey dirt rather than shade. */
+  --emboss:inset 0 1px 0 rgba(255,255,255,.95),inset 0 -1px 0 rgba(60,50,25,.10),0 1px 2px rgba(60,50,25,.07),0 4px 12px rgba(60,50,25,.09);
+  --emboss-hover:inset 0 1px 0 rgba(255,255,255,1),inset 0 -1px 0 rgba(60,50,25,.13),0 2px 4px rgba(60,50,25,.09),0 10px 24px rgba(60,50,25,.14);
+  --emboss-deep:inset 0 1px 0 rgba(255,255,255,.95),inset 0 -2px 0 rgba(60,50,25,.10),0 2px 5px rgba(60,50,25,.08),0 16px 38px rgba(60,50,25,.13);
+  --deboss:inset 0 1px 2px rgba(60,50,25,.13),inset 0 -1px 0 rgba(255,255,255,.85);
+  --emboss-btn:inset 0 1px 0 rgba(255,255,255,.45),inset 0 -1px 0 rgba(60,50,25,.20),0 1px 2px rgba(60,50,25,.14);
   /* page wash — barely-there on light, or it muddies the paper */
   --wash-gold:rgba(var(--gold-rgb),.05);--wash-crim:rgba(139,31,53,.03);--wash-blue:rgba(29,111,208,.03);
   /* subject colours — darkened enough to hold up as dots, bars and the
@@ -342,6 +381,12 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 
 /* ── Sidebar Level Badge ─────────────────────────────────────── */
 .sb-level-badge{display:inline-flex;align-items:center;gap:3px;background:rgba(184,134,11,.18);border:1px solid rgba(184,134,11,.35);border-radius:5px;padding:1px 6px;font-size:10px;font-weight:700;color:var(--gold-l);letter-spacing:.02em;flex-shrink:0;}
+/* "Some sections disabled" — an admin's deliberate configuration, not a
+   fault. It was crimson-on-crimson, which put alert red a few pixels from
+   the subject dots and let a glance at the sidebar read as an error state.
+   Amber carries "heads up" without claiming anything is broken. */
+.sb-access-note{margin:8px 12px;padding:8px 12px;background:rgba(var(--warn-rgb),.13);border:1px solid rgba(var(--warn-rgb),.3);border-radius:10px;font-size:11px;line-height:1.45;color:var(--warn);cursor:pointer;}
+.sb-access-note:hover{background:rgba(var(--warn-rgb),.2);}
 
 /* ── XP Popup Overlay ────────────────────────────────────────── */
 .xp-popup-overlay{position:fixed;inset:0;background:rgba(5,8,18,.88);z-index:2000;display:flex;align-items:center;justify-content:center;padding:20px;}
@@ -446,7 +491,11 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .notif-bell.has-unread>span[aria-hidden]{animation:notifNudge 2.4s ease-in-out 3;transform-origin:50% 15%;}
 @keyframes notifNudge{0%,88%,100%{transform:rotate(0);}90%{transform:rotate(11deg);}94%{transform:rotate(-9deg);}97%{transform:rotate(4deg);}}
 /* #e0506a put white at 3.8:1; darkened so the count is legible at 10px. */
-.notif-badge{position:absolute;top:-5px;right:-5px;min-width:17px;height:17px;padding:0 4px;border-radius:9px;background:#c0304a;color:#fff;font-family:var(--fm);font-size:10px;font-weight:700;line-height:17px;text-align:center;box-shadow:0 0 0 2px var(--bg,#0d1220);}
+/* A presence dot, not a count. Carrying the due-question total pinned this
+   at "99+" indefinitely, and a badge that never changes stops being read at
+   all. The ring is drawn in the topbar's own surface so the dot reads as
+   sitting on the bell rather than floating behind it. */
+.notif-badge{position:absolute;top:2px;right:2px;width:8px;height:8px;padding:0;border-radius:50%;background:var(--danger-d);font-size:0;line-height:0;text-indent:-9999px;overflow:hidden;box-shadow:0 0 0 2px rgba(var(--srf-rgb),1);}
 /* Body-level (see index.html) and position:fixed — .topbar clips descendants,
    so the panel is anchored to the bell in JS instead of nested under it. */
 .notif-panel{position:fixed;top:0;left:0;width:330px;max-height:min(460px,70vh);overflow-y:auto;z-index:400;background:rgba(var(--srf-rgb),.99);border:1px solid rgba(var(--gold-rgb),.28);border-radius:13px;box-shadow:0 12px 34px rgba(0,0,0,.5);opacity:0;transform:translateY(-6px);pointer-events:none;transition:opacity .16s ease,transform .16s ease;display:none;}
@@ -559,83 +608,217 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .source-ctrl-btn{padding:6px 14px;font-size:11px;font-weight:700;border-radius:8px;border:1px solid rgba(var(--txt2-rgb),.1);background:rgba(var(--ovl),.04);color:rgba(var(--txt2-rgb),.45);cursor:pointer;font-family:var(--fb);transition:all .15s;user-select:none;}
 .source-ctrl-btn:hover{background:rgba(var(--ovl),.09);color:rgba(var(--txt2-rgb),.8);border-color:rgba(var(--txt2-rgb),.18);}
 /* ── Overview ─────────────────────────────────────────────────
-   Three bands: hero → quote → subjects. Previously six (countdown banner,
+   Three bands: hero → subjects → quote. Previously six (countdown banner,
    quote bar, welcome card, flashcards card, SUBJECTS label, grid), which
-   pushed the first actionable element well below the fold. */
-.overview-inner{max-width:900px;margin:0 auto;padding:8px 0 32px;}
+   pushed the first actionable element well below the fold.
+
+   Width: the page used to inherit .pg-inner's 860px cap, so on any normal
+   laptop the whole dashboard sat in a narrow column with several hundred
+   pixels of empty gutter either side while the subject grid stacked four
+   rows deep. It now runs to 1440px and the grid goes 4-up, which puts all
+   eight subjects in two rows. See #page-dashboard .pg-inner below.
+
+   Height: .overview-inner is a column flex box tall enough to fill the
+   viewport, the subject grid takes the slack (flex:1) and the quote is
+   pinned to the bottom with margin-top:auto — so a short dashboard spreads
+   into the space instead of leaving a dead band under the last card. */
+/* min-height budget: 58px topbar + 22px .pg-inner padding-top + 26px
+   .pg-inner padding-bottom = 106px of chrome, then 4px of slack so a
+   rounding error never trips a scrollbar on a dashboard that fits. */
+.overview-inner{max-width:1440px;margin:0 auto;padding:8px 0 24px;display:flex;flex-direction:column;min-height:calc(100vh - 110px);}
 #overviewContainer{min-height:600px;}
+/* Overrides .pg-inner's 860px. Scoped to the dashboard so every other page
+   keeps its reading measure. */
+#page-dashboard .pg-inner{max-width:1440px;padding:22px 26px 26px;}
 
-/* Hero — greeting, focus line, aggregate progress, countdown */
-.ov-hero{display:flex;align-items:stretch;gap:22px;background:linear-gradient(135deg,rgba(var(--gold-rgb),.07),rgba(var(--gold-rgb),.02) 55%,transparent);border:1px solid var(--bdr-gold);border-radius:18px;padding:24px 26px;margin-bottom:14px;}
-.ov-hero-main{flex:1;min-width:0;display:flex;flex-direction:column;}
-.ov-greeting{font-family:var(--fd);font-size:26px;font-weight:700;color:var(--white);margin:0 0 6px;line-height:1.15;letter-spacing:.01em;}
-.ov-focus-line{font-size:13.5px;line-height:1.55;color:var(--text-muted);margin:0;}
-.ov-prog{margin-top:auto;padding-top:18px;}
-.ov-prog-track{height:7px;background:rgba(var(--ovl),.07);border-radius:4px;overflow:hidden;}
-.ov-prog-fill{height:100%;border-radius:4px;background:linear-gradient(90deg,var(--gold-d),var(--gold-l));transition:width .5s ease;}
-.ov-prog-meta{display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-top:7px;font-size:11.5px;color:var(--muted);font-family:var(--fm);}
-.ov-prog-meta strong{color:var(--text-muted);font-weight:700;}
-.ov-prog-pct{color:var(--gold-l);font-weight:700;}
-.ov-prog-empty{font-size:12px;color:var(--muted);font-style:italic;}
+/* Hero — greeting + streak, today's target, then two cards: what to do next
+   and the deadline that sizes it. The aggregate "N left / N%" that used to
+   headline this card is now a footnote at the bottom of it, in .ov-prog. */
+.ov-hero{display:flex;flex-direction:column;background:linear-gradient(160deg,rgba(var(--gold-rgb),.09),rgba(var(--gold-rgb),.02) 60%,transparent);border:1px solid var(--bdr-gold);border-radius:18px;padding:22px 24px;margin-bottom:16px;}
+.ov-hero-head{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:6px;}
+.ov-greeting{font-family:var(--fd);font-size:24px;font-weight:700;color:var(--white);margin:0;line-height:1.15;letter-spacing:.01em;}
+.ov-focus-line{font-size:13.5px;line-height:1.55;color:var(--text-muted);margin:0 0 18px;max-width:60ch;}
 
-/* Countdown — absorbed from the old full-width banner */
-.ov-countdown{flex-shrink:0;width:132px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;padding:16px 10px;background:rgba(var(--srf-rgb),.5);border:1px solid var(--bdr);border-radius:14px;cursor:pointer;font-family:var(--fb);transition:border-color .2s,background .2s,transform .2s;}
-.ov-countdown:hover{border-color:var(--bdr-gold);background:rgba(var(--gold-rgb),.08);transform:translateY(-1px);}
-.ov-cd-num{font-family:var(--fd);font-size:38px;font-weight:700;color:var(--gold-l);line-height:1;}
-.ov-cd-lbl{font-size:10.5px;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;text-align:center;}
-/* No opacity here: at 10.5px any transparency dropped the effective contrast
+/* Streak rides the greeting rather than sitting in a row of stat chips. The
+   chips restated numbers the two cards below already carry, and pushed the
+   one actionable control in the hero below the fold on a laptop. */
+.ov-streak-pill{display:inline-flex;align-items:center;gap:5px;background:rgba(var(--gold-rgb),.16);color:var(--gold-l);font-weight:700;font-size:12px;padding:4px 11px;border-radius:999px;white-space:nowrap;cursor:help;}
+
+.ov-hero-cards{display:flex;gap:16px;flex-wrap:wrap;align-items:stretch;}
+
+/* Resume — the primary action, given the weight of a card. It was a one-line
+   bar, which made the single most useful control on the page look like a
+   footnote. Its accent rail is the subject's own colour, so the card is
+   already identifiable before the name is read. */
+/* Row, not column. Stacked, the card's own width made a 1,100px-long 6px
+   progress line with the button huddled bottom-left and a third of the card
+   empty. Side by side, the text stack takes the slack and the button sits
+   where the eye already is. It flips back to a column under 760px. */
+.ov-resume-card{flex:1 1 260px;min-width:0;display:flex;align-items:center;gap:26px;background:var(--card);border:1px solid var(--bdr);border-top:3px solid var(--subj-color,var(--gold));border-radius:14px;padding:15px 18px;cursor:pointer;text-align:left;font-family:var(--fb);box-shadow:var(--emboss);transition:transform .18s,box-shadow .18s,border-color .18s;}
+.ov-resume-card:hover{transform:translateY(-2px);box-shadow:var(--emboss-hover);border-color:var(--bdr2);border-top-color:var(--subj-color,var(--gold));}
+.ov-resume-card:focus-visible{outline:2px solid var(--gold);outline-offset:2px;}
+.ov-resume-body{flex:1;min-width:0;}
+.ov-resume-label{font-size:10px;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);font-weight:700;margin-bottom:7px;}
+.ov-resume-title{display:flex;align-items:center;gap:8px;font-family:var(--fd);font-size:16px;font-weight:700;color:var(--white);margin-bottom:10px;}
+.ov-resume-ic{font-size:15px;line-height:1;flex-shrink:0;}
+/* Capped: past about 420px a 6px bar stops reading as a measure of anything
+   and just becomes a rule across the card. */
+.ov-resume-track{display:block;width:100%;max-width:420px;height:6px;border-radius:99px;background:rgba(var(--ovl),.08);overflow:hidden;margin-bottom:8px;box-shadow:var(--deboss);}
+.ov-resume-fill{display:block;height:100%;border-radius:99px;background:var(--subj-color,var(--gold));transition:width .45s ease;}
+.ov-resume-meta{font-size:11.5px;color:var(--muted);font-family:var(--fm);}
+/* A span, not a button — the whole card is the click target, and a real
+   button inside a role="button" card is both invalid and a second tab stop
+   for the same action. */
+.ov-resume-btn{flex-shrink:0;display:inline-block;font-size:12.5px;font-weight:700;padding:10px 20px;border-radius:10px;background:linear-gradient(135deg,var(--gold-fill),var(--gold-fill-d));color:#1a1200;white-space:nowrap;box-shadow:var(--emboss-btn);transition:box-shadow .18s;}
+.ov-resume-card:hover .ov-resume-btn{box-shadow:var(--emboss-btn),0 4px 16px rgba(var(--gold-rgb),.3);}
+
+/* Countdown. It carries the pace the number implies as well as the number:
+   "30 days" alone is a clock, and a clock is only frightening. The gold pill
+   is the actionable half — "≈142 cards/day" is something to do today. */
+.ov-countdown{flex:0 0 176px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:15px 14px;background:var(--card);border:1px solid var(--bdr);border-radius:14px;cursor:pointer;font-family:var(--fb);box-shadow:var(--emboss);transition:border-color .2s,transform .2s,box-shadow .2s;}
+.ov-countdown:hover{border-color:var(--bdr-gold);transform:translateY(-2px);box-shadow:var(--emboss-hover);}
+/* The pace pill is set INTO the countdown card — a small recess reads as a
+   readout inset in the surface, which is what it is. */
+.ov-countdown .ov-cd-pace{box-shadow:var(--deboss);}
+.ov-cd-num{font-family:var(--fd);font-size:32px;font-weight:700;color:var(--white);line-height:1;}
+.ov-cd-lbl{margin-top:4px;font-size:10px;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;text-align:center;font-weight:600;}
+.ov-cd-pace{margin-top:10px;padding:6px 9px;border-radius:8px;background:rgba(var(--gold-rgb),.16);font-size:11px;font-weight:700;line-height:1.35;color:var(--gold-l);text-align:center;}
+/* No opacity here: at 11px any transparency dropped the effective contrast
    below 4.5:1. Hierarchy comes from size and colour instead, and the hover
    cue moved to an underline. */
-.ov-cd-link{margin-top:9px;font-size:10.5px;color:var(--gold);}
+.ov-cd-link{margin-top:9px;font-size:11px;font-weight:600;color:var(--gold);}
 .ov-countdown:hover .ov-cd-link{text-decoration:underline;}
 
-/* Quote — unboxed; it's flavour, not a control */
-.ov-quote{display:flex;gap:9px;align-items:baseline;padding:0 4px;margin:0 0 24px;font-size:12.5px;font-style:italic;line-height:1.55;color:var(--muted);}
+/* Aggregate progress — a footnote line under the two cards. Label first,
+   then a short track; deliberately not a full-width bar with a big
+   percentage on the end, which is what made it the hero's headline before. */
+.ov-prog{display:flex;align-items:center;gap:10px;margin-top:16px;}
+.ov-prog-meta{font-size:11px;color:var(--muted);font-family:var(--fm);white-space:nowrap;}
+.ov-prog-track{flex:1;max-width:240px;height:4px;border-radius:99px;background:rgba(var(--ovl),.08);overflow:hidden;}
+.ov-prog-fill{display:block;height:100%;border-radius:99px;background:var(--muted);transition:width .5s ease;}
+.ov-prog-empty{font-size:12px;color:var(--muted);font-style:italic;}
+
+/* Quote — unboxed; it's flavour, not a control. */
+.ov-quote{display:flex;gap:9px;align-items:baseline;padding:0 4px;margin:0 0 20px;font-size:12.5px;font-style:italic;line-height:1.55;color:var(--muted);}
 .ov-quote-star{color:var(--gold);font-style:normal;flex-shrink:0;}
 
 /* Subjects */
 .ov-subjects-head{display:flex;align-items:center;gap:9px;margin-bottom:13px;}
+.ov-subjects-tick{width:4px;height:18px;background:var(--gold);border-radius:2px;flex-shrink:0;}
 .ov-subjects-title{font-family:var(--fd);font-size:17px;font-weight:700;color:var(--white);}
 .ov-subjects-count{font-family:var(--fm);font-size:10.5px;color:var(--muted);background:rgba(var(--ovl),.05);border:1px solid var(--bdr);border-radius:20px;padding:2px 8px;}
-.ov-subjects-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px;}
-.ov-subj-card{background:var(--card);border:1px solid var(--bdr);border-radius:14px;padding:15px 16px 14px;transition:transform .2s,box-shadow .2s,border-color .2s;position:relative;overflow:hidden;}
-.ov-subj-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:var(--subj-color);opacity:.55;transition:opacity .2s;}
-.ov-subj-card:hover{transform:translateY(-2px);box-shadow:0 6px 20px rgba(0,0,0,.28);border-color:var(--bdr2);}
-.ov-subj-card:hover::before{opacity:1;}
+/* Fixed 4-up rather than auto-fill: eight subjects land as a clean 4×2 block
+   with no ragged trailing row. flex:1 lets the two rows share whatever
+   vertical space is left over instead of leaving it blank below. */
+.ov-subjects-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;flex:1;align-content:stretch;}
+.ov-subj-card{display:flex;flex-direction:column;background:var(--card);border:1px solid var(--bdr);border-top:3px solid var(--subj-color);border-radius:12px;padding:15px 16px 14px;box-shadow:var(--emboss);transition:transform .2s,box-shadow .2s,border-color .2s;min-height:140px;}
+.ov-subj-card:hover{transform:translateY(-2px);box-shadow:var(--emboss-hover);border-color:var(--bdr2);border-top-color:var(--subj-color);}
 .ov-subj-card.is-empty{opacity:.72;}
 .ov-subj-card.is-empty:hover{opacity:1;}
-.ov-subj-top{display:flex;align-items:center;gap:8px;margin:3px 0 11px;}
-.ov-subj-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
-.ov-subj-name{font-size:13px;font-weight:700;color:var(--white);line-height:1.3;flex:1;min-width:0;}
-.ov-subj-pct{font-family:var(--fm);font-size:11px;font-weight:700;color:var(--gold-l);flex-shrink:0;}
-.ov-subj-prog-track{height:4px;background:rgba(var(--ovl),.06);border-radius:2px;overflow:hidden;margin-bottom:8px;}
-.ov-subj-prog-fill{height:100%;border-radius:2px;transition:width .4s ease;}
-.ov-subj-stats{display:flex;justify-content:space-between;gap:8px;font-size:10.5px;color:var(--muted);font-family:var(--fm);margin-bottom:12px;}
-.ov-subj-actions{display:flex;gap:6px;}
-.ov-btn-learn,.ov-btn-mock{flex:1;padding:7px 0;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;font-family:var(--fb);transition:background .15s,color .15s,border-color .15s;}
-.ov-btn-learn{background:rgba(var(--gold-rgb),.11);color:var(--gold-l);border:1px solid rgba(var(--gold-rgb),.24);}
-.ov-btn-learn:hover{background:rgba(var(--gold-rgb),.2);border-color:rgba(var(--gold-rgb),.4);}
-.ov-btn-mock{background:rgba(var(--ovl),.04);color:var(--text-muted);border:1px solid var(--bdr);}
-.ov-btn-mock:hover{background:rgba(var(--ovl),.09);color:var(--white);border-color:var(--bdr2);}
 
-/* Narrow: countdown drops under the greeting and goes full width */
-@media(max-width:640px){
-  .ov-hero{flex-direction:column;gap:16px;padding:20px;}
-  .ov-countdown{width:100%;flex-direction:row;justify-content:flex-start;gap:10px;padding:12px 16px;}
-  .ov-cd-num{font-size:26px;}
-  .ov-cd-lbl{text-align:left;}
-  .ov-cd-link{margin-top:0;margin-left:auto;}
-  .ov-greeting{font-size:22px;}
+/* Not-started state.
+   Six of eight subjects rendering the identical layout with zeroed bars and
+   "0/812 cards" made the grid look broken, and gave the two subjects with
+   real progress nothing to stand out against. A not-started card sheds the
+   card surface and the shadow so the started ones lift off the page, fades
+   its accent rail, and says its status in words instead of drawing an empty
+   trough — see the markup in renderOverview for what else it drops. */
+/* Debossed rather than flat. The started cards are raised; pressing these
+   INTO the page keeps the two states as far apart as the old flat-vs-shadow
+   treatment did, while still giving every box on the grid real relief. */
+.ov-subj-card.is-fresh{background:transparent;box-shadow:var(--deboss);border-top-color:rgba(var(--ovl),.14);}
+.ov-subj-card.is-fresh:hover{background:var(--card);box-shadow:var(--emboss-hover);border-top-color:var(--subj-color);}
+.ov-subj-card.is-fresh .ov-subj-dot{opacity:.6;}
+.ov-subj-card.is-fresh .ov-subj-name{color:var(--text-muted);}
+.ov-subj-card.is-fresh:hover .ov-subj-name{color:var(--white);}
+.ov-not-started{flex-shrink:0;font-size:10px;font-weight:700;color:var(--muted);background:rgba(var(--ovl),.07);border-radius:999px;padding:3px 9px;white-space:nowrap;}
+
+.ov-subj-top{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 10px;}
+.ov-subj-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+.ov-subj-name{display:flex;align-items:center;gap:7px;font-family:var(--fd);font-size:13.5px;font-weight:700;color:var(--white);line-height:1.3;min-width:0;transition:color .2s;}
+/* Its own element so the flex gap applies. As a bare "${icon} ${name}" text
+   node the separating space collapsed against the dot's flex gap and the
+   emoji sat flush against the subject name. */
+.ov-subj-ic{font-size:13px;line-height:1;flex-shrink:0;}
+.ov-subj-pct{font-family:var(--fd);font-size:13.5px;font-weight:700;color:var(--white);flex-shrink:0;}
+/* Grooves, not lines. A progress track is a channel cut into the card, so it
+   takes the inverse of the card's own relief. */
+.ov-subj-prog-track{height:6px;background:rgba(var(--ovl),.08);border-radius:99px;overflow:hidden;margin-bottom:9px;box-shadow:var(--deboss);}
+.ov-subj-prog-fill{height:100%;border-radius:99px;transition:width .4s ease;}
+.ov-subj-stats{display:flex;justify-content:space-between;gap:8px;font-size:11px;color:var(--muted);font-family:var(--fm);margin-bottom:13px;}
+/* The not-started card folds both counts onto one centred line, so there is
+   no left/right pair to justify apart. */
+.ov-subj-stats.is-center{justify-content:center;text-align:center;margin-bottom:15px;}
+/* Dotted underline is the standard "there's a tooltip here" affordance —
+   "166 asked in past bars" is clearer than the old "166 past Qs", but the
+   tooltip is what actually says these are Mock Bar questions. */
+.ov-subj-pastq{border-bottom:1px dotted var(--bdr2);cursor:help;white-space:nowrap;}
+/* Actions pinned to the card's bottom edge, so cards of unequal height in a
+   stretched row still line their buttons up. */
+.ov-subj-actions{display:flex;gap:8px;margin-top:auto;}
+.ov-btn-learn,.ov-btn-mock,.ov-btn-start{padding:8px 10px;border-radius:9px;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--fb);transition:background .15s,color .15s,border-color .15s,box-shadow .15s;border:1px solid transparent;}
+/* One primary action per card. The Flashcards/Mock pair repeated eight times
+   was a wall of identical chrome once you were scanning the grid rather than
+   reading a single card, so Mock shrank to a fixed-width icon button and
+   Continue took the remaining width. Same functionality, a quarter of the
+   visual weight. */
+.ov-btn-learn{flex:1;min-width:0;background:linear-gradient(135deg,var(--gold-fill),var(--gold-fill-d));color:#1a1200;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:var(--emboss-btn);}
+.ov-btn-learn:hover{box-shadow:var(--emboss-btn),0 4px 14px rgba(var(--gold-rgb),.28);}
+.ov-btn-learn:active{box-shadow:var(--deboss);transform:translateY(1px);}
+.ov-btn-mock{flex:0 0 38px;width:38px;background:transparent;color:var(--text-muted);border-color:var(--bdr2);}
+.ov-btn-mock:hover{background:rgba(var(--ovl),.07);color:var(--white);}
+.ov-btn-mock:active,.ov-btn-start:active{box-shadow:var(--deboss);transform:translateY(1px);}
+/* When an admin has turned Flashcards off for a subject, Mock is the card's
+   only action — it takes the full width and its label back, rather than
+   leaving a lone unlabelled icon as the whole card. */
+.ov-btn-mock.is-only{flex:1;width:auto;}
+/* The not-started card's single action is an outline in the subject's own
+   colour: unmistakably a different affordance from the solid gold "Continue"
+   on a started card, so the grid reads as two kinds of thing at a glance. */
+.ov-btn-start{flex:1;background:transparent;border-color:var(--subj-color);color:var(--subj-color);}
+.ov-btn-start:hover{background:rgba(var(--ovl),.06);}
+
+@media(max-width:1180px){.ov-subjects-grid{grid-template-columns:repeat(3,minmax(0,1fr));}}
+@media(max-width:900px){.ov-subjects-grid{grid-template-columns:repeat(2,minmax(0,1fr));}}
+/* Narrow: the two hero cards stop sitting side by side, and the countdown
+   lays itself out as a row so its 32px numeral doesn't own half the screen. */
+@media(max-width:760px){
+  /* flex:1 1 260px sizes the MAIN axis, which is vertical once this row
+     becomes a column — left alone, both cards grow to fill the hero and the
+     resume card opens a dead gap between its meta line and its button.
+     flex:0 0 auto puts them back on their content height. */
+  .ov-hero-cards{flex-direction:column;}
+  .ov-resume-card{flex:0 0 auto;flex-direction:column;align-items:flex-start;gap:0;}
+  .ov-resume-body{flex:0 0 auto;width:100%;}
+  .ov-resume-meta{margin-bottom:13px;}
+  .ov-countdown{flex:0 0 auto;width:100%;flex-direction:row;flex-wrap:wrap;justify-content:flex-start;align-items:center;gap:10px;padding:13px 16px;}
+  .ov-cd-num{font-size:27px;}
+  .ov-cd-lbl{margin-top:0;text-align:left;}
+  .ov-cd-pace{margin-top:0;margin-left:auto;}
+  .ov-cd-link{margin-top:0;flex-basis:100%;}
 }
+@media(max-width:640px){
+  .ov-hero{padding:20px;}
+  .ov-greeting{font-size:21px;}
+  .ov-prog{flex-wrap:wrap;gap:8px;}
+  /* Free the viewport-height floor on phones: the hero alone fills the
+     screen, and stretching the grid on top of it just adds scroll. */
+  .overview-inner{min-height:0;}
+  .ov-subjects-grid{flex:none;}
+}
+@media(max-width:520px){.ov-subjects-grid{grid-template-columns:1fr;}}
 @media(prefers-reduced-motion:reduce){
-  .ov-subj-card,.ov-countdown{transition:none;}
-  .ov-subj-card:hover,.ov-countdown:hover{transform:none;}
-  .ov-prog-fill,.ov-subj-prog-fill{transition:none;}
+  .ov-subj-card,.ov-countdown,.ov-resume-card{transition:none;}
+  .ov-subj-card:hover,.ov-countdown:hover,.ov-resume-card:hover{transform:none;}
+  .ov-prog-fill,.ov-subj-prog-fill,.ov-resume-fill{transition:none;}
 }
 /* Legacy overview classes (kept for any remaining references) */
 .overview-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;}
 @media(max-width:1100px){.overview-grid{grid-template-columns:repeat(2,1fr);}}
-@media(max-width:600px){.overview-grid{grid-template-columns:1fr;}.ov-subjects-grid{grid-template-columns:1fr 1fr;}}
+/* .ov-subjects-grid used to be re-declared here too. It sits after the
+   Overview block, so it silently beat the 520px single-column rule above —
+   the grid's own breakpoints are the ones that apply. */
+@media(max-width:600px){.overview-grid{grid-template-columns:1fr;}}
 /* Subject overview in admin */
 .subj-ov-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:18px;}
 @media(max-width:900px){.subj-ov-grid{grid-template-columns:repeat(2,1fr);}}
@@ -688,11 +871,14 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 /* Topbar: contain layout so show/hide of children doesn't shift page content */
 .topbar{contain:layout style;overflow:hidden;}
 /* Overview: reserve height for the hero and quote that render dynamically.
-   The hero's height is set by the countdown block (the tallest child), so
-   pinning it here keeps the subjects grid from jumping while the flashcard
-   bundle resolves and fills in .ov-prog. */
-.ov-hero{min-height:150px;contain:layout inline-size;}
+   The reservation has to cover the FULLY POPULATED hero — the streak pill,
+   the resume card and the aggregate footer all appear only once the
+   flashcard bundle lands, and an under-reserved hero drops the subjects grid
+   at that moment. 258px is the resume card's height plus the greeting,
+   focus line and progress footer around it. */
+.ov-hero{min-height:258px;contain:layout inline-size;}
 .ov-quote{min-height:20px;contain:layout inline-size;}
+@media(max-width:760px){.ov-hero{min-height:0;}}
 /* Overview subject grid: reserve space to prevent reflow when cards render */
 .ov-subjects-grid{min-height:280px;}
 /* Progress page: reserve space for dynamically rendered content */
@@ -700,7 +886,14 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 /* Subject page: reserve space for tab content */
 #subject-tab-content{min-height:400px;}
 /* MAIN */
-.main{margin-left:var(--sw);flex:1;display:flex;flex-direction:column;min-height:100vh;transition:margin-left .22s ease;}
+/* min-width:0 is load-bearing. .main is a flex item, so it defaults to
+   min-width:auto — it refuses to shrink below its widest child's min-content
+   width. The topbar's controls (brand + theme + bell + name + Password +
+   Log Out) come to ~427px of min-content, so at 375px .main measured 403px
+   wide and the whole document scrolled sideways on every page, not just this
+   one. .topbar's overflow:hidden clipped the visual overspill but did nothing
+   about the width it forced on its parent. */
+.main{margin-left:var(--sw);flex:1;min-width:0;display:flex;flex-direction:column;min-height:100vh;transition:margin-left .22s ease;}
 .page{display:none;flex:1;} .page.on{display:block;animation:pageFadeIn 0.15s ease forwards;}
 @keyframes pageFadeIn{from{opacity:0}to{opacity:1}}
 /* PREGEN BANNER */
@@ -1315,8 +1508,40 @@ select.form-input{cursor:pointer;}
 #sbSubjectList::-webkit-scrollbar{width:4px;}#sbSubjectList::-webkit-scrollbar-track{background:transparent;}#sbSubjectList::-webkit-scrollbar-thumb{background:rgba(var(--gold-rgb),.2);border-radius:2px;}
 .subject-skeleton{height:40px;background:linear-gradient(90deg,rgba(var(--ovl),.04) 25%,rgba(var(--ovl),.08) 50%,rgba(var(--ovl),.04) 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:8px;margin-bottom:4px;}
 @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
-/* Topbar user display */
-#userNameDisplay{font-size:12px;font-weight:700;color:var(--gold);background:rgba(var(--gold-rgb),.1);border:1px solid rgba(var(--gold-rgb),.25);border-radius:8px;padding:0 11px;white-space:nowrap;gap:6px;}
+/* Topbar user display.
+   This slot used to end in "Lvl 45", identical to the badge in the sidebar
+   profile card visible at the same moment. The sidebar keeps the level —
+   it sits with the XP bar and the title it belongs to — and the topbar
+   spends the space on the study streak, which appears nowhere else outside
+   the Overview. */
+#userNameDisplay{display:inline-flex;align-items:center;min-width:0;font-size:12px;font-weight:700;color:var(--gold);background:rgba(var(--gold-rgb),.1);border:1px solid rgba(var(--gold-rgb),.25);border-radius:8px;padding:0 11px;gap:6px;}
+/* Truncates instead of pushing Password and Log Out off the edge. */
+.tb-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.tb-streak{display:inline-flex;flex-shrink:0;align-items:center;gap:3px;padding:1px 6px;border-radius:5px;background:rgba(var(--warn-rgb),.16);border:1px solid rgba(var(--warn-rgb),.34);color:var(--warn);font-family:var(--fm);font-size:10px;font-weight:700;letter-spacing:.02em;cursor:help;}
+
+/* ── Narrow topbar ───────────────────────────────────────────
+   .topbar sets overflow:hidden and .main sets min-width:0, so anything that
+   doesn't fit is silently CLIPPED rather than scrolled to. Password and
+   Log Out sit last in the row, which makes them the first casualties — and
+   they're the two controls with no other home in the UI. So the row sheds
+   its redundant parts in order of redundancy: the wordmark (the sidebar rail
+   shows it), then the user's name (the sidebar profile card shows it), then
+   the Password label (the lock icon and its aria-label carry it). */
+@media(max-width:760px){
+  :root.sb-collapsed .tb-brand{display:none;}
+  .tb-name{display:none;}
+  /* The chip sheds its own pill so that with the name hidden it is just a
+     wrapper: the streak carries its own background and border, and a user
+     with no streak yet gets nothing rather than an empty gold sliver.
+     Done this way rather than with :not(:has(…)) so it doesn't depend on
+     :has() support to avoid that sliver. */
+  #userNameDisplay{background:none;border:0;padding:0;gap:0;}
+  .cp-btn-lbl{display:none;}
+  .cp-btn{font-size:13px;padding:0 6px;}
+  .tb-right{gap:6px;}
+  .tb-right .btn-og{padding:0 10px;}
+  .topbar{padding:0 12px;}
+}
 /* Results detail modal */
 .res-detail-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:18px;}
 .res-dstat{background:rgba(var(--ovl),.04);border:1px solid var(--bdr2);border-radius:10px;padding:12px;text-align:center;}
@@ -1721,7 +1946,11 @@ button[onclick*="switchSubjectTab(currentSubject,'learn')"] { display: none !imp
    Flashcards student viewer (Session 3b)
    ═══════════════════════════════════════════════════════════ */
 
-/* Tab body — stats card */
+/* Tab body — stats card.
+   Its background/border/radius come from inline styles in
+   paintFlashcardsTabFromBundle; box-shadow doesn't, so the emboss lands here
+   without having to unpick that markup. */
+.fc-study-card { box-shadow: var(--emboss); }
 .fc-stat { text-align: center; }
 .fc-stat-num { font-size: 28px; font-weight: 700; line-height: 1.1; font-family: var(--fd); }
 .fc-stat-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; margin-top: 4px; }
@@ -1934,7 +2163,10 @@ body.fc-fs-lock{overflow:hidden;}
   padding: 34px 38px 26px;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 10px 34px rgba(0,0,0,.18), 0 2px 6px rgba(0,0,0,.08);
+  /* The deepest emboss in the app. This is the one surface a student stares
+     at for hours, and the lit top lip plus the shaded bottom is what makes
+     it read as a physical card to be turned over rather than as a panel. */
+  box-shadow: var(--emboss-deep);
 }
 
 .fc-card-front {}
