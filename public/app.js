@@ -3137,7 +3137,7 @@ function paintFlashcardsTabFromBundle(subj) {
 
   // Stats card with progress bar + Start button
   statsSlot.innerHTML = `
-    <div class="fc-study-card" style="background:var(--card);border:1px solid var(--bdr2);border-radius:14px;padding:22px;margin-bottom:16px;">
+    <div class="fc-study-card">
       <div style="display:flex;gap:24px;flex-wrap:wrap;margin-bottom:14px;">
         <div class="fc-stat">
           <div class="fc-stat-num" style="color:var(--teal);">${done}</div>
@@ -3613,17 +3613,20 @@ function renderFlashcardCardViewer() {
     </aside>
     <div class="fc-study-main">
     <div class="fc-viewer-wrap">
-      <div class="fc-viewer-topbar" style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap;">
-        <div style="display:flex;align-items:center;gap:12px;min-width:0;flex:1;">
-          <div class="fc-count" style="font-size:11px;color:var(--muted);white-space:nowrap;"></div>
-          <div style="flex:1;min-width:80px;max-width:220px;height:4px;background:rgba(var(--ovl),.06);border-radius:2px;overflow:hidden;">
-            <div class="fc-progress-fill" style="height:100%;background:linear-gradient(90deg,var(--gold),var(--gold-l));width:0%;transition:width .25s;"></div>
-          </div>
+      <!-- Classes rather than inline styles: the inline flex:1 on the meta
+           group could not be overridden from a media query, so on a phone the
+           count text and the Full Screen button ended up on top of each
+           other. See .fc-viewer-topbar in styles.css. -->
+      <div class="fc-viewer-topbar">
+        <div class="fc-vt-meta">
+          <div class="fc-count"></div>
+          <div class="fc-vt-track"><div class="fc-progress-fill"></div></div>
         </div>
-        <button class="btn-og fc-fs-btn" id="fc-fs-btn" onclick="toggleFlashcardFullscreen()"
-                style="font-size:11px;padding:5px 10px;" title="Full screen (Esc to exit)"
-                aria-pressed="false">⛶ Full Screen</button>
-        <button class="btn-og" onclick="endFlashcardSession()" style="font-size:11px;padding:5px 10px;">End Session</button>
+        <div class="fc-vt-actions">
+          <button class="btn-og fc-fs-btn" id="fc-fs-btn" onclick="toggleFlashcardFullscreen()"
+                  title="Full screen (Esc to exit)" aria-pressed="false">⛶ Full Screen</button>
+          <button class="btn-og fc-end-btn" onclick="endFlashcardSession()">End Session</button>
+        </div>
       </div>
 
       ${_fcPensMarkup()}
@@ -4887,9 +4890,21 @@ function toggleSidebarCollapse() {
 // Flashcards a silent no-op.
 let _fcSidebarUserCollapsed = false;
 
+// Below 900px this must not fire. The auto-expand exists so the topic
+// outline can sit beside the card on a wide screen — but the same 900px
+// breakpoint already stacks the outline ABOVE the card (.fc-study-layout
+// goes single-column), so there is nothing to reveal, and expanding the rail
+// takes 220px of a 375px phone. That left roughly 155px for the entire
+// viewer: the card count landed on top of the Full Screen button, the
+// highlighter row wrapped three deep, and card text was cut off mid-word.
+// The boot script in index.html collapses the rail under 900px for exactly
+// this reason; opening Flashcards was undoing it a moment later.
+const FC_SIDEBAR_AUTOEXPAND_MIN = 900;
+
 function maybeAutoExpandSidebarForFlashcards(mode) {
   if (mode !== 'flashcards') { _fcSidebarUserCollapsed = false; return; }
   if (_fcSidebarUserCollapsed) return;
+  if (window.innerWidth < FC_SIDEBAR_AUTOEXPAND_MIN) return;
   if (document.documentElement.classList.contains('sb-collapsed')) {
     setSidebarCollapsed(false);
   }
