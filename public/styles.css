@@ -132,6 +132,11 @@
   --c-civil:#5ba8ff;--c-criminal:#ff6b7a;--c-political:#5dd89a;
   --c-labor:#ffaa50;--c-commercial:#b87fff;--c-taxation:#50d0c0;
   --c-remedial:#f0d060;--c-ethics:#d4a878;--c-custom:#8899aa;
+  /* Speed Drill's violet. It was six hardcoded values (#a78bfa, #c4b5fd,
+     #6a3de8, #8b5cf6 and two rgba(139,92,246,…) washes) inlined in the tab's
+     markup, so the whole panel ignored the theme and its pale-lavender
+     heading sat at roughly 2:1 on paper. --c-drill-rgb backs the washes. */
+  --c-drill:#a78bfa;--c-drill-rgb:139,92,246;
   color-scheme:dark;
 }
 
@@ -201,6 +206,7 @@
   --c-civil:#1559b8;--c-criminal:#ab2b39;--c-political:#136b43;
   --c-labor:#9c5305;--c-commercial:#642dbb;--c-taxation:#09655c;
   --c-remedial:#7a5d05;--c-ethics:#6f4a2b;--c-custom:#455465;
+  --c-drill:#5a34b8;--c-drill-rgb:90,52,184;
   color-scheme:light;
 }
 /* Collapsed rail width. Everything positioned off the sidebar edge
@@ -343,22 +349,25 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 /* ── Progress Dashboard ─────────────────────────────────────── */
 .prog-page{display:flex;flex-direction:column;gap:22px;}
 .prog-summary-row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;}
-.prog-stat-card{background:var(--card2);border:1px solid var(--bdr);border-radius:14px;padding:18px 16px;display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px;transition:border-color .2s;}
+.prog-stat-card{background:var(--card2);border:var(--bdr-chunk) solid var(--bdr);border-radius:var(--r-chunk);padding:18px 16px;box-shadow:var(--emboss);display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px;transition:border-color .2s;}
 .prog-stat-card:hover{border-color:var(--bdr2);}
 .prog-stat-value{font-family:var(--fd);font-size:28px;font-weight:700;color:var(--gold-l);line-height:1;}
 .prog-stat-label{font-size:11px;color:var(--muted);letter-spacing:.04em;text-transform:uppercase;}
-.prog-section{background:var(--card2);border:1px solid var(--bdr);border-radius:14px;padding:20px 22px;}
+.prog-section{background:var(--card2);border:var(--bdr-chunk) solid var(--bdr);border-radius:var(--r-chunk);padding:20px 22px;box-shadow:var(--emboss);}
 .prog-section-title{font-family:var(--fd);font-size:16px;font-weight:700;color:var(--gold-l);margin-bottom:16px;display:flex;align-items:center;gap:8px;}
 .prog-chart-wrap{position:relative;height:240px;width:100%;}
 .prog-subj-list{display:flex;flex-direction:column;gap:10px;}
 .prog-subj-row{display:flex;align-items:center;gap:12px;}
 .prog-subj-name{width:130px;font-size:13px;font-family:var(--fd);font-weight:600;color:var(--white);flex-shrink:0;}
-.prog-subj-bar-wrap{flex:1;height:10px;background:rgba(var(--ovl),.07);border-radius:6px;overflow:hidden;}
+.prog-subj-bar-wrap{flex:1;height:10px;background:rgba(var(--ovl),.07);border-radius:99px;overflow:hidden;box-shadow:var(--deboss);}
 .prog-subj-bar{height:100%;border-radius:6px;transition:width .6s ease;}
 .prog-subj-pct{width:44px;text-align:right;font-size:12px;font-family:var(--fm);flex-shrink:0;}
-.prog-weak-banner{background:rgba(var(--danger-rgb),.1);border:1px solid rgba(var(--danger-rgb),.3);border-radius:10px;padding:12px 16px;font-size:13px;color:var(--danger);margin-bottom:14px;line-height:1.5;}
+/* --danger-fg, not --danger. On its own tinted panel #e07080 measured
+   4.17:1 on dark — under AA. --danger-fg is the token for a danger tone
+   sitting ON a danger wash and clears it in both themes. */
+.prog-weak-banner{background:rgba(var(--danger-rgb),.1);border:var(--bdr-chunk) solid rgba(var(--danger-rgb),.35);border-radius:var(--r-chunk-sm);padding:12px 16px;font-size:13px;color:var(--danger-fg);margin-bottom:14px;line-height:1.5;}
 .prog-insights-list{display:flex;flex-direction:column;gap:10px;}
-.prog-insight{padding:12px 14px;border-radius:10px;font-size:13px;line-height:1.55;border:1px solid var(--bdr);}
+.prog-insight{padding:12px 14px;border-radius:var(--r-chunk-sm);font-size:13px;line-height:1.55;border:var(--bdr-chunk) solid var(--bdr);box-shadow:var(--emboss);}
 .prog-insight.green{background:rgba(var(--teal-rgb),.08);border-color:rgba(var(--teal-rgb),.25);color:var(--teal-l);}
 .prog-insight.yellow{background:rgba(var(--gold-rgb),.08);border-color:rgba(var(--gold-rgb),.25);color:var(--gold-l);}
 .prog-insight.red{background:rgba(var(--danger-rgb),.08);border-color:rgba(var(--danger-rgb),.25);color:var(--danger);}
@@ -375,12 +384,17 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 
 /* ── Progress Page Tabs ──────────────────────────────────────── */
 .prog-tabs{display:flex;gap:8px;margin-bottom:22px;}
-.prog-tab-btn{display:flex;align-items:center;gap:7px;padding:10px 20px;font-family:var(--fd);font-size:13px;font-weight:700;border-radius:10px;border:1px solid var(--bdr2);background:transparent;color:var(--muted);cursor:pointer;transition:all .2s;}
+.prog-tab-btn{display:flex;align-items:center;gap:7px;padding:10px 20px;font-family:var(--fd);font-size:13px;font-weight:700;border-radius:var(--r-chunk-sm);border:var(--bdr-chunk) solid var(--bdr2);background:transparent;color:var(--muted);cursor:pointer;box-shadow:var(--emboss-btn);transition:color .2s,background .2s,border-color .2s,box-shadow .2s,transform .2s var(--ease-pop);}
+.prog-tab-btn:active{transform:translateY(1px);box-shadow:var(--deboss);}
 .prog-tab-btn:hover{color:var(--white);border-color:rgba(var(--gold-rgb),.35);}
-.prog-tab-btn.active{background:rgba(var(--gold-rgb),.12);border-color:rgba(var(--gold-rgb),.45);color:var(--gold-l);}
+.prog-tab-btn.active{background:rgba(var(--gold-rgb),.12);border-color:rgba(var(--gold-rgb),.5);color:var(--gold-l);box-shadow:var(--deboss);}
 
 /* ── XP & Level Tab ─────────────────────────────────────────── */
-.xp-hero{background:linear-gradient(135deg,rgba(var(--gold-rgb),.1),rgba(184,134,11,.05));border:1px solid rgba(var(--gold-rgb),.25);border-radius:16px;padding:24px 28px;display:flex;flex-direction:column;gap:12px;}
+/* Gold wash layered OVER --card, not used as the whole background. The old
+   value was linear-gradient(…, rgba(184,134,11,.05)) — a literal gold that
+   ignored the theme — painted straight onto the page, so on paper the hero
+   was a translucent brown smear rather than a card. */
+.xp-hero{background:linear-gradient(135deg,rgba(var(--gold-rgb),.12),rgba(var(--gold-rgb),.03)),var(--card);border:var(--bdr-chunk) solid rgba(var(--gold-rgb),.3);border-radius:var(--r-chunk);box-shadow:var(--emboss);padding:24px 28px;display:flex;flex-direction:column;gap:12px;}
 .xp-hero-top{display:flex;align-items:center;gap:16px;}
 .xp-level-badge{width:64px;height:64px;border-radius:50%;background:linear-gradient(135deg,#6d4e07,#87610c);display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 4px 18px rgba(184,134,11,.35);}
 .xp-level-badge .lvl-num{font-family:var(--fd);font-size:22px;font-weight:800;color:#fff;line-height:1;}
@@ -389,11 +403,11 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .xp-title{font-family:var(--fd);font-size:22px;font-weight:700;color:var(--gold-l);line-height:1.2;}
 .xp-subtitle{font-size:13px;color:var(--muted);margin-top:4px;}
 .xp-bar-wrap{width:100%;}
-.xp-bar-track{height:14px;background:rgba(var(--ovl),.07);border-radius:8px;overflow:hidden;position:relative;}
-.xp-bar-fill{height:100%;border-radius:8px;background:linear-gradient(90deg,#b8860b,#d4a843,#f0c455);transition:width .8s cubic-bezier(.4,0,.2,1);box-shadow:0 0 12px rgba(var(--gold-rgb),.4);}
+.xp-bar-track{height:14px;background:rgba(var(--ovl),.07);border-radius:99px;overflow:hidden;position:relative;box-shadow:var(--deboss);}
+.xp-bar-fill{height:100%;border-radius:99px;background:linear-gradient(90deg,#b8860b,#d4a843,#f0c455);transition:width .8s cubic-bezier(.4,0,.2,1);box-shadow:0 0 12px rgba(var(--gold-rgb),.4);}
 .xp-bar-meta{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:6px;}
 .xp-stats-row{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;}
-.xp-stat-card{background:var(--card2);border:1px solid var(--bdr);border-radius:12px;padding:16px;text-align:center;}
+.xp-stat-card{background:var(--card2);border:var(--bdr-chunk) solid var(--bdr);border-radius:var(--r-chunk);padding:16px;text-align:center;box-shadow:var(--emboss);}
 .xp-stat-val{font-family:var(--fd);font-size:24px;font-weight:700;color:var(--gold-l);}
 .xp-stat-lbl{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-top:4px;}
 .xp-history-table{width:100%;border-collapse:collapse;}
@@ -401,7 +415,7 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .xp-history-table td{padding:10px 12px;font-size:13px;border-bottom:1px solid rgba(var(--ovl),.04);vertical-align:middle;}
 .xp-history-table tr:last-child td{border-bottom:none;}
 .xp-history-table .xp-earned{font-family:var(--fm);font-weight:700;color:var(--teal-l);text-align:right;}
-.xp-action-badge{display:inline-block;padding:2px 8px;border-radius:6px;font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;background:rgba(var(--gold-rgb),.12);color:var(--gold-l);border:1px solid rgba(var(--gold-rgb),.2);}
+.xp-action-badge{display:inline-block;padding:3px 9px;border-radius:99px;font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;background:rgba(var(--gold-rgb),.12);color:var(--gold-l);border:1px solid rgba(var(--gold-rgb),.2);}
 
 /* ── Sidebar Level Badge ─────────────────────────────────────── */
 .sb-level-badge{display:inline-flex;align-items:center;gap:3px;background:rgba(184,134,11,.18);border:1px solid rgba(184,134,11,.35);border-radius:5px;padding:1px 6px;font-size:10px;font-weight:700;color:var(--gold-l);letter-spacing:.02em;flex-shrink:0;}
@@ -414,7 +428,7 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 
 /* ── XP Popup Overlay ────────────────────────────────────────── */
 .xp-popup-overlay{position:fixed;inset:0;background:rgba(5,8,18,.88);z-index:2000;display:flex;align-items:center;justify-content:center;padding:20px;}
-.xp-popup{background:var(--card);border:1px solid rgba(var(--gold-rgb),.3);border-radius:20px;padding:32px 36px;max-width:420px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.6),0 0 80px rgba(var(--gold-rgb),.08);}
+.xp-popup{background:var(--card);border:var(--bdr-chunk) solid rgba(var(--gold-rgb),.38);border-radius:var(--r-chunk);padding:32px 36px;max-width:420px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.6),0 0 80px rgba(var(--gold-rgb),.08);}
 .xp-popup-title{font-family:var(--fd);font-size:22px;font-weight:800;color:var(--gold-l);text-align:center;margin-bottom:24px;}
 .xp-line-item{display:flex;justify-content:space-between;align-items:center;padding:8px 0;font-size:14px;opacity:0;transform:translateY(8px);transition:opacity .3s ease,transform .3s ease;}
 .xp-line-item.visible{opacity:1;transform:translateY(0);}
@@ -426,14 +440,15 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .xp-line-total .xp-line-value{font-size:20px;color:var(--gold-l);}
 .xp-popup-bar-wrap{margin:18px 0;}
 .xp-popup-bar-label{font-size:12px;color:var(--muted);margin-bottom:8px;display:flex;justify-content:space-between;}
-.xp-popup-bar-track{height:12px;background:rgba(var(--ovl),.07);border-radius:8px;overflow:hidden;}
-.xp-popup-bar-fill{height:100%;border-radius:8px;background:linear-gradient(90deg,#b8860b,#d4a843);width:0%;transition:width 1s cubic-bezier(.4,0,.2,1);}
-.xp-popup .btn-view-results{width:100%;margin-top:18px;padding:14px;font-family:var(--fd);font-size:15px;font-weight:700;background:linear-gradient(135deg,rgba(var(--gold-rgb),.2),rgba(var(--gold-rgb),.1));border:1px solid rgba(var(--gold-rgb),.45);color:var(--gold-l);border-radius:12px;cursor:pointer;transition:all .2s;}
+.xp-popup-bar-track{height:12px;background:rgba(var(--ovl),.07);border-radius:99px;overflow:hidden;box-shadow:var(--deboss);}
+.xp-popup-bar-fill{height:100%;border-radius:99px;background:linear-gradient(90deg,#b8860b,#d4a843);width:0%;transition:width 1s cubic-bezier(.4,0,.2,1);}
+.xp-popup .btn-view-results{width:100%;margin-top:18px;padding:14px;font-family:var(--fd);font-size:15px;font-weight:800;background:linear-gradient(135deg,rgba(var(--gold-rgb),.2),rgba(var(--gold-rgb),.1));border:var(--bdr-chunk) solid rgba(var(--gold-rgb),.5);color:var(--gold-l);border-radius:var(--r-chunk-sm);cursor:pointer;box-shadow:var(--emboss-btn);transition:all .2s;}
+.xp-popup .btn-view-results:active{transform:translateY(1px);box-shadow:var(--deboss);}
 .xp-popup .btn-view-results:hover{background:rgba(var(--gold-rgb),.25);}
 
 /* ── Level Up Modal ─────────────────────────────────────────── */
 .lvlup-overlay{position:fixed;inset:0;background:rgba(5,8,18,.92);z-index:2100;display:flex;align-items:center;justify-content:center;padding:20px;animation:fadeIn .3s ease;}
-.lvlup-modal{background:var(--card);border:1px solid rgba(var(--gold-rgb),.4);border-radius:20px;padding:36px;max-width:380px;width:100%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.7),0 0 100px rgba(var(--gold-rgb),.12);}
+.lvlup-modal{background:var(--card);border:var(--bdr-chunk) solid rgba(var(--gold-rgb),.45);border-radius:var(--r-chunk);padding:36px;max-width:380px;width:100%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.7),0 0 100px rgba(var(--gold-rgb),.12);}
 .lvlup-icon{font-size:56px;margin-bottom:12px;animation:lvlupBounce .6s ease;}
 .lvlup-heading{font-family:var(--fd);font-size:28px;font-weight:800;color:var(--gold-l);margin-bottom:8px;}
 .lvlup-sub{font-size:15px;color:var(--muted);margin-bottom:20px;}
@@ -559,21 +574,43 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .notif-switch:disabled{opacity:.5;cursor:not-allowed;}
 @media(max-width:560px){.notif-panel{width:min(310px,calc(100vw - 24px));}}
 
+/* Mock Bar setup sits in the middle of the page rather than hugging the left
+   edge, matching .sd-setup. .pg-inner is 860px wide and the setup cards are
+   a narrow column, so left-aligned they left two thirds of the page empty.
+   #mockSession and #mockResults are siblings of this, not children, so the
+   cap never reaches the exam itself. */
+#mockConfig{max-width:640px;margin:0 auto;}
+
 /* Subject page internal tabs */
 .subject-page-header{display:flex;align-items:center;gap:16px;margin-bottom:24px;padding:20px 24px;
-  background:linear-gradient(135deg,rgba(var(--gold-rgb),.08) 0%,transparent 60%);
-  border:1px solid rgba(var(--gold-rgb),.15);border-radius:16px;position:relative;overflow:hidden;}
+  background:var(--card);
+  border:var(--bdr-chunk) solid rgba(var(--gold-rgb),.22);border-radius:var(--r-chunk);position:relative;overflow:hidden;box-shadow:var(--emboss);}
 .subject-page-header::before{content:'';position:absolute;top:-30px;right:-30px;width:120px;height:120px;
   border-radius:50%;background:var(--subject-color,var(--gold));opacity:.05;pointer-events:none;}
 .subject-color-bar{width:5px;height:48px;border-radius:3px;flex-shrink:0;}
 .subject-page-title{font-family:var(--fd);font-size:26px;font-weight:800;color:var(--gold-l);margin:0 0 4px;letter-spacing:-.01em;}
 .subject-page-meta{font-size:13px;color:var(--text-muted);}
 /* pill-style tab bar */
-.subject-tab-bar{display:flex;gap:6px;background:rgba(0,0,0,.2);padding:5px;border-radius:14px;border:1px solid var(--bdr);margin-bottom:28px;width:fit-content;}
-.subject-tab{padding:9px 22px;font-family:var(--fd);font-size:13px;font-weight:600;color:var(--text-muted);cursor:pointer;border-radius:10px;border:1px solid transparent;background:transparent;transition:all .2s;display:flex;align-items:center;gap:7px;white-space:nowrap;}
-.subject-tab:hover{color:var(--text);background:rgba(var(--ovl),.05);}
-.subject-tab.active{background:linear-gradient(135deg,rgba(var(--gold-rgb),.2),rgba(var(--gold-rgb),.12));color:var(--gold-l);border-color:rgba(var(--gold-rgb),.3);box-shadow:0 2px 8px rgba(var(--gold-rgb),.15);}
+/* A recessed track with raised segments. The background was rgba(0,0,0,.2) —
+   a literal black wash, so on paper the tab bar was a dark grey slab. A
+   --deboss well reads as a track in both themes. */
+.subject-tab-bar{display:flex;gap:6px;background:rgba(var(--ovl),.05);padding:5px;border-radius:var(--r-chunk);border:var(--bdr-chunk) solid var(--bdr);margin-bottom:28px;width:fit-content;max-width:100%;box-shadow:var(--deboss);}
+.subject-tab{padding:9px 22px;font-family:var(--fd);font-size:13px;font-weight:700;color:var(--text-muted);cursor:pointer;border-radius:var(--r-chunk-sm);border:var(--bdr-chunk) solid transparent;background:transparent;transition:color .2s,background .2s,border-color .2s,box-shadow .2s,transform .2s var(--ease-pop);display:flex;align-items:center;gap:7px;white-space:nowrap;}
+.subject-tab:hover{color:var(--text);background:rgba(var(--ovl),.06);transform:translateY(-1px);}
+.subject-tab.active{background:var(--card);color:var(--gold-l);border-color:rgba(var(--gold-rgb),.4);box-shadow:var(--emboss);}
+.subject-tab:active{transform:translateY(1px);box-shadow:var(--deboss);}
 .subject-tab.tab-disabled{opacity:.3;pointer-events:none;}
+/* Speed Drill keeps its violet identity, from the token rather than inline. */
+.subject-tab#stab-speeddrill{color:var(--c-drill);}
+.subject-tab#stab-speeddrill.active{color:var(--c-drill);border-color:rgba(var(--c-drill-rgb),.45);}
+
+/* Phones: the bar was width:fit-content with nowrap tabs, so five modes ran
+   straight off the side of a 375px screen with no way to reach the last one.
+   It becomes a full-width wrapping grid of equal segments instead. */
+@media(max-width:760px){
+  .subject-tab-bar{width:100%;flex-wrap:wrap;gap:5px;}
+  .subject-tab{flex:1 1 auto;min-width:0;justify-content:center;padding:10px 12px;font-size:12.5px;}
+}
 /* General ref warning */
 .general-ref-warning{background:rgba(var(--gold-rgb),.08);border:1px solid rgba(var(--gold-rgb),.2);border-radius:8px;padding:8px 12px;font-size:11px;color:rgba(var(--gold-rgb),.8);margin-top:6px;display:none;}
 /* legacy s-btn kept for JS compat, hidden */
@@ -678,7 +715,10 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 /* Streak rides the greeting rather than sitting in a row of stat chips. The
    chips restated numbers the two cards below already carry, and pushed the
    one actionable control in the hero below the fold on a laptop. */
-.ov-streak-pill{display:inline-flex;align-items:center;gap:5px;background:rgba(var(--gold-rgb),.16);color:var(--gold-l);font-weight:700;font-size:12px;padding:4px 11px;border-radius:999px;white-space:nowrap;cursor:help;box-shadow:var(--deboss);}
+/* No cursor:help. "6-day streak" says what it is, so the help cursor was
+   promising an explanation the label did not need — it just put a question
+   mark under the pointer every time it crossed the greeting. */
+.ov-streak-pill{display:inline-flex;align-items:center;gap:5px;background:rgba(var(--gold-rgb),.16);color:var(--gold-l);font-weight:700;font-size:12px;padding:4px 11px;border-radius:999px;white-space:nowrap;box-shadow:var(--deboss);}
 
 .ov-hero-cards{display:flex;gap:16px;flex-wrap:wrap;align-items:stretch;}
 
@@ -1617,7 +1657,6 @@ select.form-input{cursor:pointer;}
 #userNameDisplay{display:inline-flex;align-items:center;min-width:0;font-size:12px;font-weight:700;color:var(--gold);background:rgba(var(--gold-rgb),.1);border:1px solid rgba(var(--gold-rgb),.25);border-radius:8px;padding:0 11px;gap:6px;}
 /* Truncates instead of pushing Password and Log Out off the edge. */
 .tb-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.tb-streak{display:inline-flex;flex-shrink:0;align-items:center;gap:3px;padding:1px 6px;border-radius:5px;background:rgba(var(--warn-rgb),.16);border:1px solid rgba(var(--warn-rgb),.34);color:var(--warn);font-family:var(--fm);font-size:10px;font-weight:700;letter-spacing:.02em;cursor:help;}
 
 /* ── Narrow topbar ───────────────────────────────────────────
    .topbar sets overflow:hidden and .main sets min-width:0, so anything that
@@ -1840,7 +1879,33 @@ select.form-input{cursor:pointer;}
 .kb-status-pill{padding:5px 12px;border-radius:20px;background:rgba(var(--teal-rgb),.1);border:1px solid rgba(var(--teal-rgb),.25);font-size:11px;font-weight:700;color:var(--teal);font-family:var(--fm);}
 
 /* LEARN TAB ENHANCEMENTS */
-.topic-list-container{background:var(--card);border:1px solid var(--bdr);border-radius:14px;overflow:hidden;}
+.topic-list-container{background:var(--card);border:var(--bdr-chunk) solid var(--bdr);border-radius:var(--r-chunk);overflow:hidden;box-shadow:var(--emboss);}
+
+/* ── Speed Drill setup ───────────────────────────────────────
+   Centred like the Mock Bar setup, and on --card so it is white on paper.
+   The panel used to be a translucent violet wash over whatever was behind
+   it, with a #c4b5fd heading that measured about 2:1 on light. */
+.sd-setup{max-width:560px;margin:0 auto;}
+.sd-card{border-color:rgba(var(--c-drill-rgb),.35);}
+.sd-head{display:flex;align-items:center;gap:14px;margin-bottom:16px;}
+.sd-head-icon{font-size:36px;line-height:1;}
+.sd-head-title{font-family:var(--fd);font-size:18px;font-weight:800;color:var(--c-drill);margin-bottom:3px;}
+.sd-head-sub{font-size:12px;color:var(--text-muted);line-height:1.55;}
+.sd-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:18px;}
+.sd-stat{background:rgba(var(--c-drill-rgb),.10);border:var(--bdr-chunk) solid rgba(var(--c-drill-rgb),.28);border-radius:var(--r-chunk-sm);padding:12px;text-align:center;box-shadow:var(--emboss);}
+.sd-stat-val{font-size:22px;font-weight:800;color:var(--c-drill);font-family:var(--fd);}
+.sd-stat-lbl{font-size:11px;color:var(--muted);margin-top:2px;}
+.sd-note{font-size:12px;color:var(--text-muted);line-height:1.65;margin-bottom:18px;padding:12px 14px;background:rgba(var(--ovl),.04);border-radius:var(--r-chunk-sm);border-left:3px solid rgba(var(--c-drill-rgb),.5);box-shadow:var(--deboss);}
+.sd-error{margin-bottom:12px;padding:10px 14px;background:rgba(var(--danger-rgb),.12);border:var(--bdr-chunk) solid rgba(var(--danger-rgb),.38);border-radius:var(--r-chunk-sm);color:var(--danger);font-size:13px;}
+.sd-start-btn{width:100%;display:flex;align-items:center;justify-content:center;gap:8px;padding:14px;font-family:var(--fd);font-size:15px;font-weight:800;color:#fff;background:linear-gradient(135deg,rgba(var(--c-drill-rgb),1),rgba(var(--c-drill-rgb),.78));border:none;border-radius:var(--r-chunk-sm);cursor:pointer;box-shadow:var(--emboss-btn),0 4px 18px rgba(var(--c-drill-rgb),.35);transition:box-shadow .2s,transform .2s var(--ease-pop),opacity .2s;}
+.sd-start-btn:hover:not(:disabled){transform:translateY(-2px);box-shadow:var(--emboss-btn),0 8px 26px rgba(var(--c-drill-rgb),.45);}
+.sd-start-btn:active:not(:disabled){transform:translateY(1px);box-shadow:var(--deboss);}
+.sd-start-btn:disabled{opacity:.6;cursor:not-allowed;}
+@media(max-width:520px){.sd-stats{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;}.sd-stat{padding:10px 6px;}.sd-stat-val{font-size:19px;}}
+@media(prefers-reduced-motion:reduce){
+  .sd-start-btn,.subject-tab{transition:box-shadow .01s,background .01s,color .01s;}
+  .sd-start-btn:hover,.sd-start-btn:active,.subject-tab:hover,.subject-tab:active{transform:none;}
+}
 .tl-topic:hover{background:rgba(var(--gold-rgb),.05);}
 /* Long-form lesson copy. Was 14px with no cap on line length; both are the
    usual reasons a text-heavy page feels like work to read. */
