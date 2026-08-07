@@ -90,7 +90,14 @@ let syllabusData = {};
 // Per-subject syllabus cache for Learn tab
 const syllabusCache = {};
 let currentTopic = null; // tracks last-clicked syllabus node for PDF retry
-let mbCount = 20, mbTimeMins = 0, mbDifficulty = 'balanced';  // mock bar setup state
+// Mock bar setup state. mbDifficulty no longer has a control — the Difficulty
+// Preference cards were removed from both setups — but /api/mockbar/generate
+// still takes the field, so it stays pinned to the value those cards defaulted
+// to. Deleting it would change what the server is asked for, not just the UI.
+let mbCount = 20, mbTimeMins = 0, mbDifficulty = 'balanced';
+// The most questions a custom count may request. The two inputs offering one
+// had drifted to max="50" and max="100"; a full mock is 20.
+const MB_MAX_COUNT = 20;
 
 // Subject identity colours are the --c-* theme tokens, never literals.
 //
@@ -2877,17 +2884,18 @@ async function renderMockBarTab(subj, container) {
   const s = ALL_SUBJS.find(x => x.key === subj);
   const presets = [[5,'5'],[10,'10'],[20,'20']];
   const timeOpts = [[0,'No limit'],[30,'30 min'],[60,'1 hr'],[120,'2 hr'],[180,'3 hr'],[240,'4 hr']];
-  const diffOpts = [['balanced','⚖️ Balanced'],['situational','📋 Situational'],['conceptual','💡 Conceptual']];
+  // Difficulty Preference is gone. mbDifficulty stays pinned to 'balanced'
+  // (see its declaration) because /api/mockbar/generate still takes the field.
   container.innerHTML = `
-    <div style="max-width:580px;">
+    <div class="mb-tab-setup">
       <div class="mb-setup-card">
         <div class="mb-section-label">Number of Questions</div>
         <div class="mb-btn-row" id="stMbCountRow">
           ${presets.map(([n,l])=>`<button class="mb-preset-btn${mbCount===n?' active':''}" onclick="stSetMbCount(${n},this)">${l}</button>`).join('')}
-          <input type="number" id="stMbCustomCount" min="1" max="100" placeholder="Custom"
+          <input type="number" id="stMbCustomCount" class="mb-custom-count" min="1" max="${MB_MAX_COUNT}"
+            placeholder="Custom" aria-label="Custom number of questions (max ${MB_MAX_COUNT})"
             value="${![5,10,20].includes(mbCount)?mbCount:''}"
-            style="width:64px;background:rgba(var(--ovl),.06);border:1px solid rgba(var(--ovl),.12);border-radius:8px;padding:7px 10px;color:var(--white);font-size:13px;font-family:var(--fb);"
-            oninput="stSetMbCount(parseInt(this.value)||20)">
+            oninput="stSetMbCount(parseInt(this.value)||0,null,this)">
         </div>
       </div>
       <div class="mb-setup-card">
@@ -2896,14 +2904,11 @@ async function renderMockBarTab(subj, container) {
           ${timeOpts.map(([m,l])=>`<button class="mb-preset-btn${mbTimeMins===m?' active':''}" onclick="stSetMbTime(${m},this)">${l}</button>`).join('')}
         </div>
       </div>
-      <div class="mb-setup-card">
-        <div class="mb-section-label">Difficulty Preference</div>
-        <div class="mb-btn-row" id="stMbDiffRow">
-          ${diffOpts.map(([d,l])=>`<button class="mb-preset-btn${mbDifficulty===d?' active':''}" onclick="stSetMbDiff('${d}',this)">${l}</button>`).join('')}
-        </div>
-      </div>
-      <div class="mb-preview" id="mockbar-preview">Loading…</div>
-      <div id="stMbWarnBanner" class="mb-warn-banner" style="display:none;"></div>
+      <!-- .mb-preview only exists while it has something to say — see
+           updateMockPreview. It used to render unconditionally and
+           updateMockPreview sets it to '' in the normal case, so an empty
+           gold-bordered box sat under the setup nearly all the time. -->
+      <div class="mb-preview" id="mockbar-preview" style="display:none;"></div>
       <button class="btn-gold" id="stStartMockBtn" onclick="startSubjectMockBar('${subj}')"
         style="width:100%;justify-content:center;font-size:15px;padding:14px;margin-top:8px;">
         ⚡ Start ${h(s?.name||subj)} Mock Bar
@@ -2912,20 +2917,22 @@ async function renderMockBarTab(subj, container) {
   updateMockPreview();
 }
 
-function stSetMbCount(n, btn) {
-  mbCount = n || 20;
+// Custom counts are capped at MB_MAX_COUNT. `el` is the number input when the
+// change came from typing, so an over-cap entry is corrected in place rather
+// than silently diverging from what the field shows.
+function stSetMbCount(n, btn, el) {
+  mbCount = Math.min(MB_MAX_COUNT, Math.max(1, n || 20));
+  if (el && n > MB_MAX_COUNT) el.value = MB_MAX_COUNT;
   document.querySelectorAll('#stMbCountRow .mb-preset-btn').forEach(b => b.classList.remove('active'));
   if (btn) btn.classList.add('active');
+  // Typing a custom count clears the preset highlight, so the row never shows
+  // "20" selected while the field says something else.
+  if (el) document.getElementById('stMbCustomCount')?.classList.add('is-set');
   updateMockPreview();
 }
 function stSetMbTime(mins, btn) {
   mbTimeMins = mins;
   document.querySelectorAll('#stMbTimeRow .mb-preset-btn').forEach(b => b.classList.remove('active'));
-  if (btn) btn.classList.add('active');
-}
-function stSetMbDiff(diff, btn) {
-  mbDifficulty = diff;
-  document.querySelectorAll('#stMbDiffRow .mb-preset-btn').forEach(b => b.classList.remove('active'));
   if (btn) btn.classList.add('active');
 }
 
@@ -2944,7 +2951,9 @@ function updateMockPreview() {
       ? `⚠️ Only ${avail} question${avail!==1?'s':''} available — will draw ${avail}.`
       : ``;
   const prev = document.getElementById('mockbar-preview') || document.getElementById('mbPreview');
-  if (prev) prev.textContent = text;
+  // Collapse when there is nothing to warn about, rather than leaving an
+  // empty bordered box under the setup.
+  if (prev) { prev.textContent = text; prev.style.display = text ? '' : 'none'; }
   const btn = document.getElementById('stStartMockBtn') || document.getElementById('startMockBtn');
   if (btn) { btn.disabled = avail === 0; btn.style.opacity = avail === 0 ? '0.4' : '1'; }
 }
@@ -4950,13 +4959,14 @@ function renderSidebar() {
   if (!list) return;
   const html = SUBJS.map(s => {
     const hasMaterials = (KB.references||[]).some(r=>r.subject===s.key) || (KB.pastBar||[]).some(p=>p.subject===s.key);
-    const qCount = (KB.pastBar||[]).filter(p=>p.subject===s.key).reduce((a,p)=>a+(p.qCount||0),0);
-    // The per-subject "N due" badge lives in the notification panel now, where
-    // it comes with a review action instead of just a number.
+    // No per-subject counts here. The "N due" badge already moved to the
+    // notification panel, where it comes with a review action; the past-bar
+    // question count ("166q") has gone the same way — the subject card on the
+    // Overview states it in full ("166 asked in past bars"), so in the rail it
+    // was an unexplained number competing with the subject's own name.
     return `<button class="sb-subject" id="sb-subj-${s.key}" style="--subject-color:${s.color};" onclick="navToSubject('${s.key}')" title="${h(s.name)}">
       <span class="sb-subj-dot" style="background:${hasMaterials?s.color:'rgba(var(--txt2-rgb),.2)'};"></span>
       <span class="sb-subj-name sb-lbl">${h(s.name)}</span>
-      ${qCount>0?`<span class="sb-subj-qcount sb-lbl">${qCount}q</span>`:''}
       <span class="sb-lock-icon sb-lbl" style="display:none;">🔒</span>
     </button>`;
   }).join('');
@@ -4983,20 +4993,14 @@ function refreshSidebarDots() {
     const hasMaterials = (KB.references||[]).some(r=>r.subject===s.key) || (KB.pastBar||[]).some(p=>p.subject===s.key);
     const dot = el.querySelector('.sb-subj-dot');
     if (dot) dot.style.background = hasMaterials ? s.color : 'rgba(var(--txt2-rgb),.2)';
-    const qCount = (KB.pastBar||[]).filter(p=>p.subject===s.key).reduce((a,p)=>a+(p.qCount||0),0);
-    let countEl = el.querySelector('.sb-subj-qcount');
-    if (qCount > 0) {
-      if (!countEl) { countEl = document.createElement('span'); countEl.className='sb-subj-qcount sb-lbl'; el.insertBefore(countEl, el.querySelector('.sb-lock-icon')); }
-      countEl.textContent = qCount + 'q';
-    } else if (countEl) { countEl.remove(); }
+    // This used to re-create the "166q" badge on every refresh, so removing it
+    // from renderSidebar alone would have put it straight back. Any left over
+    // from a previous render is swept up here.
+    el.querySelector('.sb-subj-qcount')?.remove();
   });
-  // Custom subject count badge
-  const customQCount = (KB.pastBar||[]).filter(p=>p.subject==='custom').reduce((a,p)=>a+(p.qCount||0),0);
+  // Custom Subject's count badge goes with the rest of them.
   const customCountEl = document.getElementById('sbCustomCount');
-  if (customCountEl) {
-    customCountEl.textContent = customQCount > 0 ? customQCount + 'q' : '';
-    customCountEl.style.display = customQCount > 0 ? '' : 'none';
-  }
+  if (customCountEl) customCountEl.style.display = 'none';
 }
 
 // ══════════════════════════════════
@@ -6652,7 +6656,6 @@ function initMockBarSetup(preselectedSubj) {
   document.querySelectorAll('#mbCountRow .mb-preset-btn').forEach(b => b.classList.toggle('active', parseInt(b.dataset.count)===20));
   document.getElementById('mbCustomCount').style.display = 'none';
   document.querySelectorAll('[data-min]').forEach(b => b.classList.toggle('active', parseInt(b.dataset.min)===0));
-  document.querySelectorAll('[data-diff]').forEach(b => b.classList.toggle('active', b.dataset.diff==='balanced'));
   // Subject filter
   const subjectCard = document.getElementById('mbSubjectFilterCard');
   if (preselectedSubj && preselectedSubj !== 'all') {
@@ -6697,19 +6700,16 @@ function setMbCount(n, btn) {
   document.querySelectorAll('#mbCountRow .mb-preset-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   const custom = document.getElementById('mbCustomCount');
-  if (n === 0) { custom.style.display='block'; mbCount = parseInt(custom.value)||10; }
-  else { custom.style.display='none'; mbCount = n; }
+  if (n === 0) {
+    custom.style.display='block';
+    mbCount = Math.min(MB_MAX_COUNT, Math.max(1, parseInt(custom.value)||10));
+  } else { custom.style.display='none'; mbCount = n; }
   updateMockPreview();
 }
 function setMbTime(mins, btn) {
   document.querySelectorAll('[data-min]').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   mbTimeMins = mins;
-}
-function setMbDiff(diff, btn) {
-  document.querySelectorAll('[data-diff]').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-  mbDifficulty = diff;
 }
 function toggleMbSubj(btn) {
   const key = btn.dataset.key;
@@ -6766,7 +6766,11 @@ function updateMockBarPreview() { updateMockPreview(); }
 async function startMockBar(){
   const customInput = document.getElementById('mbCustomCount');
   const isCustom = document.querySelector('#mbCountRow .mb-preset-btn[data-count="0"]')?.classList.contains('active');
-  const count = isCustom ? (parseInt(customInput?.value)||10) : mbCount;
+  // Clamped here too: the input's max attribute stops the spinner going past
+  // 20 but not a pasted or typed value.
+  const count = isCustom
+    ? Math.min(MB_MAX_COUNT, Math.max(1, parseInt(customInput?.value)||10))
+    : mbCount;
   const timeMin = mbTimeMins;
   // Determine subject scope: forced subject (custom/single) or multi-subject selection
   const forcedSubj = document.getElementById('mbSubjectFilterCard')?.dataset.forcedSubj;

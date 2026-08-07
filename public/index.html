@@ -352,8 +352,9 @@ new PerformanceObserver((list) => {
         <button class="mb-preset-btn active" data-count="20" onclick="setMbCount(20,this)">20 — Full</button>
         <button class="mb-preset-btn" data-count="0" onclick="setMbCount(0,this)">Custom</button>
       </div>
-      <input type="number" id="mbCustomCount" min="1" max="50" placeholder="Enter count…" oninput="updateMockBarPreview()"
-        style="display:none;margin-top:10px;background:rgba(var(--ovl),.05);border:1px solid var(--bdr2);border-radius:9px;padding:8px 12px;color:var(--white);font-family:var(--fm);font-size:14px;outline:none;width:140px;">
+      <input type="number" id="mbCustomCount" class="mb-custom-count" min="1" max="20" placeholder="Enter count…"
+        aria-label="Custom number of questions (max 20)" oninput="updateMockBarPreview()"
+        style="display:none;margin-top:10px;">
     </div>
 
     <!-- TIME LIMIT -->
@@ -396,16 +397,6 @@ new PerformanceObserver((list) => {
         <button class="tab-global-btn" onclick="setAllMbTopics(false)">Deselect All</button>
       </div>
       <div id="mbTopicCheckboxes" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:4px;"></div>
-    </div>
-
-    <!-- DIFFICULTY -->
-    <div class="mb-setup-card">
-      <div class="mb-section-label">Difficulty Focus</div>
-      <div class="mb-btn-row">
-        <button class="mb-preset-btn active" data-diff="balanced"    onclick="setMbDiff('balanced',this)">⚖ Balanced</button>
-        <button class="mb-preset-btn" data-diff="situational"  onclick="setMbDiff('situational',this)">📋 More Situational</button>
-        <button class="mb-preset-btn" data-diff="conceptual"   onclick="setMbDiff('conceptual',this)">💡 More Conceptual</button>
-      </div>
     </div>
 
     <!-- PREVIEW + START -->
