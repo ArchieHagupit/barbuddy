@@ -2718,16 +2718,14 @@ function renderSubjectTabs(subj, activeMode) {
   bar.innerHTML = tabs.map(t => {
     const enabled = ts[t.mode] !== false;
     const isActive = t.mode === activeMode;
-    const drillStyle = t.mode === 'speeddrill'
-      ? (isActive
-          ? 'color:#a78bfa;background:linear-gradient(135deg,rgba(139,92,246,.25),rgba(106,61,232,.15));border-color:rgba(139,92,246,.4);box-shadow:0 2px 8px rgba(139,92,246,.2);'
-          : 'color:#7c6fa0;')
-      : '';
+    // Speed Drill's violet lives in .subject-tab#stab-speeddrill now. It was
+    // inlined here as #a78bfa / #7c6fa0 and three rgba(139,92,246,…) stops,
+    // which both ignored the theme — #7c6fa0 on paper is a washed-out grey —
+    // and outranked any stylesheet rule trying to fix it.
     return `<button id="stab-${t.mode}"
       class="subject-tab${isActive?' active':''}${!enabled?' tab-disabled':''}"
       onclick="switchSubjectTab('${subj}','${t.mode}')"
-      ${!enabled?'disabled':''}
-      style="${drillStyle}">
+      ${!enabled?'disabled':''}>
       ${t.icon} ${t.label}${!enabled?' 🔒':''}
     </button>`;
   }).join('');
@@ -2978,37 +2976,31 @@ function renderSpeedDrillTab(subj, container) {
   if (!container) return;
   const s = ALL_SUBJS.find(x => x.key === subj);
   const subjName = h(s?.name || subj);
-  const subjColor = s?.color || '#8b5cf6';
+  // Classes and tokens rather than the inlined violet this used to carry —
+  // see --c-drill. .sd-setup centres the panel, matching Mock Bar.
   container.innerHTML = `
-    <div style="max-width:520px;">
-      <div class="mb-setup-card" style="border-color:rgba(139,92,246,.25);background:linear-gradient(135deg,rgba(139,92,246,.07),rgba(106,61,232,.04));">
-        <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;">
-          <div style="font-size:36px;line-height:1;">⚡</div>
+    <div class="sd-setup">
+      <div class="mb-setup-card sd-card">
+        <div class="sd-head">
+          <div class="sd-head-icon">⚡</div>
           <div>
-            <div style="font-family:var(--fd);font-size:18px;font-weight:700;color:#c4b5fd;margin-bottom:3px;">Speed Drill</div>
-            <div style="font-size:12px;color:var(--muted);line-height:1.55;">Answer 1 randomly selected question within 3 minutes.</div>
+            <div class="sd-head-title">Speed Drill</div>
+            <div class="sd-head-sub">Answer 1 randomly selected question within 3 minutes.</div>
           </div>
         </div>
-        <div style="display:flex;gap:12px;margin-bottom:18px;flex-wrap:wrap;">
-          <div style="flex:1;min-width:100px;background:rgba(139,92,246,.12);border:1px solid rgba(139,92,246,.22);border-radius:10px;padding:12px;text-align:center;">
-            <div style="font-size:22px;font-weight:800;color:#a78bfa;font-family:var(--fd);">1</div>
-            <div style="font-size:11px;color:var(--muted);margin-top:2px;">Question</div>
-          </div>
-          <div style="flex:1;min-width:100px;background:rgba(139,92,246,.12);border:1px solid rgba(139,92,246,.22);border-radius:10px;padding:12px;text-align:center;">
-            <div style="font-size:22px;font-weight:800;color:#a78bfa;font-family:var(--fd);">3:00</div>
-            <div style="font-size:11px;color:var(--muted);margin-top:2px;">Time Limit</div>
-          </div>
-          <div style="flex:1;min-width:100px;background:rgba(139,92,246,.12);border:1px solid rgba(139,92,246,.22);border-radius:10px;padding:12px;text-align:center;">
-            <div style="font-size:22px;font-weight:800;color:#a78bfa;font-family:var(--fd);">AI</div>
-            <div style="font-size:11px;color:var(--muted);margin-top:2px;">Scored</div>
-          </div>
+        <div class="sd-stats">
+          <div class="sd-stat"><div class="sd-stat-val">1</div><div class="sd-stat-lbl">Question</div></div>
+          <div class="sd-stat"><div class="sd-stat-val">3:00</div><div class="sd-stat-lbl">Time Limit</div></div>
+          <div class="sd-stat"><div class="sd-stat-val">AI</div><div class="sd-stat-lbl">Scored</div></div>
         </div>
-        <div style="font-size:12px;color:var(--muted);line-height:1.65;margin-bottom:18px;padding:10px 12px;background:rgba(var(--ovl),.03);border-radius:8px;border-left:3px solid rgba(139,92,246,.4);">
+        <div class="sd-note">
           Same scoring rules as Mock Bar (0–10 pts per question). Timer turns red with 60 seconds remaining. When time runs out, your answer is auto-submitted.
         </div>
-        <div id="sdStartError" style="display:none;margin-bottom:12px;padding:10px 14px;background:rgba(224,112,128,.12);border:1px solid rgba(224,112,128,.35);border-radius:10px;color:var(--danger);font-size:13px;"></div>
-        <button id="sdStartBtn" onclick="startSubjectSpeedDrill('${subj}')"
-          style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px;padding:14px;font-family:var(--fd);font-size:15px;font-weight:700;color:#fff;background:linear-gradient(135deg,#6a3de8,#8b5cf6);border:none;border-radius:11px;cursor:pointer;box-shadow:0 4px 18px rgba(106,61,232,.4);transition:opacity .2s;">
+        <!-- display stays inline: startSubjectSpeedDrill reveals this with
+             style.display='', which would fall back to a class's display:none
+             and silently swallow the error. -->
+        <div id="sdStartError" class="sd-error" style="display:none;"></div>
+        <button id="sdStartBtn" class="sd-start-btn" onclick="startSubjectSpeedDrill('${subj}')">
           ⚡ Start ${subjName} Speed Drill
         </button>
       </div>
@@ -5061,7 +5053,7 @@ function renderOverview() {
   // and the countdown were already carrying, and pushed the one actionable
   // thing in the hero below the fold on a laptop.
   const streakPill = mo && mo.streak > 0
-    ? `<span class="ov-streak-pill" title="Days in a row with at least one flashcard drilled">🔥 ${mo.streak}-day streak</span>`
+    ? `<span class="ov-streak-pill">🔥 ${mo.streak}-day streak</span>`
     : '';
 
   // The primary action, given the weight of a card: its own accent rail,
@@ -8807,15 +8799,12 @@ async function refreshSidebarXP(force) {
 function refreshTopbarUser() {
   const disp = document.getElementById('userNameDisplay');
   if (!disp || !currentUser) return;
-  const streak = getStudyMomentum()?.streak || 0;
-  // Streak leads: it's the changing value, and putting it after the name left
-  // it reading as a suffix on the name rather than as its own fact.
-  // The name is its own element so narrow viewports can drop it and keep the
-  // streak — the name is already on the sidebar profile card, whereas
-  // Password and Log Out exist nowhere else and must not be squeezed out.
-  disp.innerHTML = (streak > 0
-    ? `<span class="tb-streak" title="${streak}-day study streak — days in a row with at least one flashcard drilled">🔥 ${streak}</span>`
-    : '') + `<span class="tb-name">${h(currentUser.name)}</span>`;
+  // The name, and nothing else. This slot has now shed both a duplicate
+  // "Lvl 45" (the sidebar profile card carries it, next to the XP bar and
+  // title that give it meaning) and the streak flame, which is already the
+  // first thing on the Overview beside the greeting — the place someone
+  // actually looks for it.
+  disp.innerHTML = `<span class="tb-name">${h(currentUser.name)}</span>`;
 }
 
 async function doLogout() {
