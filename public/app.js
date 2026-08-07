@@ -128,6 +128,17 @@ const SUBJS=[
   {key:'ethics',   name:'Legal Ethics',             cls:'sg-eth',f:'bf-b', color:'var(--c-ethics)',    icon:'🎓'},
 ];
 const CUSTOM_SUBJ = {key:'custom', name:'Custom Subject', color:'var(--c-custom)', icon:'📁'};
+
+// Mode names, in one place. The breadcrumb and the admin Tab Access panel had
+// their own copies; the breadcrumb's was a ternary chain that omitted
+// 'flashcards' entirely.
+const MODE_LABELS = {
+  learn:      '📖 Learn',
+  quiz:       '✏️ Quiz',
+  mockbar:    '⏱ Mock Bar',
+  speeddrill: '⚡ Speed Drill',
+  flashcards: '🎴 Flashcards',
+};
 const ALL_SUBJS = [...SUBJS, CUSTOM_SUBJ];
 
 // ══════════════════════════════════
@@ -832,7 +843,11 @@ function updateBreadcrumb(subj, mode) {
   if (!subj) { bc.innerHTML = ''; return; }
   const subjInfo = ALL_SUBJS.find(s => s.key === subj);
   const subjName = subjInfo?.name || subj;
-  const modeLabel = mode === 'learn' ? '📖 Learn' : mode === 'quiz' ? '✏️ Quiz' : mode === 'mockbar' ? '⏱ Mock Bar' : mode === 'speeddrill' ? '⚡ Speed Drill' : '';
+  // From the shared map. The old ternary chain had no 'flashcards' arm, so it
+  // fell through to '' and the breadcrumb showed a bare "Civil Law" on the one
+  // tab students spend the most time in, while every other mode got its
+  // "› Mock Bar". A map cannot silently omit a mode the way a chain can.
+  const modeLabel = MODE_LABELS[mode] || '';
   bc.innerHTML = `<span class="tb-bc-subj">${h(subjName)}</span>
     ${modeLabel ? `<span class="tb-bc-sep">›</span><span class="tb-bc-mode">${modeLabel}</span>` : ''}`;
 }
@@ -2750,23 +2765,15 @@ function switchSubjectTab(subj, mode) {
     if (first) { switchSubjectTab(subj, first); return; }
   }
   currentMode = mode;
-  document.querySelectorAll('.subject-tab').forEach(t => {
-    t.classList.remove('active');
-    t.style.color = '';
-    t.style.background = '';
-    t.style.borderColor = '';
-    t.style.boxShadow = '';
-  });
-  const activeTab = document.getElementById('stab-' + mode);
-  if (activeTab) {
-    activeTab.classList.add('active');
-    if (mode === 'speeddrill') {
-      activeTab.style.color = '#a78bfa';
-      activeTab.style.background = 'linear-gradient(135deg,rgba(139,92,246,.25),rgba(106,61,232,.15))';
-      activeTab.style.borderColor = 'rgba(139,92,246,.4)';
-      activeTab.style.boxShadow = '0 2px 8px rgba(139,92,246,.2)';
-    }
-  }
+  // No inline styling here. Speed Drill used to be given a hardcoded violet
+  // background, border and box-shadow on activation — the last survivor of the
+  // inline block removed from renderSubjectTabs. Because it was inline it beat
+  // .subject-tab.active, so that one tab got a different shadow and border
+  // weight from Mock Bar and Flashcards and sat visibly out of line with them.
+  // .subject-tab#stab-speeddrill.active carries the colour now, and the shared
+  // rule carries the shape.
+  document.querySelectorAll('.subject-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('stab-' + mode)?.classList.add('active');
   updateBreadcrumb(subj, mode);
   maybeAutoExpandSidebarForFlashcards(mode);
   const content = document.getElementById('subject-tab-content');
@@ -3087,10 +3094,13 @@ function renderFlashcardsTab(subj, container) {
   // Paint the header + slots immediately
   container.innerHTML = `
     <div class="fc-tab-wrap">
-      <div class="fc-tab-header" style="background:linear-gradient(135deg,rgba(201,168,76,.08),rgba(201,168,76,.02));border:1px solid rgba(201,168,76,.25);border-radius:16px;padding:22px;margin-bottom:18px;">
-        <div style="font-size:28px;margin-bottom:8px;">🎴</div>
-        <h2 style="font-family:var(--fd);font-size:24px;font-weight:700;color:var(--gold-l);margin-bottom:6px;">${h(subjName)} Flashcards</h2>
-        <p style="font-size:13px;color:var(--muted);line-height:1.65;max-width:640px;">Review cards at your own pace. Mark each card as done as you learn it. Your progress is tracked across all subjects.</p>
+      <!-- rgba(201,168,76,…) was a literal gold that ignored the theme, and
+           the box carried none of the app's relief. Classes and tokens now —
+           see .fc-tab-header. -->
+      <div class="fc-tab-header">
+        <div class="fc-tab-header-icon">🎴</div>
+        <h2 class="fc-tab-header-title">${h(subjName)} Flashcards</h2>
+        <p class="fc-tab-header-sub">Review cards at your own pace. Mark each card as done as you learn it. Your progress is tracked across all subjects.</p>
       </div>
       <div id="fc-stats-slot"></div>
       <div id="fc-topics-slot"></div>
@@ -3200,7 +3210,7 @@ function paintFlashcardsTabFromBundle(subj) {
 function renderFlashcardTopicTree(container, subj, sections, countsByNodeId, opts = {}) {
   const showLabel = opts.showLabel !== false;
   const labelHtml = showLabel
-    ? '<div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin:18px 0 10px;">Browse by Topic</div>'
+    ? '<div class="fc-topics-label">Browse by Topic</div>'
     : '';
   // Recursively filter: keep nodes that either (a) have cards attached
   // directly OR (b) have at least one surviving descendant with cards.
@@ -3232,7 +3242,7 @@ function renderFlashcardTopicTree(container, subj, sections, countsByNodeId, opt
 
   if (!filtered.length) {
     container.innerHTML = labelHtml + `
-      <div style="padding:24px;text-align:center;color:var(--muted);font-size:12px;background:var(--card2);border:1px solid var(--bdr2);border-radius:10px;">
+      <div class="fc-topics-empty">
         No topics have flashcards yet. Use the due-queue button above to study cards as they get imported.
       </div>
     `;
@@ -7804,7 +7814,7 @@ function renderTabControls() {
   const container = document.getElementById('tabToggleList');
   if (!container) return;
   const s = pendingTabSettings || getDefaultTabSettings();
-  const modeLabels = { learn: '📖 Learn', quiz: '✏️ Quiz', mockbar: '⏱ Mock Bar', speeddrill: '⚡ Speed Drill', flashcards: '🎴 Flashcards' };
+  const modeLabels = MODE_LABELS;
   let html = '';
   // Global shortcuts
   html += `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
@@ -9801,7 +9811,7 @@ function renderUserAccessGrid() {
   if (!container) return;
   const s = pendingUserTabSettings || getDefaultUserTabSettings();
   const globalS = window.TAB_SETTINGS || {};
-  const modeLabels = { learn: '📖 Learn', quiz: '✏️ Quiz', mockbar: '⏱ Mock Bar', speeddrill: '⚡ Speed Drill' };
+  const modeLabels = MODE_LABELS;  // only the four modes below are looked up
   let html = '';
   const allSubjs = [...SUBJS, CUSTOM_SUBJ];
   allSubjs.forEach(subj => {
