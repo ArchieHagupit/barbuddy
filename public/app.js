@@ -809,6 +809,14 @@ function clearSidebarActive() {
   // navToProgress re-starts both after this runs.
   _stopCountdown();
   _destroyProgressChart();
+  // And for the same reason again: pseudo-fullscreen parks .fc-viewer-wrap on
+  // <body>, outside every .page, so navigating away left it floating over the
+  // destination at z-9000 with body.fc-fs-lock still blocking scroll — the
+  // student arrived at the Overview and found a flashcard nailed over it and
+  // a page that would not move. Native fullscreen is dropped here too, since
+  // the destination page has no business being viewed through it.
+  if (_fcPseudoOn()) _fcExitPseudo();
+  else if (_fcFullscreenEl()) (document.exitFullscreen || document.webkitExitFullscreen)?.call(document);
 }
 
 function updateBreadcrumb(subj, mode) {
@@ -3138,7 +3146,7 @@ function paintFlashcardsTabFromBundle(subj) {
   // Stats card with progress bar + Start button
   statsSlot.innerHTML = `
     <div class="fc-study-card">
-      <div style="display:flex;gap:24px;flex-wrap:wrap;margin-bottom:14px;">
+      <div class="fc-stats-row">
         <div class="fc-stat">
           <div class="fc-stat-num" style="color:var(--teal);">${done}</div>
           <div class="fc-stat-label">Done</div>
@@ -4369,6 +4377,25 @@ function renderFlashcardSessionSummary() {
   const container = document.getElementById('subject-tab-content');
   if (!container) return;
 
+  // Leave fullscreen FIRST, exactly as renderFlashcardCardViewer and
+  // endFlashcardSession do.
+  //
+  // Pseudo-fullscreen portals .fc-viewer-wrap onto <body>, so it is no longer
+  // inside #subject-tab-content. Replacing that container's innerHTML below
+  // therefore painted the summary *underneath* an overlay that was still
+  // pinned over the whole viewport showing the last card — and since the wrap
+  // had been moved out, nothing removed it. The student finished a deck, saw
+  // the same card sitting there, and the summary only appeared once they
+  // thought to hit Exit Full Screen. Phones take this path by definition:
+  // iOS Safari has no requestFullscreen for non-video elements, so the
+  // pseudo fallback is the mobile case, which is why it read as a
+  // mobile-only "the complete screen doesn't render".
+  //
+  // Native fullscreen mostly self-heals (removing the fullscreen element
+  // exits it) but is handled here too rather than relied on.
+  if (_fcPseudoOn()) _fcExitPseudo();
+  else if (_fcFullscreenEl()) (document.exitFullscreen || document.webkitExitFullscreen)?.call(document);
+
   const { cards, startedAt, subject } = _fcSession;
   const doneInSession = cards.filter(isFlashcardDone).length;
   const total = cards.length;
@@ -4381,26 +4408,26 @@ function renderFlashcardSessionSummary() {
   const pct = total > 0 ? Math.round((doneInSession / total) * 100) : 0;
 
   container.innerHTML = `
-    <div class="fc-summary-wrap" style="text-align:center;padding:32px 20px;">
-      <div style="font-size:54px;margin-bottom:12px;">🎉</div>
-      <h2 style="font-family:var(--fd);font-size:26px;font-weight:700;color:var(--gold-l);margin-bottom:6px;">Session Complete!</h2>
-      <p style="font-size:13px;color:var(--muted);margin-bottom:24px;">
+    <div class="fc-summary-wrap">
+      <div class="fc-summary-icon">🎉</div>
+      <h2 class="fc-summary-title">Session Complete!</h2>
+      <p class="fc-summary-sub">
         You spent ${elapsedMin} minute${elapsedMin!==1?'s':''} reviewing ${total} card${total!==1?'s':''}.
       </p>
 
-      <div class="fc-summary-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;max-width:520px;margin:0 auto 24px;">
-        <div class="fc-summary-stat" style="background:rgba(46,196,160,.08);border:1px solid rgba(46,196,160,.2);border-radius:10px;padding:14px;">
-          <div style="font-size:28px;font-weight:700;color:var(--teal);">${doneInSession}</div>
-          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;">Marked Done</div>
+      <div class="fc-summary-grid">
+        <div class="fc-summary-stat is-done">
+          <div class="fc-summary-val">${doneInSession}</div>
+          <div class="fc-summary-lbl">Marked Done</div>
         </div>
-        <div class="fc-summary-stat" style="background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.2);border-radius:10px;padding:14px;">
-          <div style="font-size:28px;font-weight:700;color:var(--gold-l);">${pct}%</div>
-          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;">Completion</div>
+        <div class="fc-summary-stat is-pct">
+          <div class="fc-summary-val">${pct}%</div>
+          <div class="fc-summary-lbl">Completion</div>
         </div>
       </div>
 
-      <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
-        <button class="btn-gold" onclick="endFlashcardSession()" style="font-size:13px;padding:10px 18px;">🎴 Back to Flashcards</button>
+      <div class="fc-summary-actions">
+        <button class="btn-gold" onclick="endFlashcardSession()">🎴 Back to Flashcards</button>
       </div>
     </div>
   `;
