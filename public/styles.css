@@ -95,6 +95,12 @@
      --ease-pop overshoots slightly on the way out, so a card lifting under
      the cursor has a little spring in it instead of a linear glide. Presses
      deliberately do NOT use it — a press should land, not wobble. */
+  /* The app header band. The topbar and the sidebar's logo section both sit
+     in it and their bottom borders are meant to read as ONE continuous line
+     across the screen — so both take their height from here. They had drifted
+     to 58px and 75px, leaving a 17px step right where the rail meets the
+     topbar, and the topbar's border was still 1px against the rail's 2px. */
+  --topbar-h:58px;
   --bdr-chunk:2px;
   --r-chunk:20px;      /* cards  */
   --r-chunk-sm:14px;   /* buttons, chips */
@@ -252,9 +258,9 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 /* SIDEBAR — subject-first navigation */
 .sidebar{width:var(--sw);background:rgba(var(--srf-rgb),.95);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-right:var(--bdr-chunk) solid rgba(var(--gold-rgb),.18);display:flex;flex-direction:column;align-items:stretch;padding:0 0 16px;position:fixed;inset:0 auto 0 0;z-index:300;overflow:hidden;height:100vh;height:100dvh;transition:width .22s ease;}
 .sidebar::-webkit-scrollbar{width:4px;}.sidebar::-webkit-scrollbar-track{background:transparent;}.sidebar::-webkit-scrollbar-thumb{background:rgba(var(--gold-rgb),.2);border-radius:2px;}.sidebar::-webkit-scrollbar-thumb:hover{background:rgba(var(--gold-rgb),.35);}
-.sb-logo-section{display:flex;align-items:center;gap:10px;padding:16px 16px 12px;border-bottom:var(--bdr-chunk) solid rgba(var(--gold-rgb),.16);flex-shrink:0;background:linear-gradient(180deg,rgba(var(--gold-rgb),.08) 0%,transparent 100%);}
+.sb-logo-section{display:flex;align-items:center;gap:10px;height:var(--topbar-h);box-sizing:border-box;padding:0 14px;border-bottom:var(--bdr-chunk) solid rgba(var(--gold-rgb),.16);flex-shrink:0;background:linear-gradient(180deg,rgba(var(--gold-rgb),.08) 0%,transparent 100%);}
 .s-logo{width:36px;height:36px;background:linear-gradient(145deg,var(--gold),var(--gold-d));border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;box-shadow:0 3px 12px rgba(var(--gold-rgb),.3);}
-.sb-logo-title{font-family:var(--fd);font-size:17px;font-weight:700;color:var(--gold);line-height:1.1;}
+.sb-logo-title{font-family:var(--fd);font-size:15.5px;font-weight:800;color:var(--gold);line-height:1.1;}
 /* ── Brand mark ────────────────────────────────────────────────
    The crest replaces the ⚖️ emoji in the three places the product names
    itself: the boot splash, the sign-in card and the sidebar. Each <img>
@@ -267,7 +273,7 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .bb-mark{display:block;object-fit:contain;}
 .bb-mark-splash{width:84px;height:84px;}
 .bb-mark-auth{width:40px;height:40px;}
-.bb-mark-side{width:34px;height:34px;}
+.bb-mark-side{width:30px;height:30px;}
 /* Boot splash plate. Only ever seen behind the ⚖️ fallback — see below. */
 .bb-splash-tile{
   width:72px;height:72px;border-radius:16px;margin-bottom:20px;
@@ -953,7 +959,7 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .subj-ov-btn{padding:4px 9px;border-radius:6px;font-size:10px;font-weight:600;cursor:pointer;border:1px solid rgba(var(--txt2-rgb),.1);background:rgba(var(--ovl),.04);color:rgba(var(--txt2-rgb),.6);transition:all .15s;font-family:var(--fb);}
 .subj-ov-btn:hover{background:rgba(var(--ovl),.1);color:rgba(var(--txt2-rgb),.9);}
 /* TOPBAR */
-.topbar{position:sticky;top:0;z-index:200;background:rgba(var(--srf-rgb),.92);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-bottom:1px solid rgba(var(--gold-rgb),.1);height:58px;display:flex;align-items:center;padding:0 22px;}
+.topbar{position:sticky;top:0;z-index:200;background:rgba(var(--srf-rgb),.92);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-bottom:var(--bdr-chunk) solid rgba(var(--gold-rgb),.16);height:var(--topbar-h);box-sizing:border-box;display:flex;align-items:center;padding:0 22px;}
 /* Hidden by default: the sidebar already carries the wordmark, and the second
    copy plus its two-line subtitle was the one element in the bar taller than
    a single row — which is what made everything look unaligned. It reappears
@@ -1021,7 +1027,7 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .page{display:none;flex:1;} .page.on{display:block;animation:pageFadeIn 0.15s ease forwards;}
 @keyframes pageFadeIn{from{opacity:0}to{opacity:1}}
 /* PREGEN BANNER */
-.pregen-banner{background:linear-gradient(135deg,#1a1000,#2a1800);border-bottom:1px solid rgba(var(--warn-rgb),.25);padding:11px 22px;display:none;align-items:center;gap:14px;position:sticky;top:58px;z-index:190;}
+.pregen-banner{background:linear-gradient(135deg,#1a1000,#2a1800);border-bottom:1px solid rgba(var(--warn-rgb),.25);padding:11px 22px;display:none;align-items:center;gap:14px;position:sticky;top:var(--topbar-h);z-index:190;}
 .pregen-banner.on{display:flex;}
 .pb-label{font-size:12px;font-weight:600;color:var(--warn);white-space:nowrap;}
 .pb-prog-wrap{flex:1;max-width:300px;}
@@ -1141,7 +1147,7 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .kb-item{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(var(--ovl),.05);font-size:12px;}
 .kb-item:last-child{border-bottom:none;}
 /* ─── SPLIT LAYOUT (Learn + Practice + Mock) ─── */
-.split-layout{display:grid;grid-template-columns:258px 1fr;height:calc(100vh - 58px);overflow:hidden;}
+.split-layout{display:grid;grid-template-columns:258px 1fr;height:calc(100vh - var(--topbar-h));overflow:hidden;}
 .panel-l{background:var(--card2);border-right:1px solid var(--bdr);display:flex;flex-direction:column;overflow:hidden;}
 .pl-head{padding:16px 14px 13px;border-bottom:1px solid var(--bdr);}
 .pl-head h3{font-family:var(--fd);font-size:17px;font-weight:700;color:var(--gold-l);margin-bottom:8px;}
@@ -1182,7 +1188,12 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .tl-expand-arrow{font-size:8px;transition:transform .18s;display:inline-block;color:rgba(var(--txt2-rgb),.25);flex-shrink:0;}
 .tl-expand-arrow.open{transform:rotate(90deg);}
 .tl-group{margin-bottom:1px;}
+/* .55 was tuned when .fc-topic-tree was a near-transparent panel over the
+   page wash. Now that the tree is a white card it measured 4.11:1 on paper,
+   just under AA — so light gets its own alpha, the same base/override split
+   .sb-section-label uses for the same reason. */
 .tl-group-header{display:flex;align-items:center;gap:6px;padding:6px 12px 6px 20px;cursor:pointer;font-size:12px;font-weight:600;color:rgba(var(--txt2-rgb),.55);transition:color .15s;}
+:root[data-theme="light"] .tl-group-header{color:rgba(var(--txt2-rgb),.74);}
 .tl-group-header:hover{color:rgba(var(--txt2-rgb),.85);background:rgba(var(--ovl),.02);}
 .tl-group-name{flex:1;line-height:1.4;}
 .tl-group-body{display:none;padding-left:10px;}
@@ -1464,7 +1475,7 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
    black gradient, which stayed dark in light mode while the controls on it
    (Exit, Flag, the save indicator) use var(--muted) — dark text on a dark
    slab, invisible. It now follows the theme. */
-.ms-header{background:var(--exam-head);border:var(--bdr-chunk) solid rgba(var(--warn-rgb),.28);border-radius:var(--r-chunk-sm);padding:15px 20px;display:flex;align-items:center;gap:16px;margin-bottom:18px;position:sticky;top:58px;z-index:100;backdrop-filter:blur(10px);box-shadow:var(--emboss);}
+.ms-header{background:var(--exam-head);border:var(--bdr-chunk) solid rgba(var(--warn-rgb),.28);border-radius:var(--r-chunk-sm);padding:15px 20px;display:flex;align-items:center;gap:16px;margin-bottom:18px;position:sticky;top:var(--topbar-h);z-index:100;backdrop-filter:blur(10px);box-shadow:var(--emboss);}
 .ms-q-num{font-family:var(--fd);font-size:22px;font-weight:700;color:var(--warn);}
 .ms-of{font-size:12px;color:var(--exam-head-muted);font-family:var(--fm);}
 /* Padding is on the base rule, not the warn/critical ones: adding it only in
@@ -2256,7 +2267,7 @@ button[onclick*="switchSubjectTab(currentSubject,'learn')"] { display: none !imp
    the viewport, and 60px of padding below it would reintroduce page scroll. */
 #page-subject.fc-session-active .pg-inner { max-width: 1180px; padding-bottom: 14px; }
 #page-subject.fc-session-active #subject-sticky-head {
-  position: sticky; top: 58px; z-index: 20;
+  position: sticky; top: var(--topbar-h); z-index: 20;
   background: rgba(var(--srf-rgb),.94);
   backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
   margin: 0 -26px; padding: 10px 26px 0;
@@ -2635,7 +2646,27 @@ body.fc-fs-lock{overflow:hidden;}
 }
 .fc-topic-leaf:hover { background: rgba(var(--gold-rgb),.08); }
 .fc-topic-leaf:active { background: rgba(var(--gold-rgb),.16); }
-.fc-topic-tree { max-height: 520px; overflow-y: auto; border: 1px solid var(--bdr2); border-radius: 10px; padding: 8px 10px; background: rgba(var(--ovl),.01); }
+.fc-topic-tree { max-height: 520px; overflow-y: auto; border: var(--bdr-chunk) solid var(--bdr2); border-radius: var(--r-chunk); padding: 10px 12px; background: var(--card); box-shadow: var(--emboss); }
+
+/* ── Flashcards tab intro + topic list ───────────────────────
+   The intro was a literal rgba(201,168,76,…) gold on a 1px border, so it
+   neither followed the theme nor matched the subject title box above it.
+   It is the same card as everything else now, with the gold wash layered
+   over --card rather than painted onto the page. */
+.fc-tab-header{
+  background:linear-gradient(135deg,rgba(var(--gold-rgb),.10),rgba(var(--gold-rgb),.03)),var(--card);
+  border:var(--bdr-chunk) solid rgba(var(--gold-rgb),.28);
+  border-radius:var(--r-chunk);padding:22px;margin-bottom:18px;box-shadow:var(--emboss);
+}
+.fc-tab-header-icon{font-size:28px;line-height:1;margin-bottom:8px;}
+.fc-tab-header-title{font-family:var(--fd);font-size:24px;font-weight:800;color:var(--gold-l);margin-bottom:6px;}
+.fc-tab-header-sub{font-size:13px;color:var(--text-muted);line-height:1.65;max-width:640px;}
+.fc-topics-label{font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin:20px 0 10px;}
+.fc-topics-empty{
+  padding:24px;text-align:center;color:var(--muted);font-size:12px;
+  background:var(--card);border:var(--bdr-chunk) solid var(--bdr2);
+  border-radius:var(--r-chunk);box-shadow:var(--emboss);
+}
 
 /* ── Topic completion (100% only) ─────────────────────────────
    Applied to leaves, group headers and section headers alike; parents
