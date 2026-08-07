@@ -1054,7 +1054,7 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .panel-l{background:var(--card2);border-right:1px solid var(--bdr);display:flex;flex-direction:column;overflow:hidden;}
 .pl-head{padding:16px 14px 13px;border-bottom:1px solid var(--bdr);}
 .pl-head h3{font-family:var(--fd);font-size:17px;font-weight:700;color:var(--gold-l);margin-bottom:8px;}
-.sp-search{width:100%;background:var(--card3);border:1px solid var(--bdr2);border-radius:9px;padding:7px 11px;color:var(--white);font-family:var(--fb);font-size:12px;outline:none;transition:border-color .2s,box-shadow .2s;}
+.sp-search{width:100%;background:var(--card);border:1px solid var(--bdr2);border-radius:9px;padding:7px 11px;color:var(--text);font-family:var(--fb);font-size:12px;outline:none;box-shadow:var(--deboss);transition:border-color .2s,box-shadow .2s;}
 .sp-search:focus{border-color:rgba(var(--gold-rgb),.4);box-shadow:0 0 0 3px rgba(var(--gold-rgb),.08);}
 .sp-search:focus{border-color:rgba(var(--gold-rgb),.4);}
 .prog-mini{margin-top:8px;}
@@ -1229,7 +1229,15 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .q-feedback.no{background:rgba(var(--crim-rgb),.1);border:1px solid rgba(var(--crim-rgb),.3);color:var(--danger);}
 /* ESSAY */
 .essay-prompt{font-size:15px;font-weight:600;line-height:1.75;margin-bottom:10px;color:var(--white);}
-.facts-box,.essay-ctx{background:rgba(var(--txt2-rgb),.07);border-left:4px solid var(--gold);border-radius:0 12px 12px 0;padding:20px 22px;margin-bottom:22px;}
+/* A real surface, not a wash of the text colour.
+   This was rgba(var(--txt2-rgb),.07). --txt2-rgb is near-white on dark and
+   NEAR-BLACK on light, so the same declaration lifted the panel on navy and
+   dirtied it on paper: the facts of a question — the longest, most carefully
+   read block on the page — sat in a grey slab. --card is the token for this
+   job and resolves correctly both ways: white on paper, a lifted navy on
+   dark. The border earns its keep on light, where white-on-cream needs an
+   edge to read as a panel at all. */
+.facts-box,.essay-ctx{background:var(--card);border:1px solid var(--bdr);border-left:4px solid var(--gold);border-radius:0 14px 14px 0;padding:20px 22px;margin-bottom:22px;box-shadow:var(--emboss);}
 .facts-label{font-family:var(--fd);font-size:11px;font-weight:800;letter-spacing:.12em;color:var(--gold);text-transform:uppercase;margin-bottom:12px;display:flex;align-items:center;gap:7px;}
 .facts-label::before{content:'';display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--gold);}
 .facts-text{font-family:var(--fr);font-size:var(--fs-read);font-style:normal;font-weight:400;line-height:var(--lh-read);letter-spacing:.005em;color:rgba(var(--txt2-rgb),.95);white-space:pre-wrap;max-width:var(--measure);}
@@ -1272,9 +1280,14 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .writing-feedback-section ul{margin:0;padding-left:18px;line-height:1.65;}
 .writing-feedback-section li{margin:2px 0;}
 .writing-feedback-overall{font-size:.88rem;color:var(--text);font-style:italic;line-height:1.65;opacity:.9;}
-.essay-box{width:100%;min-height:200px;background:var(--card3);border:1px solid var(--bdr2);border-radius:12px;padding:18px 20px;color:var(--white);font-family:var(--fr);font-size:var(--fs-read);line-height:var(--lh-read);outline:none;resize:vertical;transition:border-color .2s,box-shadow .2s;}
-.essay-box:focus{border-color:rgba(var(--gold-rgb),.4);box-shadow:0 0 0 3px rgba(var(--gold-rgb),.08);}
-.essay-box:focus{border-color:rgba(var(--gold-rgb),.4);}
+/* Inputs are --card with a recess, not --card3.
+   --card3 is a LIGHTER navy on dark (a lift) but a DARKER cream on light (a
+   dinge), so a single token gave the answer box opposite treatments in the
+   two themes — and on paper it made the field a student writes a full bar
+   answer into the murkiest thing on screen. --card plus --deboss says
+   "field" the same way in both: white / lifted navy, set into the page. */
+.essay-box{width:100%;min-height:200px;background:var(--card);border:1px solid var(--bdr2);border-radius:14px;padding:18px 20px;color:var(--text);font-family:var(--fr);font-size:var(--fs-read);line-height:var(--lh-read);outline:none;resize:vertical;box-shadow:var(--deboss);transition:border-color .2s,box-shadow .2s;}
+.essay-box:focus{border-color:rgba(var(--gold-rgb),.5);box-shadow:var(--deboss),0 0 0 3px rgba(var(--gold-rgb),.14);}
 .ai-fb{background:rgba(var(--gold-rgb),.06);border:1px solid rgba(var(--gold-rgb),.2);border-radius:13px;padding:16px;margin-top:14px;display:none;}
 .ai-fb.show{display:block;}
 .ai-fb-head{font-size:12px;font-weight:700;color:var(--gold);text-transform:uppercase;letter-spacing:.06em;margin-bottom:9px;display:flex;align-items:center;gap:7px;flex-wrap:wrap;}
@@ -1433,13 +1446,23 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .mr-pass{font-size:12px;color:var(--muted);font-family:var(--fm);margin-bottom:18px;}
 .mr-section{font-family:var(--fd);font-size:20px;font-weight:700;color:var(--gold-l);margin-bottom:14px;text-align:left;}
 .mr-foot{margin-top:28px;padding-top:12px;border-top:1px solid var(--bdr);font-size:11px;color:var(--muted);text-align:center;}
-.q-review-item{background:rgba(var(--ovl),.03);border:1px solid var(--bdr2);border-radius:12px;padding:13px;margin-bottom:9px;text-align:left;}
+/* Results — same reasoning as .facts-box. rgba(var(--ovl),.03) is a white
+   veil on navy but a grey one on paper, so every reviewed question sat in a
+   faint smudge. These are the panels a student re-reads after a mock, so
+   they get the real card surface in both themes. */
+.q-review-item{background:var(--card);border:1px solid var(--bdr);border-radius:14px;padding:14px;margin-bottom:10px;text-align:left;box-shadow:var(--emboss);}
 /* Was a hardcoded #a08060 — legible on navy, ~2.9:1 on the light card. */
 .qr-meta{font-size:11px;color:var(--muted);margin-bottom:5px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
 .qr-src{font-size:9px;color:var(--muted);}
 .qr-src.pre{color:var(--teal-d);}
 .qr-sum{cursor:pointer;color:var(--muted);font-size:12px;font-weight:600;}
-.qr-answer{margin-top:6px;padding:10px;background:rgba(var(--ovl),.03);border-radius:8px;font-size:12px;line-height:1.7;color:rgba(var(--txt2-rgb),.8);white-space:pre-wrap;}
+/* Nested inside .q-review-item, which is now --card — so this takes --card2,
+   a half-step off it in both themes (a shade down on paper, a shade up on
+   navy). Card-on-card would have been invisible, and the old grey wash was
+   the very thing being fixed. The student's own answer also gets full text
+   colour: it was --txt2-rgb at .8, which is quieter than the AI feedback
+   printed directly beneath it. */
+.qr-answer{margin-top:6px;padding:12px 14px;background:var(--card2);border:1px solid var(--bdr);border-radius:10px;font-size:12.5px;line-height:1.75;color:var(--text-muted);white-space:pre-wrap;box-shadow:var(--deboss);}
 .q-score-badge{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;padding:3px 9px;border-radius:6px;font-family:var(--fm);}
 .qsb-high{background:rgba(var(--teal-d-rgb),.15);color:var(--teal);}
 .qsb-mid{background:rgba(var(--gold-rgb),.15);color:var(--gold);}
@@ -1480,7 +1503,7 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .admin-panel h3{font-family:var(--fd);font-size:18px;font-weight:700;color:var(--gold-l);margin-bottom:5px;}
 .admin-panel p{font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.55;}
 .form-label{font-size:11px;font-weight:600;color:var(--gold-l);display:block;margin-bottom:5px;text-transform:uppercase;letter-spacing:.04em;}
-.form-input{width:100%;background:var(--card3);border:1px solid var(--bdr2);border-radius:10px;padding:11px 14px;color:var(--white);font-family:var(--fb);font-size:14px;outline:none;transition:border-color .2s,box-shadow .2s;margin-bottom:10px;}
+.form-input{width:100%;background:var(--card);border:1px solid var(--bdr2);border-radius:10px;padding:11px 14px;color:var(--text);font-family:var(--fb);font-size:14px;outline:none;box-shadow:var(--deboss);transition:border-color .2s,box-shadow .2s;margin-bottom:10px;}
 .form-input:focus,.form-input:focus-within{border-color:rgba(var(--gold-rgb),.4);box-shadow:0 0 0 3px rgba(var(--gold-rgb),.08);}
 select.form-input{cursor:pointer;}
 .form-input:focus{border-color:rgba(var(--gold-rgb),.4);}
@@ -1601,7 +1624,7 @@ select.form-input{cursor:pointer;}
 }
 /* Results detail modal */
 .res-detail-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:18px;}
-.res-dstat{background:rgba(var(--ovl),.04);border:1px solid var(--bdr2);border-radius:10px;padding:12px;text-align:center;}
+.res-dstat{background:var(--card2);border:1px solid var(--bdr);border-radius:12px;padding:12px;text-align:center;box-shadow:var(--emboss);}
 .res-dstat-val{font-family:var(--fd);font-size:22px;font-weight:800;color:var(--gold-l);}
 .res-dstat-lbl{font-size:11px;color:var(--muted);margin-top:2px;}
 /* Admin user/results panels */
