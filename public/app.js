@@ -2306,11 +2306,17 @@ function _paintProgressBody(container, results, token) {
     return d.toLocaleDateString('en-US',{timeZone:'Asia/Manila',month:'numeric',day:'numeric'});
   });
   const chartData = chartResults.map(pct);
-  const pointColors = chartData.map(p => p >= 70 ? 'var(--teal)' : 'var(--danger)');
-  const segColors   = chartData.map((p,i) => {
-    if (i === 0) return p >= 70 ? 'var(--teal)' : 'var(--danger)';
-    return chartData[i-1] >= 70 ? 'var(--teal)' : 'var(--danger)';
-  });
+  // Resolved, not 'var(--teal)'. These go to a <canvas>, which cannot parse a
+  // CSS custom property — Chart.js silently fell back to its own default, so
+  // the points were the same slate blue whatever the score and whatever the
+  // theme, while the line and axes around them (which all use _cssVar) were
+  // correct. applyTheme re-renders this page on a theme switch, so resolving
+  // here is enough to keep them in step.
+  // segColors sat here too, built the same broken way and never passed to
+  // anything — the line's colour comes from the gradient built inside
+  // _drawProgressChart. Removed rather than fixed.
+  const cTeal = _cssVar('--teal'), cDanger = _cssVar('--danger');
+  const pointColors = chartData.map(p => p >= 70 ? cTeal : cDanger);
 
   body.innerHTML = `
       <!-- Summary stats row -->
