@@ -502,7 +502,18 @@ body{font-family:var(--fb);background:var(--ink);color:var(--white);min-height:1
 .cd-quote{font-size:13px;font-style:italic;color:var(--muted);max-width:340px;margin:0 auto;line-height:1.6;}
 /* (The compact overview countdown banner moved into the hero — see
    .ov-countdown in the Overview section.) */
-@media(max-width:500px){.cd-num{font-size:36px;} .cd-sep{font-size:28px;}}
+/* Two-up on phones. Four units in a row could not fit: .cd-num carries
+   min-width:3ch, so even at the old 36px the four numerals plus their three
+   separators measured 292px of content inside a 211px card and simply spilled
+   out of it — a flex row has nothing to give when its items have a min-width.
+   A 2x2 block drops the separators (a grid gap reads as the same rhythm),
+   releases the min-width, and lets the digits stay large. */
+@media(max-width:560px){
+  .cd-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 6px;justify-items:center;}
+  .cd-sep{display:none;}
+  .cd-num{font-size:38px;min-width:0;}
+  .cd-unit{min-width:0;}
+}
 
 /* ── Spaced Repetition ─────────────────────────────────────── */
 /* The sidebar "N due" badge (.sb-sr-badge + srPulse) is gone — per-subject
